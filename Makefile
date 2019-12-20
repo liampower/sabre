@@ -12,10 +12,14 @@ LinkerFlags=-incremental:no -debug -entry:mainCRTStartup -libpath:libs -machine:
 
 all: $(Executable)
 
-$(Objects): $(Sources)
+$(ShaderPacker):
+	@$(Compiler) code/shader_compiler.cc -o $(ShaderPacker) -Wall -Os
+
+$(Objects): $(Sources) $(ShaderPacker)
+	@$(ShaderPacker)
 	@$(Compiler) -c $(CompilerFlags) $(Sources)
 
-$(Executable): $(Objects)  tags
+$(Executable): $(Objects) tags
 	@$(Linker) $(Objects) $(LinkerFlags) -out:$(Executable)
 
 clean:
