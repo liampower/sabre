@@ -1,1 +1,13 @@
 #version 450 core
+
+out vec4 FragCr;
+
+uniform sampler2D RenderedTexture;
+
+in vec2 UV;
+
+void main()
+{
+    FragCr = texture(RenderedTexture, UV);
+}
+

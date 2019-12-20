@@ -6,6 +6,11 @@
 #include <glfw/glfw3.h>
 
 #include "sabre.h"
+#include "data.h"
+
+typedef GLuint gl_uint;
+typedef GLint gl_int;
+
 
 static constexpr u32 DisplayWidth = 1280;
 static constexpr u32 DisplayHeight = 720;
@@ -16,6 +21,99 @@ HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei L
 {
     fprintf(stderr, "[OpenGL Error] %s\n", Message);
 }
+
+
+static gl_uint
+CompileComputeShader(const char* const ComputeShaderCode)
+{
+    gl_uint ShaderID = glCreateShader(GL_COMPUTE_SHADER);
+    gl_uint ProgramID = glCreateProgram();
+    gl_int  Success = 0;
+
+    glShaderSource(ShaderID, 1, &ComputeShaderCode, nullptr);
+    glCompileShader(ShaderID);
+    glGetShaderiv(ShaderID, GL_COMPILE_STATUS, &Success);
+
+    if (0 == Success)
+    {
+        char Log[512] = { 0 };
+        glGetShaderInfoLog(ShaderID, 512, nullptr, Log);
+        fprintf(stdout, "Failed to compile compute shader\nLog is: %s\n", Log);
+
+        return 0;
+    }
+
+    glAttachShader(ProgramID, ShaderID);
+    glLinkProgram(ProgramID);
+
+    Success = 0;
+    glGetProgramiv(ProgramID, GL_LINK_STATUS, &Success);
+
+    if (0 == Success)
+    {
+        fprintf(stderr, "Failed to link compute shader program\n");
+        return 0;
+    }
+
+    glDeleteShader(ShaderID);
+
+    return ProgramID;
+}
+
+static gl_uint
+CompileShader(const char* VertSrc, const char* FragSrc)
+{
+    gl_uint VertShader = 0;
+    gl_uint FragShader = 0;
+    gl_uint Program    = 0;
+    gl_int  Success    = 0;
+
+    VertShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(VertShader, 1, &VertSrc, nullptr);
+    glCompileShader(VertShader);
+    glGetShaderiv(VertShader, GL_COMPILE_STATUS, &Success);
+    
+    if (0 == Success)
+    {
+        char Log[512] = { 0 };
+        glGetShaderInfoLog(VertShader, 512, nullptr, Log);
+        fprintf(stderr, "Failed to compile vertex shader\n%s", Log);
+        return 0;
+    }
+
+    Success = false;
+    FragShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(FragShader, 1, &FragSrc, nullptr);
+    glCompileShader(FragShader);
+    glGetShaderiv(FragShader, GL_COMPILE_STATUS, &Success);
+
+    if (0 == Success)
+    {
+        char Log[512] = { 0 };
+        glGetShaderInfoLog(FragShader, 512, nullptr, Log);
+        fprintf(stderr, "Failed to compile fragment shader\n%s", Log);
+        return 0;
+    }
+
+    Success = false;
+    Program = glCreateProgram();
+    glAttachShader(Program, VertShader);
+    glAttachShader(Program, FragShader);
+    glLinkProgram(Program);
+    glGetProgramiv(Program, GL_LINK_STATUS, &Success);
+
+    if (0 == Success)
+    {
+        fprintf(stderr, "Failed to link shader program\n");
+        return 0;
+    }
+
+    glDeleteShader(VertShader);
+    glDeleteShader(FragShader);
+
+    return Program;
+}
+
 
 extern int
 main(int ArgCount, const char** const Args)
@@ -57,6 +155,26 @@ main(int ArgCount, const char** const Args)
     glViewport(0, 0, FramebufferWidth, FramebufferHeight);
     glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
+    gl_uint ComputeShader = CompileComputeShader(RaycasterComputeKernel);
+    gl_uint MainShader = CompileShader(MainVertexCode, MainFragmentCode);
+
+    if (0 == MainShader)
+    {
+        fprintf(stderr, "Failed to compile shader\n");
+
+        glfwTerminate();
+        return EXIT_FAILURE;
+    }
+
+    if (0 == ComputeShader)
+    {
+        fprintf(stderr, "Failed to compile compute shader\n");
+
+        glfwTerminate();
+        return EXIT_FAILURE;
+    }
+
+
     while (GLFW_FALSE == glfwWindowShouldClose(Window))
     {
         glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
@@ -70,6 +188,11 @@ main(int ArgCount, const char** const Args)
         glfwPollEvents();
         glfwSwapBuffers(Window);
     }
+
+    glUseProgram(0);
+
+    glDeleteProgram(MainShader);
+    glDeleteProgram(ComputeShader);
 
     glfwTerminate();
 
