@@ -5,3 +5,6 @@
 tags
 .vs/
 code/data.h
+.ninja_deps
+.ninja_log
+vcshell.cmd
