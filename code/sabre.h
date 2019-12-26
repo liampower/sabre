@@ -1,6 +1,8 @@
 #ifndef SABRE_H
 #define SABRE_H
 
+#include <stdint.h>
+
 typedef unsigned  uint;
 typedef size_t    usize;
 

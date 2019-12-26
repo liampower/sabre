@@ -6,6 +6,8 @@
 #include <glfw/glfw3.h>
 
 #include "sabre.h"
+#include "sabre_math.h"
+#include "sabre_svo.h"
 #include "data.h"
 
 typedef GLuint gl_uint;
@@ -16,10 +18,47 @@ static constexpr u32 DisplayWidth = 1280;
 static constexpr u32 DisplayHeight = 720;
 static constexpr const char* const DisplayTitle = "Sabre";
 
+
 static void
 HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei Length, const GLchar* Message, const void* Data)
 {
     fprintf(stderr, "[OpenGL Error] %s\n", Message);
+}
+
+
+static inline f32
+Squared(f32 X)
+{
+    return X*X;
+}
+
+static inline bool
+CubeSphereIntersection(vec3 Min, vec3 Max)
+{
+    const vec3 S = vec3(0, 0, 0);
+    const f32 R = 16.0f;
+
+    f32 DistanceSqToCube = R * R;
+
+    printf("MIN (%f, %f, %f), MAX (%f, %f, %f)\n", Min.X, Min.Y, Min.Z, Max.X, Max.Y, Max.Z);
+
+    // STACKOVER
+    if (S.X < Min.X) DistanceSqToCube -= Squared(S.X - Min.X);
+    else if (S.X > Max.X) DistanceSqToCube -= Squared(S.X - Max.X);
+    if (S.Y < Min.Y) DistanceSqToCube -= Squared(S.Y - Min.Y);
+    else if (S.Y > Max.Y) DistanceSqToCube -= Squared(S.Y - Max.Y);
+    if (S.Z < Min.Z) DistanceSqToCube -= Squared(S.Z - Min.Z);
+    else if (S.Z > Max.Z) DistanceSqToCube -= Squared(S.Z - Max.Z);
+
+    if (DistanceSqToCube > 0)
+    {
+        return true;
+    }
+    else
+    {
+        printf("******************* RET FALSE ************************\n");
+        return false;
+    }
 }
 
 
@@ -174,6 +213,7 @@ main(int ArgCount, const char** const Args)
         return EXIT_FAILURE;
     }
 
+    svo* WorldSvo = BuildSparseVoxelOctree(4, &CubeSphereIntersection);
 
     while (GLFW_FALSE == glfwWindowShouldClose(Window))
     {
@@ -194,9 +234,9 @@ main(int ArgCount, const char** const Args)
     glDeleteProgram(MainShader);
     glDeleteProgram(ComputeShader);
 
+    DeleteSparseVoxelOctree(WorldSvo);
     glfwTerminate();
 
     return EXIT_SUCCESS;
 }
-
 
