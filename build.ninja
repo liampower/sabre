@@ -27,8 +27,9 @@ rule make_tags
 build tags: make_tags ./code
 build sabre.o: compile code/sabre.cc
 build sabre_svo.o: compile code/sabre_svo.cc
+build sabre_data.o: compile code/sabre_data.cc
 
-build sabre.exe: link sabre.o sabre_svo.o | tags
+build sabre.exe: link sabre.o sabre_svo.o sabre_data.o | tags
 
 build run phony: run_this sabre.exe
 

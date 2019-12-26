@@ -8,7 +8,7 @@
 #include "sabre.h"
 #include "sabre_math.h"
 #include "sabre_svo.h"
-#include "data.h"
+#include "sabre_data.h"
 
 typedef GLuint gl_uint;
 typedef GLint gl_int;
