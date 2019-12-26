@@ -1,0 +1,36 @@
+Compiler = clang
+DisabledWarnings = -Wno-unused-parameter -Wno-c++98-compat -Wno-gnu-anonymous-struct -Wno-old-style-cast
+CompilerFlags = -isystem include -Wall -Wextra -Weverything -Wpadded -std=c++14 -mavx -fno-omit-frame-pointer -fno-exceptions -fno-rtti -ffast-math -g -gcodeview $DisabledWarnings
+Linker = link -nologo
+Libs = glad.lib glfw3.lib opengl32.lib kernel32.lib user32.lib gdi32.lib shell32.lib
+LinkerFlags = -incremental:no -debug -entry:mainCRTStartup -libpath:libs -machine:x64 -nodefaultlib:libcmt $Libs
+
+rule compile
+  command = $Compiler $CompilerFlags -c $in -o $out
+  description = Compile $out
+  pool = console
+
+rule link
+  command = $Linker $LinkerFlags $in -out:$out
+  description = Link $out
+  pool = console
+
+rule run_this
+  command = $in
+  description = Run $in
+
+rule make_tags
+  command = ctags -R $in
+  description = CTags
+
+
+build tags: make_tags ./code
+build sabre.o: compile code/sabre.cc
+build sabre_svo.o: compile code/sabre_svo.cc
+
+build sabre.exe: link sabre.o sabre_svo.o | tags
+
+build run phony: run_this sabre.exe
+
+default sabre.exe
+
