@@ -338,8 +338,8 @@ main(int ArgCount, const char** const Args)
 
     glDeleteBuffers(1, &SvoShaderBuffer);
 
-    //glDeleteVertexArrays(1, &ScreenQuad.VAO);
-    ///glDeleteBuffers(1, &ScreenQuad.VBO);
+    glDeleteVertexArrays(1, &VAO);
+    glDeleteBuffers(1, &VBO);
 
     DeleteSparseVoxelOctree(WorldSvo);
     glfwTerminate();
