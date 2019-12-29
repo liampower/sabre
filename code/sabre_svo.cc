@@ -41,12 +41,16 @@ SetNodeOccupied(svo_oct SubOctant, svo_voxel_type Type, svo_node* OutEntry)
 
 
 static inline void
-SetNodeChildPointer(u16 ChildPtr, bool InSameBlock, svo_node* OutNode)
+SetNodeChildPointer(u16 ChildPtr, bool InSameBlock, svo_node* OutParentNode)
 {
+    // If the child is in the same block, we can just treat the child ptr as
+    // a direct offset into the block array.
     if (InSameBlock)
     {
         // Extract first 15 bits
-        OutNode->ChildPtr = ChildPtr & 0x7FFF;
+        OutParentNode->ChildPtr = ChildPtr & 0x7FFF;
+        
+
     }
     else
     {

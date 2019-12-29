@@ -19,5 +19,8 @@ typedef int64_t  i64;
 typedef float    f32;
 typedef double   f64;
 
+#define packed_data __attribute__((packed))
+
+
 #endif
 

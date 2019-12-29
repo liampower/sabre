@@ -31,9 +31,16 @@ static const f32 ScreenQuadVerts[12] = {
 
 
 static void
-HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei Length, const GLchar* Message, const void* Data)
+HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei Length, const GLchar* Msg, const void*)
 {
-    fprintf(stderr, "[OpenGL Error] %s\n", Message);
+    if (GL_DEBUG_TYPE_ERROR == Type)
+    {
+        fprintf(stderr, "[OpenGL Error] %s\n", Msg);
+    }
+    else
+    {
+        fprintf(stderr, "[OpenGL Info] %s\n", Msg);
+    }
 }
 
 
@@ -171,17 +178,24 @@ UploadOctreeBlockData(const svo* const Svo)
     gl_uint SvoBuffer;
     glGenBuffers(1, &SvoBuffer);
 
+    // FIXME(Liam): BIG cleanup here needed - may need to bite the bullet
+    // and just have the nodes be typedef'd into U32s anyway.
+    static_assert(sizeof(svo_node) == sizeof(u32), "svo_node needs to be 32 bits!");
+
     if (SvoBuffer)
     {
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoBuffer);
-        glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(svo_block) * Svo->UsedBlockCount, nullptr, GL_DYNAMIC_COPY);
+        usize BlockDataSize = sizeof(svo_node) * SVO_ENTRIES_PER_BLOCK;
+        usize TotalDataSize = BlockDataSize * Svo->UsedBlockCount;
 
-        svo_block* GPUTreeBuffer = (svo_block*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoBuffer);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, TotalDataSize, nullptr, GL_DYNAMIC_COPY);
+
+        svo_node* GPUTreeBuffer = (svo_node*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
 
         svo_block* CurrentBlock = Svo->CurrentBlock;
         for (u32 BlockIndex = 0; BlockIndex < Svo->UsedBlockCount; ++BlockIndex)
         {
-            memcpy(GPUTreeBuffer, CurrentBlock, sizeof(svo_block));
+            memcpy(GPUTreeBuffer, CurrentBlock->Entries, BlockDataSize);
             CurrentBlock = CurrentBlock->Prev;
         }
 
@@ -273,10 +287,11 @@ main(int ArgCount, const char** const Args)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 128, 128, 0, GL_RGBA, GL_FLOAT, nullptr);
-    glUniform1i(0, 0); // Texture unit (OutputUniform is bound to index 0);
+    glUniform1i(glGetUniformLocation(ComputeShader, "OutputImgUniform"), 0); // Texture unit (OutputUniform is bound to index 0);
     glBindImageTexture(0, OutputTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 
     glUniform1ui(glGetUniformLocation(ComputeShader, "MaxDepthUniform"), WorldSvo->MaxDepth);
+    glUniform1ui(glGetUniformLocation(ComputeShader, "BlockCountUniform"), WorldSvo->UsedBlockCount);
 
     glUseProgram(MainShader);
     glUniform1i(glGetUniformLocation(MainShader, "RenderedTextureUniform"), 0);

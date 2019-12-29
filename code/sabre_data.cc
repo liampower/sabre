@@ -37,6 +37,9 @@ void main()
 extern const char* const RaycasterComputeKernel = R"GLSL(
 #version 450 core
 
+#define SVO_NODE_OCCUPIED_MASK 0x0000FF00U
+#define SVO_NODE_LEAF_MAKS     0x000000FFU
+
 struct ray
 {
     vec3 Origin;
@@ -44,11 +47,22 @@ struct ray
     vec3 InvDir;
 };
 
+struct svo_block
+{
+    uint Nodes[4096];
+};
+
 layout (local_size_x = 2, local_size_y = 2) in;
 
 layout (rgba32f, binding = 0) uniform image2D OutputImgUniform;
 
 uniform uint MaxDepthUniform;
+uniform uint BlockCountUniform;
+
+layout (std430) buffer svo_input
+{
+    svo_block Blocks[];
+} SvoInputBuffer;
 
 float MaxComponent(vec3 V)
 {
@@ -82,6 +96,12 @@ uint GetOctant(in vec3 P, in vec3 ParentCentreP)
     return G.x + G.y*2 + G.z*4;
 }
 
+
+bool IsNodeOccupied(in uint Node)
+{
+    return bool((Node & SVO_NODE_OCCUPIED_MASK) != 0);
+}
+
 vec3 GetNodeCentreP(in uint Oct, in uint Radius, in vec3 ParentP)
 {
     // TODO(Liam): We can actually use a bitwise AND op on uvec3s
@@ -104,28 +124,38 @@ vec3 GetNodeCentreP(in uint Oct, in uint Radius, in vec3 ParentP)
     return ParentP + (vec3(X, Y, Z) * Radius);
 }
 
+uint GetSvoNode(in uint Parent, in uint Oct)
+{
+    return 0;
+}
 
 vec4 Raycast(in ray R)
 {
-    uint Depth = 1;
-    uint Radius = 1 << (MaxDepthUniform - Depth);
+    uint CurrentDepth = 1;
+    uint Radius = 1 << (MaxDepthUniform - CurrentDepth);
 
     // Initialise current octant to child of root
-    uint CurrentOct = GetOctant(R.Origin, vec3(0, 0, 0));
-    vec3 NodeCentreP = GetNodeCentreP(CurrentOct, Radius, vec3(0, 0, 0));
+    uint CurrentOctant = GetOctant(R.Origin, vec3(0, 0, 0));
+
+    // Compute the node centre and bounds
+    vec3 NodeCentreP = GetNodeCentreP(CurrentOctant, Radius, vec3(0, 0, 0));
     vec3 NodeMin = NodeCentreP - vec3(Radius);
     vec3 NodeMax = NodeCentreP + vec3(Radius);
 
+    // Determine the intersection point of the ray and this node box
     vec2 Intersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
+
+    uint CurrentNode = GetSvoNode(CurrentOctant, CurrentDepth);
 
     return vec4(Intersection.xy, Intersection.yx);
 }
+
 
 void main()
 {
     ivec2 PixelCoords = ivec2(gl_GlobalInvocationID.xy);
 
-    vec3 RayP = vec3(PixelCoords.xy, -1.0);
+    vec3 RayP = vec3(PixelCoords.xy, -0.5);
     vec3 RayD = normalize(vec3(16, 16, 16));
 
     ray R = { RayP, RayD, 1.0 / RayD };

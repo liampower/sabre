@@ -5,7 +5,7 @@ constexpr u32 SVO_ENTRIES_PER_BLOCK = 4096;
 
 typedef bool (*intersector_fn)(vec3, vec3);
 
-struct svo_node
+struct packed_data svo_node
 {
     u16 ChildPtr;
     u8  OccupiedMask;
