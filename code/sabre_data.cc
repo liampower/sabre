@@ -124,9 +124,9 @@ vec3 GetNodeCentreP(in uint Oct, in uint Radius, in vec3 ParentP)
     return ParentP + (vec3(X, Y, Z) * Radius);
 }
 
-uint GetSvoNode(in uint Parent, in uint Oct)
+uint GetSvoNode(in uint ParentIndex, in uint Oct)
 {
-    return 0;
+    return 0;//SvoInputBuffer.Blocks[ParentIndex + Oct];
 }
 
 vec4 Raycast(in ray R)

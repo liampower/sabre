@@ -58,7 +58,7 @@ CubeSphereIntersection(vec3 Min, vec3 Max)
 
     f32 DistanceSqToCube = R * R;
 
-    //printf("MIN (%f, %f, %f), MAX (%f, %f, %f)\n", Min.X, Min.Y, Min.Z, Max.X, Max.Y, Max.Z);
+    printf("MIN (%f, %f, %f), MAX (%f, %f, %f)\n", Min.X, Min.Y, Min.Z, Max.X, Max.Y, Max.Z);
 
     // STACKOVER
     if (S.X < Min.X) DistanceSqToCube -= Squared(S.X - Min.X);
@@ -74,7 +74,7 @@ CubeSphereIntersection(vec3 Min, vec3 Max)
     }
     else
     {
-        //printf("******************* RET FALSE ************************\n");
+        printf("******************* RET FALSE ************************\n");
         return false;
     }
 }
@@ -265,7 +265,7 @@ main(int ArgCount, const char** const Args)
         return EXIT_FAILURE;
     }
 
-    svo* WorldSvo = BuildSparseVoxelOctree(4, &CubeSphereIntersection);
+    svo* WorldSvo = BuildSparseVoxelOctree(2, &CubeSphereIntersection);
     gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
 
     if (0 == SvoShaderBuffer)
@@ -287,7 +287,7 @@ main(int ArgCount, const char** const Args)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 128, 128, 0, GL_RGBA, GL_FLOAT, nullptr);
-    glUniform1i(glGetUniformLocation(ComputeShader, "OutputImgUniform"), 0); // Texture unit (OutputUniform is bound to index 0);
+    glUniform1i(glGetUniformLocation(ComputeShader, "OutputImgUniform"), 0);
     glBindImageTexture(0, OutputTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 
     glUniform1ui(glGetUniformLocation(ComputeShader, "MaxDepthUniform"), WorldSvo->MaxDepth);
