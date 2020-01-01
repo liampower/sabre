@@ -47,11 +47,6 @@ struct ray
     vec3 InvDir;
 };
 
-struct svo_block
-{
-    uint Nodes[4096];
-};
-
 layout (local_size_x = 2, local_size_y = 2) in;
 
 layout (rgba32f, binding = 0) uniform image2D OutputImgUniform;
@@ -59,9 +54,9 @@ layout (rgba32f, binding = 0) uniform image2D OutputImgUniform;
 uniform uint MaxDepthUniform;
 uniform uint BlockCountUniform;
 
-layout (std430) readonly buffer svo_input
+layout (std430, binding = 3) readonly buffer svo_input
 {
-    svo_block Blocks[];
+    uint Nodes[];
 } SvoInputBuffer;
 
 float MaxComponent(vec3 V)
@@ -99,7 +94,7 @@ uint GetOctant(in vec3 P, in vec3 ParentCentreP)
 
 bool IsNodeOccupied(in uint Node)
 {
-    return bool((Node & SVO_NODE_OCCUPIED_MASK) != 0);
+    return (Node & SVO_NODE_OCCUPIED_MASK) != 0;
 }
 
 vec3 GetNodeCentreP(in uint Oct, in uint Radius, in vec3 ParentP)
@@ -126,10 +121,7 @@ vec3 GetNodeCentreP(in uint Oct, in uint Radius, in vec3 ParentP)
 
 uint GetSvoNode(in uint ParentIndex, in uint Oct)
 {
-    uint BlockIndex = ParentIndex / BlockCountUniform;
-    uint ParentIndexInParentBlock = ParentIndex % 4096;
-
-    return SvoInputBuffer.Blocks[BlockIndex].Nodes[ParentIndexInParentBlock];
+    return SvoInputBuffer.Nodes[ParentIndex + Oct];
 }
 
 vec4 Raycast(in ray R)
@@ -148,18 +140,16 @@ vec4 Raycast(in ray R)
     // Determine the intersection point of the ray and this node box
     vec2 Intersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
 
-    uint CurrentNode = SvoInputBuffer.Blocks[0].Nodes[0];//GetSvoNode(0, 0);
+    uint CurrentNode = SvoInputBuffer.Nodes[0];
 
-    if (IsNodeOccupied(CurrentNode))
-    {
-        return vec4(1);
-    }
-    else
+    if (CurrentNode == 0x00)
     {
         return vec4(0);
     }
-
-    //return vec4(Intersection.xy, Intersection.yx);
+    else
+    {
+        return vec4(1);
+    }
 }
 
 

@@ -228,6 +228,8 @@ UploadOctreeBlockData(const svo* const Svo)
         }
 
         glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+        
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, SvoBuffer);
     }
 
     return SvoBuffer;
