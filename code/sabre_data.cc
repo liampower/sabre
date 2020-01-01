@@ -38,7 +38,7 @@ extern const char* const RaycasterComputeKernel = R"GLSL(
 #version 450 core
 
 #define SVO_NODE_OCCUPIED_MASK 0x0000FF00U
-#define SVO_NODE_LEAF_MAKS     0x000000FFU
+#define SVO_NODE_LEAF_MASK     0x000000FFU
 
 struct ray
 {
@@ -59,7 +59,7 @@ layout (rgba32f, binding = 0) uniform image2D OutputImgUniform;
 uniform uint MaxDepthUniform;
 uniform uint BlockCountUniform;
 
-layout (std430) buffer svo_input
+layout (std430) readonly buffer svo_input
 {
     svo_block Blocks[];
 } SvoInputBuffer;
@@ -126,7 +126,10 @@ vec3 GetNodeCentreP(in uint Oct, in uint Radius, in vec3 ParentP)
 
 uint GetSvoNode(in uint ParentIndex, in uint Oct)
 {
-    return 0;//SvoInputBuffer.Blocks[ParentIndex + Oct];
+    uint BlockIndex = ParentIndex / BlockCountUniform;
+    uint ParentIndexInParentBlock = ParentIndex % 4096;
+
+    return SvoInputBuffer.Blocks[BlockIndex].Nodes[ParentIndexInParentBlock];
 }
 
 vec4 Raycast(in ray R)
@@ -145,9 +148,18 @@ vec4 Raycast(in ray R)
     // Determine the intersection point of the ray and this node box
     vec2 Intersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
 
-    uint CurrentNode = GetSvoNode(CurrentOctant, CurrentDepth);
+    uint CurrentNode = SvoInputBuffer.Blocks[0].Nodes[0];//GetSvoNode(0, 0);
 
-    return vec4(Intersection.xy, Intersection.yx);
+    if (IsNodeOccupied(CurrentNode))
+    {
+        return vec4(1);
+    }
+    else
+    {
+        return vec4(0);
+    }
+
+    //return vec4(Intersection.xy, Intersection.yx);
 }
 
 

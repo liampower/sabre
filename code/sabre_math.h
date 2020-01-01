@@ -13,6 +13,7 @@
 #define Rads(Deg) ((Deg)*PiOver180Dg)
 
 
+#define V3(X, Y, Z) { (float)(X), (float)(Y), (float)(Z) }
 
 // {{{ Vectors
 // NOTE: COLUMN vector.

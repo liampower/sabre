@@ -11,6 +11,8 @@
 #include "sabre_svo.h"
 #include "sabre_data.h"
 
+#define SABRE_MAX_TREE_DEPTH 2
+
 
 typedef GLuint gl_uint;
 typedef GLint  gl_int;
@@ -172,6 +174,20 @@ CompileShader(const char* VertSrc, const char* FragSrc)
 }
 
 
+// TODO(Liam): Replace with a more performant design so that we don't have to keep
+// calling this for every node!
+static gl_uint
+PackSvoNodeToGLUint(svo_node* Node)
+{
+    gl_uint Packed = 0;
+
+    Packed |= ((u32)Node->ChildPtr << 16);
+    Packed |= ((u32)Node->OccupiedMask << 8);
+    Packed |= ((u32)Node->LeafMask);
+
+    return Packed;
+}
+
 static gl_uint
 UploadOctreeBlockData(const svo* const Svo)
 {
@@ -190,12 +206,24 @@ UploadOctreeBlockData(const svo* const Svo)
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoBuffer);
         glBufferData(GL_SHADER_STORAGE_BUFFER, TotalDataSize, nullptr, GL_DYNAMIC_COPY);
 
-        svo_node* GPUTreeBuffer = (svo_node*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+        static_assert(sizeof(svo_node) == sizeof(GLuint), "Node size must == GLuint size!");
+
+        GLuint* GPUTreeBuffer = (GLuint*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
 
         svo_block* CurrentBlock = Svo->CurrentBlock;
+        usize BlockOffset = 0;
+
         for (u32 BlockIndex = 0; BlockIndex < Svo->UsedBlockCount; ++BlockIndex)
         {
-            memcpy(GPUTreeBuffer, CurrentBlock->Entries, BlockDataSize);
+            //memcpy(GPUTreeBuffer + BlockOffset, CurrentBlock->Entries, BlockDataSize);
+
+            // FIXME(Liam): Slow as balls
+            for (u32 NodeIndex = 0; NodeIndex < CurrentBlock->NextFreeSlot; ++NodeIndex)
+            {
+                GPUTreeBuffer[BlockOffset + NodeIndex] = PackSvoNodeToGLUint(&CurrentBlock->Entries[NodeIndex]);
+            }
+
+            BlockOffset += CurrentBlock->NextFreeSlot; // (in nodes)
             CurrentBlock = CurrentBlock->Prev;
         }
 
@@ -265,8 +293,14 @@ main(int ArgCount, const char** const Args)
         return EXIT_FAILURE;
     }
 
-    svo* WorldSvo = BuildSparseVoxelOctree(2, &CubeSphereIntersection);
+    svo* WorldSvo = BuildSparseVoxelOctree(SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
     gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
+
+    svo_node N = {};
+    N.OccupiedMask = 0xAB;
+    N.LeafMask = 0xCD;
+    N.ChildPtr = 0x1234;
+
 
     if (0 == SvoShaderBuffer)
     {
