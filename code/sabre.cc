@@ -11,9 +11,9 @@
 #include "sabre_svo.h"
 #include "sabre_data.h"
 
-#define SABRE_MAX_TREE_DEPTH 2
-#define SABRE_WORK_SIZE_X 4
-#define SABRE_WORK_SIZE_Y 4
+#define SABRE_MAX_TREE_DEPTH 4
+#define SABRE_WORK_SIZE_X 512
+#define SABRE_WORK_SIZE_Y 512
 
 
 typedef GLuint gl_uint;
@@ -322,9 +322,9 @@ main(int ArgCount, const char** const Args)
     glBindTexture(GL_TEXTURE_2D, OutputTexture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 128, 128, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, DisplayWidth, DisplayHeight, 0, GL_RGBA, GL_FLOAT, nullptr);
     glUniform1i(glGetUniformLocation(ComputeShader, "OutputImgUniform"), 0);
     glBindImageTexture(0, OutputTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 

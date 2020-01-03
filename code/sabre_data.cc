@@ -12,7 +12,7 @@ out vec2 UV;
 void main()
 {
     gl_Position = vec4(Position, 0.0, 1.0);
-    UV = Position.xy;
+    UV = Position*0.5 + 0.5;
 }
 
 )GLSL";
@@ -57,7 +57,7 @@ struct ray_intersection
     vec3  tValues;
 };
 
-layout (local_size_x = 1, local_size_y = 1) in;
+layout (local_size_x = 4, local_size_y = 4) in;
 
 layout (rgba32f, binding = 0) uniform image2D OutputImgUniform;
 
@@ -68,6 +68,7 @@ layout (std430, binding = 3) readonly buffer svo_input
 {
     uint Nodes[];
 } SvoInputBuffer;
+
 
 float MaxComponent(vec3 V)
 {
@@ -174,30 +175,12 @@ vec3 CrScale(in uint V, in uint Max)
 
 vec3 Raycast(in ray R)
 {
-    vec3 Colour = vec3(0.1, 0.1, 0.0);
-    //uint Radius = 1 << (MaxDepthUniform - CurrentDepth);
-
-    // Initialise current octant to child of root
-    //uint CurrentOctant = GetOctant(R.Origin, vec3(0, 0, 0));
-
-    // Compute the node centre and bounds
-    //vec3 NodeCentreP = GetNodeCentreP(CurrentOctant, Radius, vec3(0, 0, 0));
-    //vec3 NodeMin = NodeCentreP - vec3(Radius);
-    //vec3 NodeMax = NodeCentreP + vec3(Radius);
-
-    // Determine the intersection point of the ray and this node box
-    //vec2 Intersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
-
-    /* ---------------------- */
     vec3 ParentCentre = vec3(0, 0, 0);
     uint CurrentDepth = 0;
     uint CurrentNode = SvoInputBuffer.Nodes[0]; // Initialised to root
 
-    uint Step = 0;
-    while (Step < MAX_STEPS)
+    for (int Step = 0; Step < MAX_STEPS; ++Step)
     {
-        ++Step;
-
         uint Radius = 1 << (MaxDepthUniform - CurrentDepth);
         uint CurrentOctant = GetOctant(R.Origin, ParentCentre);
 
@@ -215,7 +198,8 @@ vec3 Raycast(in ray R)
             {
                 if (IsOctantLeaf(CurrentNode, CurrentOctant))
                 {
-                    return vec3(1, 0, 0); // Leaf: return this octant
+                    //return vec3(1, 0, 0); // Leaf: return this octant
+                    break;
                 }
                 else // Go deeper
                 {
@@ -240,24 +224,6 @@ vec3 Raycast(in ray R)
     }
 
     return CrScale(CurrentDepth, MaxDepthUniform);
-
-    /*
-    if (IsNodeOccupied(CurrentNode))
-    {
-        if (CurrentDepth >= MaxDepthUniform)
-        {
-            return CurrentDepth * Colour;
-        }
-        else
-        {
-
-        }
-
-    }
-    else
-    {
-        return vec3(0);
-    }*/
 }
 
 
@@ -270,7 +236,7 @@ void main()
 
     ray R = { RayP, RayD, 1.0 / RayD };
 
-    vec4 OutCr = vec4(Raycast(R), 1.0);
+    vec4 OutCr = vec4(float(PixelCoords.x)/1280, float(PixelCoords.y)/720, 1.0, 1.0);//vec4(Raycast(R), 1.0);
 
     imageStore(OutputImgUniform, PixelCoords, OutCr);
 }
