@@ -12,6 +12,8 @@
 #include "sabre_data.h"
 
 #define SABRE_MAX_TREE_DEPTH 2
+#define SABRE_WORK_SIZE_X 4
+#define SABRE_WORK_SIZE_Y 4
 
 
 typedef GLuint gl_uint;
@@ -60,7 +62,7 @@ CubeSphereIntersection(vec3 Min, vec3 Max)
 
     f32 DistanceSqToCube = R * R;
 
-    printf("MIN (%f, %f, %f), MAX (%f, %f, %f)\n", Min.X, Min.Y, Min.Z, Max.X, Max.Y, Max.Z);
+    //printf("MIN (%f, %f, %f), MAX (%f, %f, %f)\n", Min.X, Min.Y, Min.Z, Max.X, Max.Y, Max.Z);
 
     // STACKOVER
     if (S.X < Min.X) DistanceSqToCube -= Squared(S.X - Min.X);
@@ -76,7 +78,7 @@ CubeSphereIntersection(vec3 Min, vec3 Max)
     }
     else
     {
-        printf("******************* RET FALSE ************************\n");
+        //printf("******************* RET FALSE ************************\n");
         return false;
     }
 }
@@ -365,7 +367,7 @@ main(int ArgCount, const char** const Args)
 
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoShaderBuffer);
         glUseProgram(ComputeShader);
-        glDispatchCompute(128, 128, 1);
+        glDispatchCompute(SABRE_WORK_SIZE_X, SABRE_WORK_SIZE_Y, 1);
 
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 

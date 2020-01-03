@@ -37,8 +37,11 @@ void main()
 extern const char* const RaycasterComputeKernel = R"GLSL(
 #version 450 core
 
-#define SVO_NODE_OCCUPIED_MASK 0x0000FF00U
-#define SVO_NODE_LEAF_MASK     0x000000FFU
+#define SVO_NODE_OCCUPIED_MASK  0x0000FF00U
+#define SVO_NODE_LEAF_MASK      0x000000FFU
+#define SVO_NODE_CHILD_PTR_MASK 0xFFFF0000U
+
+#define MAX_STEPS 64
 
 struct ray
 {
@@ -47,7 +50,14 @@ struct ray
     vec3 InvDir;
 };
 
-layout (local_size_x = 2, local_size_y = 2) in;
+struct ray_intersection
+{
+    float tMin;
+    float tMax;
+    vec3  tValues;
+};
+
+layout (local_size_x = 1, local_size_y = 1) in;
 
 layout (rgba32f, binding = 0) uniform image2D OutputImgUniform;
 
@@ -69,7 +79,14 @@ float MinComponent(vec3 V)
     return min(min(V.x, V.y), V.z);
 }
 
-vec2 ComputeRayBoxIntersection(in ray R, in vec3 Min, in vec3 Max)
+uint GetNodeChild(in uint ParentNode, in uint Oct)
+{
+    uint ChildPtr = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
+    
+    return SvoInputBuffer.Nodes[ChildPtr + Oct];
+}
+
+ray_intersection ComputeRayBoxIntersection(in ray R, in vec3 Min, in vec3 Max)
 {
     vec3 t0 = (Min - R.Origin) * R.InvDir;
     vec3 t1 = (Max - R.Origin) * R.InvDir;
@@ -80,7 +97,29 @@ vec2 ComputeRayBoxIntersection(in ray R, in vec3 Min, in vec3 Max)
     float ttMin = MaxComponent(tMin);
     float ttMax = MinComponent(tMax);
 
-    return vec2(ttMin, ttMax);
+
+    ray_intersection Result = { ttMin, ttMax, tMax };
+    return Result;
+}
+
+uint GetNextOctant(in float tMax, in vec3 tValues, in uint CurrentOct)
+{
+    uint NextOct = 0x00;
+
+    if (tMax == tValues.x)
+    {
+        NextOct = CurrentOct ^ 1;
+    }
+    else if (tMax == tValues.y)
+    {
+        NextOct = CurrentOct ^ 2;
+    }
+    else
+    {
+        NextOct = CurrentOct ^ 4;
+    }
+
+    return NextOct;
 }
 
 uint GetOctant(in vec3 P, in vec3 ParentCentreP)
@@ -92,9 +131,14 @@ uint GetOctant(in vec3 P, in vec3 ParentCentreP)
 }
 
 
-bool IsNodeOccupied(in uint Node)
+bool IsOctantOccupied(in uint Node, in uint Oct)
 {
-    return (Node & SVO_NODE_OCCUPIED_MASK) != 0;
+    return (Node & (1 << (8 + Oct))) != 0;
+}
+
+bool IsOctantLeaf(in uint Node, in uint Oct)
+{
+    return (Node & (1 << Oct)) != 0;
 }
 
 vec3 GetNodeCentreP(in uint Oct, in uint Radius, in vec3 ParentP)
@@ -119,37 +163,101 @@ vec3 GetNodeCentreP(in uint Oct, in uint Radius, in vec3 ParentP)
     return ParentP + (vec3(X, Y, Z) * Radius);
 }
 
-uint GetSvoNode(in uint ParentIndex, in uint Oct)
+
+// From 0 to Max
+vec3 CrScale(in uint V, in uint Max)
 {
-    return SvoInputBuffer.Nodes[ParentIndex + Oct];
+    float S = 0.1 + (float(V) / float(Max));
+
+    return S * vec3(0, 1, 0);
 }
 
-vec4 Raycast(in ray R)
+vec3 Raycast(in ray R)
 {
-    uint CurrentDepth = 1;
-    uint Radius = 1 << (MaxDepthUniform - CurrentDepth);
+    vec3 Colour = vec3(0.1, 0.1, 0.0);
+    //uint Radius = 1 << (MaxDepthUniform - CurrentDepth);
 
     // Initialise current octant to child of root
-    uint CurrentOctant = GetOctant(R.Origin, vec3(0, 0, 0));
+    //uint CurrentOctant = GetOctant(R.Origin, vec3(0, 0, 0));
 
     // Compute the node centre and bounds
-    vec3 NodeCentreP = GetNodeCentreP(CurrentOctant, Radius, vec3(0, 0, 0));
-    vec3 NodeMin = NodeCentreP - vec3(Radius);
-    vec3 NodeMax = NodeCentreP + vec3(Radius);
+    //vec3 NodeCentreP = GetNodeCentreP(CurrentOctant, Radius, vec3(0, 0, 0));
+    //vec3 NodeMin = NodeCentreP - vec3(Radius);
+    //vec3 NodeMax = NodeCentreP + vec3(Radius);
 
     // Determine the intersection point of the ray and this node box
-    vec2 Intersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
+    //vec2 Intersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
 
-    uint CurrentNode = SvoInputBuffer.Nodes[0];
+    /* ---------------------- */
+    vec3 ParentCentre = vec3(0, 0, 0);
+    uint CurrentDepth = 0;
+    uint CurrentNode = SvoInputBuffer.Nodes[0]; // Initialised to root
 
-    if (CurrentNode == 0x00)
+    uint Step = 0;
+    while (Step < MAX_STEPS)
     {
-        return vec4(0);
+        ++Step;
+
+        uint Radius = 1 << (MaxDepthUniform - CurrentDepth);
+        uint CurrentOctant = GetOctant(R.Origin, ParentCentre);
+
+        vec3 NodeCentre = GetNodeCentreP(CurrentOctant, Radius, ParentCentre);
+        vec3 NodeMin = NodeCentre - vec3(Radius);
+        vec3 NodeMax = NodeCentre + vec3(Radius);
+
+        ray_intersection Intersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
+
+        // Ray intersects this node
+        if (Intersection.tMin <= Intersection.tMax)
+        {
+            // Check if there is geometry inside this node
+            if (IsOctantOccupied(CurrentNode, CurrentOctant))
+            {
+                if (IsOctantLeaf(CurrentNode, CurrentOctant))
+                {
+                    return vec3(1, 0, 0); // Leaf: return this octant
+                }
+                else // Go deeper
+                {
+                    CurrentNode = GetNodeChild(CurrentNode, CurrentOctant);
+                    ParentCentre = NodeCentre;
+
+                    CurrentOctant = GetOctant(R.Origin, ParentCentre);
+                    ++CurrentDepth;
+                }
+            }
+            else // Nothing here... move on to sibling
+            {
+                // TODO(Liam): Handle case where we need to push instead.
+                CurrentOctant = GetNextOctant(Intersection.tMax, Intersection.tValues, CurrentOctant);
+            }
+        }
+        else
+        {
+            break;
+        }
+
+    }
+
+    return CrScale(CurrentDepth, MaxDepthUniform);
+
+    /*
+    if (IsNodeOccupied(CurrentNode))
+    {
+        if (CurrentDepth >= MaxDepthUniform)
+        {
+            return CurrentDepth * Colour;
+        }
+        else
+        {
+
+        }
+
     }
     else
     {
-        return vec4(1);
-    }
+        return vec3(0);
+    }*/
 }
 
 
@@ -162,7 +270,7 @@ void main()
 
     ray R = { RayP, RayD, 1.0 / RayD };
 
-    vec4 OutCr = Raycast(R);
+    vec4 OutCr = vec4(Raycast(R), 1.0);
 
     imageStore(OutputImgUniform, PixelCoords, OutCr);
 }
