@@ -57,7 +57,7 @@ struct ray_intersection
     vec3  tValues;
 };
 
-layout (local_size_x = 4, local_size_y = 4) in;
+layout (local_size_x = 1, local_size_y = 1) in;
 
 layout (rgba32f, binding = 0) uniform image2D OutputImgUniform;
 
@@ -198,8 +198,8 @@ vec3 Raycast(in ray R)
             {
                 if (IsOctantLeaf(CurrentNode, CurrentOctant))
                 {
-                    //return vec3(1, 0, 0); // Leaf: return this octant
-                    break;
+                    return vec3(1, 0, 0); // Leaf: return this octant
+                    //break;
                 }
                 else // Go deeper
                 {
@@ -232,11 +232,11 @@ void main()
     ivec2 PixelCoords = ivec2(gl_GlobalInvocationID.xy);
 
     vec3 RayP = vec3(PixelCoords.xy, -0.5);
-    vec3 RayD = normalize(vec3(16, 16, 16));
+    vec3 RayD = normalize(vec3(32, 32, 32));
 
     ray R = { RayP, RayD, 1.0 / RayD };
 
-    vec4 OutCr = vec4(float(PixelCoords.x)/1280, float(PixelCoords.y)/720, 1.0, 1.0);//vec4(Raycast(R), 1.0);
+    vec4 OutCr = vec4(Raycast(R), 1.0);
 
     imageStore(OutputImgUniform, PixelCoords, OutCr);
 }

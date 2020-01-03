@@ -11,9 +11,9 @@
 #include "sabre_svo.h"
 #include "sabre_data.h"
 
-#define SABRE_MAX_TREE_DEPTH 4
-#define SABRE_WORK_SIZE_X 512
-#define SABRE_WORK_SIZE_Y 512
+#define SABRE_MAX_TREE_DEPTH 5
+#define SABRE_WORK_SIZE_X 128
+#define SABRE_WORK_SIZE_Y 128
 
 
 typedef GLuint gl_uint;
@@ -67,8 +67,10 @@ CubeSphereIntersection(vec3 Min, vec3 Max)
     // STACKOVER
     if (S.X < Min.X) DistanceSqToCube -= Squared(S.X - Min.X);
     else if (S.X > Max.X) DistanceSqToCube -= Squared(S.X - Max.X);
+
     if (S.Y < Min.Y) DistanceSqToCube -= Squared(S.Y - Min.Y);
     else if (S.Y > Max.Y) DistanceSqToCube -= Squared(S.Y - Max.Y);
+
     if (S.Z < Min.Z) DistanceSqToCube -= Squared(S.Z - Min.Z);
     else if (S.Z > Max.Z) DistanceSqToCube -= Squared(S.Z - Max.Z);
 

@@ -42,10 +42,10 @@ struct svo
     svo_block* DEBUGFirstBlock;
 };
 
-extern svo*
+extern "C" svo*
 BuildSparseVoxelOctree(u32 MaxDepth, intersector_fn Surface);
 
-extern void
+extern "C" void
 DeleteSparseVoxelOctree(svo* Tree);
 
 #endif

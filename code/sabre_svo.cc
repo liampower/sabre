@@ -114,7 +114,7 @@ ProcessOctant(svo* Tree, svo_oct Octant, u32 Scale, intersector_fn Surface, svo_
     vec3 OctMin = OctantCentre - Radius;
     vec3 OctMax = OctantCentre + Radius;
 
-    if (Surface(OctMin, OctMax))
+    if (Surface(OctMin, OctMax) && Scale > 1)
     {
         SetOctantOccupied(Octant, VOXEL_PARENT, ContainingNode);
 
@@ -145,7 +145,7 @@ BuildTree(svo* Tree, intersector_fn Surface, svo_node* Root)
 {
     std::queue<node_context> Queue;
 
-    node_context RootContext = { Root, OCT_C000, 0, vec3(0, 0, 0) };
+    node_context RootContext = { Root, OCT_C000, 1, vec3(0, 0, 0) };
     Queue.push(RootContext);
 
     while (false == Queue.empty())
@@ -228,7 +228,7 @@ InsertNode(svo* Tree, intersector_fn Surface, u32 Depth, svo_oct Octant, svo_nod
 
 
 
-extern svo*
+extern "C" svo*
 BuildSparseVoxelOctree(u32 MaxDepth, intersector_fn SurfaceFn)
 {
     // TODO(Liam): Maybe combine allocation ?
@@ -255,7 +255,7 @@ BuildSparseVoxelOctree(u32 MaxDepth, intersector_fn SurfaceFn)
 }
 
 
-extern void
+extern "C" void
 DeleteSparseVoxelOctree(svo* Tree)
 {
     for (u32 BlockIndex = 0; BlockIndex < Tree->UsedBlockCount; ++BlockIndex)
