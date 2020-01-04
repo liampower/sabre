@@ -103,6 +103,7 @@ ray_intersection ComputeRayBoxIntersection(in ray R, in vec3 Min, in vec3 Max)
     return Result;
 }
 
+
 uint GetNextOctant(in float tMax, in vec3 tValues, in uint CurrentOct)
 {
     uint NextOct = 0x00;
@@ -191,7 +192,7 @@ vec3 Raycast(in ray R)
         ray_intersection Intersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
 
         // Ray intersects this node
-        if (Intersection.tMin <= Intersection.tMax)
+        if (Intersection.tMin < Intersection.tMax)
         {
             // Check if there is geometry inside this node
             if (IsOctantOccupied(CurrentNode, CurrentOctant))
@@ -223,16 +224,17 @@ vec3 Raycast(in ray R)
 
     }
 
-    return CrScale(CurrentDepth, MaxDepthUniform);
+    return vec3(0.16);//CrScale(CurrentDepth, MaxDepthUniform);
 }
 
 
 void main()
 {
     ivec2 PixelCoords = ivec2(gl_GlobalInvocationID.xy);
-
-    vec3 RayP = vec3(PixelCoords.xy, -0.5);
-    vec3 RayD = normalize(vec3(32, 32, 32));
+    ivec2 ScreenCoords = ivec2(PixelCoords.x - 64, PixelCoords.y - 64); 
+    
+    vec3 RayP = vec3(ScreenCoords.xy, 0);
+    vec3 RayD = normalize(vec3(0, 0, -1));
 
     ray R = { RayP, RayD, 1.0 / RayD };
 

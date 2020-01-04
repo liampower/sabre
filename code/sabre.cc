@@ -259,6 +259,7 @@ main(int ArgCount, const char** const Args)
     
     GLFWwindow* Window = glfwCreateWindow(DisplayWidth, DisplayHeight, DisplayTitle, nullptr, nullptr);
     glfwMakeContextCurrent(Window);
+    glfwSetWindowPos(Window, 100, 100);
     glfwSwapInterval(1);
 
     if (0 == gladLoadGL())
