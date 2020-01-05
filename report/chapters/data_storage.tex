@@ -1,0 +1,134 @@
+All voxel engines must address the question of how to store and process voxel data. For any reasonably large scene with a high level of detail, the number of voxels required can grow very large. Implementations must also devise a strategy for handling large, empty regions of space; an ideal solution would not store voxels that do not contain interesting geometry.
+
+The most basic voxel storage strategy is to store each individual voxel in a flat array. This approach was used by \textit{Minecraft} \autocite{minecraftchunkformat} \footnote{Technically, Minecraft uses a paged array of flat arrays termed "chunks". Chunks are paged in and out depending on where the player travels in the game world.}. Although this scheme has the advantage of being very simple to implement, and provides $\mathcal{O}(1)$ voxel access and update times, the amount of memory required to store the voxel world is linear in the number of voxels. This restricts games using this technique to a low resolution "blocky" style. To represent more detailed worlds, some way of compressing voxel data is required.
+
+\section{Octrees}
+The octree, first developed in 1980 by Meagher \autocite{meagher1980octree}, is a hierarchical data structure used to efficiently partition three-dimensional space. An octree begins as a cube encompassing all of the available world space with dimension $d$. This cube is then recursively partitioned into eight identical child cubes of dimension $\frac{d}{2}$ (see figure \ref{fig:octree_example} for an example). Children are only themselves partitioned if geometry is contained within their bounds. By only storing voxels which contain real geometry, octrees allow large swathes of empty voxels to be cut away, considerably reducing the amount of memory required to store a voxel scene.
+
+\begin{figure}[ht]
+    \centering
+    \includesvg[width=350px]{graphics/octree.svg}
+    \caption{Example of an octree. Sourced from Wikipedia under the CC-BY-SA license}
+    \label{fig:octree_example}
+\end{figure}
+
+In classical octrees, each octree node contains eight pointers to it's children, with leaf nodes having eight null child pointers. While this structure is more space-efficient than flat arrays, there is still room for improvement. On a 64-bit architecture with 8 byte pointers each octree node would consume 64 bytes of storage just for the child pointers. Laine and Karras introduced the \textit{Sparse Voxel Octree} in 2010 \autocite{laine2010efficient} as an improvement over traditional octrees.
+
+\section{The Sparse Voxel Octree}
+This project stores scene voxel data in a Sparse Voxel Octree (SVO) data structure. Unlike traditional octrees, SVOs do not store eight child pointers for each node. Instead, two eight-bit masks are stored in each node; one to indicate that there is geometry resident in each child node corresponding to each bit position, and another to indicate whether or not a particular child is a leaf. This means that leaf nodes need not be stored at all, reducing the storage space required for a voxel scene even further than regular octrees.
+
+The implementation of the sparse voxel octree in this project closely follows the ideas laid down by Laine and Karras. Throughout the project, the following convention is used for numbering cube octants: 0 to 7 increasing in X, then Y, then Z. Figure \ref{fig:octants_example} shows an example.
+
+\begin{figure}[ht]
+    \centering
+    \footnotesize
+    \includesvg[width=225px]{graphics/octants.svg}
+    \caption{Convention used when numbering octants. Octant 1 is to the right of octant 0}
+    \label{fig:octants_example}
+\end{figure}
+
+\subsection{SVO Nodes}
+All voxel geometry in \textit{Sabre} is fundamentally stored in a \texttt{svo\_node} structure (see listing \ref{listing:svo_node_struct} and figure \ref{fig:svo_entry}). The \texttt{OccupiedMask} field is used to test if this particular node contains any geometry at all, where each bit at position $i$ determines if there is geometry resident in the $i$\textsuperscript{th} child octant of this node. Each bit in the \texttt{LeafMask} field indicates whether or not the $i$\textsuperscript{th} child octant is a leaf node -- this renders storage of leaf nodes unnecessary. 
+
+\begin{figure}[ht]
+    \centering
+    \footnotesize
+    \includesvg[width=360px, height=225px]{graphics/svo_entry.svg}
+    \caption{Data layout inside an individual 32-bit SVO entry}
+    \label{fig:svo_entry}
+\end{figure}
+
+\begin{listing}[ht]
+\begin{minted}{C}
+struct svo_node
+{
+    u8  LeafMask;
+    u8  OccupiedMask;
+    u16 ChildPtr;
+};
+\end{minted}
+\caption{Source of the \texttt{svo\_node} structure}
+\label{listing:svo_node_struct}
+\end{listing}
+
+\subsubsection{Leaf Mask}
+The \texttt{LeafMask} field is an 8-bit unsigned integer used to determine which of a node's sub-octants are to be considered leaf voxels (i.e. that there are no further child nodes in that octant). Each bit position $i$ in the mask corresponds to the $i$\textsuperscript{th} child octant.
+
+\subsubsection{Occupied Mask}
+The \texttt{OccupiedMask} field is an 8-bit unsigned integer used to determine which of a node's sub-octants have geometry contained within the bounds of their enclosing cube. An occupied octant may or may not need to be subdivided further; the \texttt{LeafMask} field encodes this information. Each bit position $i$ in the mask corresponds to the $i$\textsuperscript{th} child octant.
+
+\subsubsection{Child Pointer}
+The \texttt{ChildPtr} field is a 15-bit unsigned integer representing the offset of a node's first non-leaf child in it's SVO block (see section \ref{sec:svo_blocks}). In the case that the offset is greater than the maximum integer that can be represented in 15 bits, the \texttt{Far} bit is set, indicating that the other 15 bits in the \texttt{ChildPtr} field instead denote a "far pointer index"; an index mapping to a \texttt{far\_ptr} structure (see listing \ref{listing:far_ptr_struct}).
+
+\begin{listing}
+\begin{minted}{C}
+struct far_ptr
+{
+    svo_block* Block;
+    u16 BlockIndex;
+};
+\end{minted}
+\caption{Source of the \texttt{far\_ptr} structure. This is used to support node references that span blocks; the \texttt{Block} pointer points to the child node's containing block and \texttt{BlockIndex} is the offset of the child node inside the containing block}
+\label{listing:far_ptr_struct}
+\end{listing}
+
+\subsection{SVO Blocks}\label{sec:svo_blocks}
+Since \textit{Sabre} is designed to handle very large voxel scenes, it would be infeasible to attempt to store all of the SVO nodes required for a scene continuously in memory. Instead, \textit{Sabre} uses a singly-linked list of \texttt{svo\_block} structures (see listing \ref{listing:svo_block_struct}). Blocks are fixed-size chunks of memory that store a predetermined number of nodes, controlled by the \texttt{SVO\_ENTRIES\_PER\_BLOCK} constant. 
+
+\begin{listing}[ht]
+\begin{minted}{C}
+struct svo_block
+{
+    usize       NextFreeSlot;
+    svo_block*  Prev;
+    svo_far_ptr FarPtrs[SVO_FAR_PTRS_PER_BLOCK];
+    svo_node    Entries[SVO_ENTRIES_PER_BLOCK];
+};
+\end{minted}
+\caption{SVO block structure. \mintinline{C}{SVO_ENTRIES_PER_BLOCK} is a constant that determines how many entries are stored within each block}
+\label{listing:svo_block_struct}
+\end{listing}
+
+Blocks function similarly to stacks. The \texttt{NextFreeSlot} field is the stack pointer, denoting an offset to the next available memory address that an hold a new \texttt{svo\_node} structure. In the case that all slots are used up, a new block is transparently allocated and the two are linked together via the \texttt{Prev} pointer. This stack-based approach is used for performance reasons; allocating each node entry on the heap would introduce the considerable overhead of a call to \texttt{malloc} or similar every time a new node was inserted (these allocations would also have to be freed one at a time). With millions of nodes, this strategy would be unacceptably slow. With the block-based approach, a call to the system allocator is only required each time a new block is required, and individual node allocations are very fast as they only require (in most cases) incrementing \texttt{NextFreeSlot}.
+
+SVO blocks also store a fixed number of \texttt{far\_ptr} instances (see listing \ref{listing:far_ptr_struct}). These are used in case child references for an individual node overrun block boundaries.
+
+
+\section{SVO Construction}
+The engine constructs SVOs using two parameters, $S_{max}$ and $\Lambda(c_0, c_1)$. $S_{max}$ is a 32-bit integer which, when used as an exponent to $2$, defines the maximum size of each dimension in the octree root cube.
+
+$\Lambda(c_0, c_1)$ is a user-supplied function which defines the intersection of a used-defined three dimensional surface with a cube defined such that its minimum corner resides at the vector $c_0$ and its maximum corner at $c_1$. This function is used to determine whether or not the engine should continue to subdivide space at a particular octree node.
+
+Construction begins at the root octree node which, in world space, represents a cube of dimensions $2^{S_{max}}$. $\Lambda$ is evaluated for this cube to determine if there is interesting geometry resident inside this cube. If $\Lambda$ evaluates to \texttt{true}, the root node is subdivided and marked as a parent (see \ref{child_node_insertion} for a detailed description of this process).
+
+The octree construction process is considered complete when $\Lambda$ will no longer evaluate to \texttt{true} at any possible child cube, or we have reached a tree depth of $S_{max}$.
+
+\subsection{Child node insertion} \label{child_node_insertion}
+Due to the sparse nature of the engine's octree data structure, and the fact that the SVO data structure will store the majority of a particular voxel's data in conjunction with its parent, some care is required when inserting child nodes into the octree. To insert a child for some node $n_0$, we must first determine if this is a leaf voxel by examining both the current tree depth and the surface intersection function $\Lambda$ used to build the tree.
+
+\begin{figure}[ht]
+    \centering
+    \footnotesize
+    \includesvg[width=360px, height=225px]{graphics/svo_quad_analogue.svg}
+    \caption{Layout of child descriptors inside a block. Child entries are organised in a depth-first fashion.}
+    \label{fig:quadtree_analogue}
+\end{figure}
+
+\section{Implementation}
+The SVO handling code is contained within the \texttt{sabre\_svo} module. The entire
+SVO data structure is conceptualised as the following struct definition:
+
+\begin{listing}[H]
+\begin{minted}{C}
+struct svo
+{
+    u32 UsedBlockCount;
+    u32 MaxDepth;
+
+    svo_block* CurrentBlock;
+};
+\end{minted}
+\caption{Definition of Sparse Voxel Octree data structure}
+\end{listing}
+
+The \texttt{MaxDepth} field determines the maximum number of levels in the octree. This field is used in SVO construction to determine when to halt the tree building process. Largers values correspond to more voxel data. The \texttt{UsedBlockCount} field records how many total blocks are resident in this octree. \texttt{CurrentBlock} points to the latest block in use. 

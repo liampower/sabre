@@ -12,8 +12,8 @@
 #include "sabre_data.h"
 
 #define SABRE_MAX_TREE_DEPTH 5
-#define SABRE_WORK_SIZE_X 128
-#define SABRE_WORK_SIZE_Y 128
+#define SABRE_WORK_SIZE_X 512
+#define SABRE_WORK_SIZE_Y 512
 
 
 typedef GLuint gl_uint;
