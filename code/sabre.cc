@@ -11,7 +11,7 @@
 #include "sabre_svo.h"
 #include "sabre_data.h"
 
-#define SABRE_MAX_TREE_DEPTH 4
+#define SABRE_MAX_TREE_DEPTH 5
 #define SABRE_WORK_SIZE_X 512
 #define SABRE_WORK_SIZE_Y 512
 
@@ -19,8 +19,8 @@
 typedef GLuint gl_uint;
 typedef GLint  gl_int;
 
-static constexpr u32 DisplayWidth = 1280;
-static constexpr u32 DisplayHeight = 720;
+static constexpr u32 DisplayWidth = 512;
+static constexpr u32 DisplayHeight = 512;
 static constexpr const char* const DisplayTitle = "Sabre";
 
 static const f32 ScreenQuadVerts[12] = {
@@ -31,6 +31,16 @@ static const f32 ScreenQuadVerts[12] = {
      1.0f,  1.0f,
      1.0f, -1.0f,
     -1.0f, -1.0f,
+};
+
+struct camera
+{
+    f32    Velocity;
+
+    vec3   Up;
+    vec3   Right;
+    vec3   Forward;
+    vec3   Position;
 };
 
 
@@ -303,12 +313,6 @@ main(int ArgCount, const char** const Args)
     svo* WorldSvo = BuildSparseVoxelOctree(SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
     gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
 
-    svo_node N = {};
-    N.OccupiedMask = 0xAB;
-    N.LeafMask = 0xCD;
-    N.ChildPtr = 0x1234;
-
-
     if (0 == SvoShaderBuffer)
     {
         fprintf(stderr, "Failed to upload octree block data\n");
@@ -334,9 +338,12 @@ main(int ArgCount, const char** const Args)
     glUniform1ui(glGetUniformLocation(ComputeShader, "MaxDepthUniform"), WorldSvo->MaxDepth);
     glUniform1ui(glGetUniformLocation(ComputeShader, "BlockCountUniform"), WorldSvo->UsedBlockCount);
 
+    gl_int ViewMatrixUniformLocation = glGetUniformLocation(ComputeShader, "ViewMatrixUniform");
+
     glUseProgram(MainShader);
     glUniform1i(glGetUniformLocation(MainShader, "RenderedTextureUniform"), 0);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoShaderBuffer);
+
 
     gl_uint VAO, VBO;
     {
@@ -357,7 +364,22 @@ main(int ArgCount, const char** const Args)
         glBindVertexArray(0);
     }
 
+    camera Cam = { };
+    Cam.Forward = vec3(0, 0, -1);
+    Cam.Right = vec3(1, 0, 0);
+    Cam.Up = vec3(0, 1, 0);
+    Cam.Position = vec3(0, 0, -4);
+    Cam.Velocity = 2.4f;
 
+    const vec3 WorldYAxis = vec3(0, 1, 0);
+
+    f64 LastMouseX, LastMouseY;
+    glfwGetCursorPos(Window, &LastMouseX, &LastMouseY);
+
+    // NOTE: Camera yaw and pitch
+    f32 Yaw, Pitch;
+
+    m4x4 CameraTransform;
     while (GLFW_FALSE == glfwWindowShouldClose(Window))
     {
         glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
@@ -368,8 +390,74 @@ main(int ArgCount, const char** const Args)
             glfwSetWindowShouldClose(Window, GLFW_TRUE);
         }
 
+        if (glfwGetKey(Window, GLFW_KEY_W))
+        {
+            Cam.Position += Cam.Velocity * Cam.Forward;
+        }
+
+        if (glfwGetKey(Window, GLFW_KEY_S))
+        {
+            Cam.Position -= Cam.Velocity * Cam.Forward;
+        }
+
+        if (glfwGetKey(Window, GLFW_KEY_A))
+        {
+            Cam.Position -= Cam.Velocity * Cam.Right;
+        }
+
+        if (glfwGetKey(Window, GLFW_KEY_D))
+        {
+            Cam.Position += Cam.Velocity * Cam.Right;
+        }
+
+        if (glfwGetKey(Window, GLFW_KEY_SPACE))
+        {
+            Cam.Position += Cam.Velocity * Cam.Up;
+        }
+
+        if (glfwGetKey(Window, GLFW_KEY_LEFT_SHIFT))
+        {
+            Cam.Position -= Cam.Velocity * Cam.Up;
+        }
+
+
+        { // NOTE: Mouse look
+            Cam.Right = Normalize(Cross(Cam.Forward, WorldYAxis));
+            Cam.Up = Normalize(Cross(Cam.Right, Cam.Forward));
+
+            f64 MouseX, MouseY;
+            glfwGetCursorPos(Window, &MouseX, &MouseY);
+
+            const f32 DX = (f32)(MouseX - LastMouseX);
+            const f32 DY = (f32)(MouseY - LastMouseY);
+
+            LastMouseX = MouseX;
+            LastMouseY = MouseY;
+
+            Yaw = Rads(DX) * -0.05f;
+            Pitch = Rads(DY) * -0.05f;
+
+            quat YawRotation = RotationQuaternion(Yaw, WorldYAxis);
+            quat PitchRotation = RotationQuaternion(Pitch, Cam.Right);
+
+            Cam.Forward = Normalize(Rotate((YawRotation * PitchRotation), Cam.Forward));
+        }
+
+        m4x4 T = TranslationMatrix(-Cam.Position);
+        m4x4 R = {{
+            { Cam.Right.X, Cam.Right.Y, Cam.Right.Z, 0.0f },
+            { Cam.Up.X,    Cam.Up.Y,    Cam.Up.Z,    0.0f },
+            { -Cam.Forward.X, -Cam.Forward.Y, -Cam.Forward.Z, 0.0f },
+            { 0.0f, 0.0f, 0.0f, 1.0f }
+        }};
+
+        CameraTransform =  R * T;
+
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoShaderBuffer);
         glUseProgram(ComputeShader);
+        //glUniformMatrix4fv(ViewMatrixUniformLocation, 1, GL_TRUE, *CameraTransform.M);
+        f32 F[3] = { Cam.Position.X, Cam.Position.Y, Cam.Position.Z };
+        glUniform3fv(glGetUniformLocation(ComputeShader, "ViewPosUniform"), 1, F);
         glDispatchCompute(SABRE_WORK_SIZE_X, SABRE_WORK_SIZE_Y, 1);
 
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);

@@ -1,7 +1,5 @@
 #include "sabre_data.h"
 
-
-
 extern const char* const MainVertexCode = R"GLSL(
 #version 450 core
 
@@ -44,6 +42,7 @@ extern const char* const RaycasterComputeKernel = R"GLSL(
 #define SVO_NODE_CHILD_PTR_MASK 0xFFFF0000U
 
 #define MAX_STEPS 64
+#define SCREEN_DIM 512
 
 struct ray
 {
@@ -71,6 +70,9 @@ layout (rgba32f, binding = 0) uniform image2D OutputImgUniform;
 
 uniform uint MaxDepthUniform;
 uniform uint BlockCountUniform;
+
+uniform mat4x4 ViewMatrixUniform;
+uniform vec3 ViewPosUniform;
 
 layout (std430, binding = 3) readonly buffer svo_input
 {
@@ -243,14 +245,14 @@ vec3 Raycast(in ray R)
                     CurrentOctant = GetOctant(R.Origin, ParentCentre);
                     ++CurrentDepth;
 
-                    stack_frame Frame = { CurrentOctant, CurrentDepth };
+                    /*stack_frame Frame = { CurrentOctant, CurrentDepth };
                     Stack[StackHead] = Frame;
-                    ++StackHead;
+                    ++StackHead;*/
                 }
             }
             else // Nothing here... move on to sibling
             {
-                    return vec3(1, 0, 0);
+                return vec3(1, 0, 0);
                 // TODO(Liam): Handle case where we need to push instead.
                 uint NextOctant = GetNextOctant(Intersection.tMax, Intersection.tValues, CurrentOctant);
                 if (IsAdvanceValid(NextOctant, CurrentOctant, R.Dir))
@@ -259,14 +261,15 @@ vec3 Raycast(in ray R)
                 }
                 else // Pop
                 {
-                    --StackHead;
                     CurrentOctant = Stack[StackHead].Oct;
                     CurrentDepth = Stack[StackHead].Depth;
+                    --StackHead;
                 }
             }
         }
         else
         {
+            return vec3(0.16);
             break;
         }
 
@@ -276,19 +279,55 @@ vec3 Raycast(in ray R)
 }
 
 
+bool Trace2(in ray R)
+{
+    vec3 P = R.Origin + R.Dir;
+    float D = 0.0;
+
+    for (int i = 0; i < 16; ++i)
+    {
+        D = length(P) - 1;
+
+        if (abs(D) < 0.01) return true;
+
+        P += D*R.Dir;
+    }
+
+    return false;
+}
+
 void main()
 {
-    ivec2 PixelCoords = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 ScreenCoords = ivec2(PixelCoords.x - 256, PixelCoords.y - 256); 
+    // Ray XY coordinates of the screen pixels; goes from 0-512
+    // in each dimension.
+    vec2 PixelCoords = ivec2(gl_GlobalInvocationID.xy);
+
+    // Origin of the screen plane in world coords; the camera pos
+    // is at the centre of the screen
+    vec2 ScreenOrigin = vec2(-SCREEN_DIM/2); 
+
+    // World coordinates of the current pixel on the camera view
+    // plane
+    /*vec3 ScreenCoords = vec3(ScreenOrigin + PixelCoords.xy, 0);
     
-    vec3 RayP = vec3(ScreenCoords.xy, 0);
-    vec3 RayD = normalize(vec3(0, 0, -1));
+    vec3 O = vec3(0, 0, -512);
+    vec3 RayP = ViewPosUniform;//vec3(0, 0, -512);
+    vec3 RayD = normalize(ScreenCoords - O);*/
+    //vec2 UV = (PixelCoords * vec2(2/512)) - vec2(1);
+
+    // Maps into [-1, 1] range
+    vec2 UV = (PixelCoords * (2.0 / 512.0)) - 1.0;
+
+    vec3 RayP = ViewPosUniform;//vec3(0, 0, -4);//ViewPosUniform;
+
+    vec3 RayD = normalize(vec3(UV, 1.0));
 
     ray R = { RayP, RayD, 1.0 / RayD };
 
-    vec4 OutCr = vec4(Raycast(R), 1.0);
+    //vec4 OutCr = vec4(vec3(Trace2(R)), 1.0);//vec4(Raycast(R), 1.0);//mix(vec4(abs(R.Dir), 1.0), vec4(Raycast(R), 1.0), 0.5);
+    vec4 OutCr = vec4(Raycast(R), 1.0);//Trace2(R) ? vec4(1.0, 0, 0, 1.0) : vec4(0);
 
-    imageStore(OutputImgUniform, PixelCoords, OutCr);
+    imageStore(OutputImgUniform, ivec2(PixelCoords), OutCr);
 }
 )GLSL";
 
