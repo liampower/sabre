@@ -39,6 +39,8 @@ extern const char* const RaycasterComputeKernel = R"GLSL(
 
 #define SVO_NODE_OCCUPIED_MASK  0x0000FF00U
 #define SVO_NODE_LEAF_MASK      0x000000FFU
+// TODO(Liam): Need to fix this up to support
+// far pointers!
 #define SVO_NODE_CHILD_PTR_MASK 0xFFFF0000U
 
 #define MAX_STEPS 64
@@ -48,6 +50,12 @@ struct ray
     vec3 Origin;
     vec3 Dir;
     vec3 InvDir;
+};
+
+struct stack_frame
+{
+    uint Oct;
+    uint Depth;
 };
 
 struct ray_intersection
@@ -174,20 +182,45 @@ vec3 CrScale(in uint V, in uint Max)
     return S * vec3(0, 1, 0);
 }
 
+bool IsAdvanceValid(in uint NewOct, in uint OldOct, in vec3 RayDir)
+{
+    vec3 Sgn = sign(RayDir);
+    uint Diff = NewOct - OldOct;
+    
+    // TODO(Liam): Step?
+    //if (Sgn.x < 0) Sgn.x = 0;
+    //if (Sgn.y < 0) Sgn.y = 0;
+    //if (Sgn.z < 0) Sgn.z = 0;
+
+
+    bool Increased = (NewOct > OldOct);
+
+    if (Sgn.x < 0 && Increased) return false;
+    if (Sgn.y < 0 && Increased) return false;
+    if (Sgn.z < 0 && Increased) return false;
+
+    return true;
+}
+
 vec3 Raycast(in ray R)
 {
     vec3 ParentCentre = vec3(0, 0, 0);
     uint CurrentDepth = 0;
     uint CurrentNode = SvoInputBuffer.Nodes[0]; // Initialised to root
 
+    stack_frame Stack[MAX_STEPS + 1];
+    uint StackHead = 0;
+
     for (int Step = 0; Step < MAX_STEPS; ++Step)
     {
+        // TODO(Liam): Can just shift each iteration instead of recalculating
         uint Radius = 1 << (MaxDepthUniform - CurrentDepth);
         uint CurrentOctant = GetOctant(R.Origin, ParentCentre);
 
         vec3 NodeCentre = GetNodeCentreP(CurrentOctant, Radius, ParentCentre);
         vec3 NodeMin = NodeCentre - vec3(Radius);
         vec3 NodeMax = NodeCentre + vec3(Radius);
+
 
         ray_intersection Intersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
 
@@ -199,8 +232,8 @@ vec3 Raycast(in ray R)
             {
                 if (IsOctantLeaf(CurrentNode, CurrentOctant))
                 {
-                    return vec3(1, 0, 0); // Leaf: return this octant
-                    //break;
+                    //return vec3(1, 0, 0); // Leaf: return this octant
+                    break;
                 }
                 else // Go deeper
                 {
@@ -209,12 +242,27 @@ vec3 Raycast(in ray R)
 
                     CurrentOctant = GetOctant(R.Origin, ParentCentre);
                     ++CurrentDepth;
+
+                    stack_frame Frame = { CurrentOctant, CurrentDepth };
+                    Stack[StackHead] = Frame;
+                    ++StackHead;
                 }
             }
             else // Nothing here... move on to sibling
             {
+                    return vec3(1, 0, 0);
                 // TODO(Liam): Handle case where we need to push instead.
-                CurrentOctant = GetNextOctant(Intersection.tMax, Intersection.tValues, CurrentOctant);
+                uint NextOctant = GetNextOctant(Intersection.tMax, Intersection.tValues, CurrentOctant);
+                if (IsAdvanceValid(NextOctant, CurrentOctant, R.Dir))
+                {
+                    CurrentOctant = NextOctant;
+                }
+                else // Pop
+                {
+                    --StackHead;
+                    CurrentOctant = Stack[StackHead].Oct;
+                    CurrentDepth = Stack[StackHead].Depth;
+                }
             }
         }
         else
@@ -224,14 +272,14 @@ vec3 Raycast(in ray R)
 
     }
 
-    return vec3(0.16);//CrScale(CurrentDepth, MaxDepthUniform);
+    return CrScale(CurrentDepth, MaxDepthUniform);
 }
 
 
 void main()
 {
     ivec2 PixelCoords = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 ScreenCoords = ivec2(PixelCoords.x - 64, PixelCoords.y - 64); 
+    ivec2 ScreenCoords = ivec2(PixelCoords.x - 256, PixelCoords.y - 256); 
     
     vec3 RayP = vec3(ScreenCoords.xy, 0);
     vec3 RayD = normalize(vec3(0, 0, -1));

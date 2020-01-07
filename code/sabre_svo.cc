@@ -49,7 +49,8 @@ SetNodeChildPointer(u16 ChildPtr, bool InSameBlock, svo_node* OutParentNode)
     if (InSameBlock)
     {
         // Extract first 15 bits
-        OutParentNode->ChildPtr = ChildPtr & 0x7FFF;
+        // TODO(Liam): Implement support for far ptrs
+        OutParentNode->ChildPtr = ChildPtr;// & 0x7FFF;
 
     }
     else
