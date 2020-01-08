@@ -284,16 +284,22 @@ bool Trace2(in ray R)
     vec3 P = R.Origin + R.Dir;
     float D = 0.0;
 
-    for (int i = 0; i < 16; ++i)
+    vec3 Min = vec3(-256);
+    vec3 Max = vec3(256);
+    /*for (int i = 0; i < 16; ++i)
     {
-        D = length(P) - 1;
+        ray_intersection I = ComputeRayBoxIntersection(R, Min, Max);
+        D = I.tMin;//length(P) - 100;
 
-        if (abs(D) < 0.01) return true;
+        if (abs(D) < 0.001) return true;
 
         P += D*R.Dir;
-    }
+    }*/
 
-    return false;
+    ray_intersection I = ComputeRayBoxIntersection(R, Min, Max);
+
+
+    return I.tMin <= I.tMax;
 }
 
 void main()
@@ -301,31 +307,16 @@ void main()
     // Ray XY coordinates of the screen pixels; goes from 0-512
     // in each dimension.
     vec2 PixelCoords = ivec2(gl_GlobalInvocationID.xy);
+    vec3 ScreenOrigin = vec3(ViewPosUniform.x - 256, ViewPosUniform.y - 256, ViewPosUniform.z - 512);
 
-    // Origin of the screen plane in world coords; the camera pos
-    // is at the centre of the screen
-    vec2 ScreenOrigin = vec2(-SCREEN_DIM/2); 
+	vec3 ScreenCoord = ScreenOrigin + vec3(PixelCoords, 0);
 
-    // World coordinates of the current pixel on the camera view
-    // plane
-    /*vec3 ScreenCoords = vec3(ScreenOrigin + PixelCoords.xy, 0);
-    
-    vec3 O = vec3(0, 0, -512);
-    vec3 RayP = ViewPosUniform;//vec3(0, 0, -512);
-    vec3 RayD = normalize(ScreenCoords - O);*/
-    //vec2 UV = (PixelCoords * vec2(2/512)) - vec2(1);
-
-    // Maps into [-1, 1] range
-    vec2 UV = (PixelCoords * (2.0 / 512.0)) - 1.0;
-
-    vec3 RayP = ViewPosUniform;//vec3(0, 0, -4);//ViewPosUniform;
-
-    vec3 RayD = normalize(vec3(UV, 1.0));
+    vec3 RayP = ViewPosUniform;
+    vec3 RayD = normalize(ScreenCoord - ViewPosUniform);
 
     ray R = { RayP, RayD, 1.0 / RayD };
 
-    //vec4 OutCr = vec4(vec3(Trace2(R)), 1.0);//vec4(Raycast(R), 1.0);//mix(vec4(abs(R.Dir), 1.0), vec4(Raycast(R), 1.0), 0.5);
-    vec4 OutCr = vec4(Raycast(R), 1.0);//Trace2(R) ? vec4(1.0, 0, 0, 1.0) : vec4(0);
+    vec4 OutCr = vec4(Raycast(R), 1.0);//vec4(0, 1, 0, 1) * float(Trace2(R));
 
     imageStore(OutputImgUniform, ivec2(PixelCoords), OutCr);
 }

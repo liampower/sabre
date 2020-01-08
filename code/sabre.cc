@@ -419,7 +419,7 @@ main(int ArgCount, const char** const Args)
         {
             Cam.Position -= Cam.Velocity * Cam.Up;
         }
-
+#if 0
 
         { // NOTE: Mouse look
             Cam.Right = Normalize(Cross(Cam.Forward, WorldYAxis));
@@ -452,6 +452,7 @@ main(int ArgCount, const char** const Args)
         }};
 
         CameraTransform =  R * T;
+#endif
 
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoShaderBuffer);
         glUseProgram(ComputeShader);
