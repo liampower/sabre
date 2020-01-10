@@ -31,7 +31,7 @@ void main()
 
 )GLSL";
 
-
+// TODO(Liam): Theoretical f32 ops we can do in 16ms on a 620M: 3840000000 
 extern const char* const RaycasterComputeKernel = R"GLSL(
 #version 450 core
 
@@ -55,6 +55,8 @@ struct stack_frame
 {
     uint Oct;
     uint Depth;
+    uint Node;
+    vec3 Centre;
 };
 
 struct ray_intersection
@@ -62,6 +64,7 @@ struct ray_intersection
     float tMin;
     float tMax;
     vec3  tValues;
+    vec3  tMinValues;
 };
 
 layout (local_size_x = 1, local_size_y = 1) in;
@@ -94,7 +97,8 @@ uint GetNodeChild(in uint ParentNode, in uint Oct)
 {
     uint ChildPtr = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
     
-    return SvoInputBuffer.Nodes[ChildPtr + Oct];
+    // TODO(Liam): Broken?
+    return SvoInputBuffer.Nodes[ChildPtr];
 }
 
 ray_intersection ComputeRayBoxIntersection(in ray R, in vec3 Min, in vec3 Max)
@@ -109,10 +113,18 @@ ray_intersection ComputeRayBoxIntersection(in ray R, in vec3 Min, in vec3 Max)
     float ttMax = MinComponent(tMax);
 
 
-    ray_intersection Result = { ttMin, ttMax, tMax };
+    ray_intersection Result = { ttMin, ttMax, tMax, tMin };
     return Result;
 }
 
+
+uint GetOct(in float tMin, in vec3 tValues)
+{
+    const uvec3 OctBits = uvec3(1, 2, 4);
+    bvec3 E = equal(vec3(tMin), tValues);
+
+    return uint(dot(uvec3(E), OctBits));
+}
 
 uint GetNextOctant(in float tMax, in vec3 tValues, in uint CurrentOct)
 {
@@ -153,7 +165,7 @@ bool IsOctantLeaf(in uint Node, in uint Oct)
     return (Node & (1 << Oct)) != 0;
 }
 
-vec3 GetNodeCentreP(in uint Oct, in uint Radius, in vec3 ParentP)
+vec3 GetNodeCentreP(in uint Oct, in int Radius, in vec3 ParentP)
 {
     // TODO(Liam): We can actually use a bitwise AND op on uvec3s
     // so we don't have to work on scalars.
@@ -204,78 +216,108 @@ bool IsAdvanceValid(in uint NewOct, in uint OldOct, in vec3 RayDir)
     return true;
 }
 
+const vec3 DEBUGOctColours[8] = {
+    vec3(0, 0, 0),
+    vec3(0, 0, 1),
+    vec3(0, 1, 0),
+    vec3(0, 1, 1),
+    vec3(1, 0, 0),
+    vec3(1, 0, 1),
+    vec3(1, 1, 0),
+    vec3(1, 1, 1),
+};
+
 vec3 Raycast(in ray R)
 {
-    vec3 ParentCentre = vec3(0, 0, 0);
-    uint CurrentDepth = 0;
-    uint CurrentNode = SvoInputBuffer.Nodes[0]; // Initialised to root
+    int DEBUGrad = 1 << MaxDepthUniform;
+    ray_intersection DEBUGr = ComputeRayBoxIntersection(R, vec3(-DEBUGrad), vec3(DEBUGrad));
+    if (DEBUGr.tMin > DEBUGr.tMax || DEBUGr.tMax <= 0) return vec3(0.992, 0.961, 0.902);
 
+    vec3 RootCentre = vec3(0, 0, 0);
+    uint RootDepth = 0;
+    uint RootNode = SvoInputBuffer.Nodes[0]; // Initialised to root
+
+    //uint RootOctant = GetOct(DEBUGr.tMin, DEBUGr.tMinValues);//GetOctant(R.Origin, RootCentre);
+    uint RootOctant = GetOctant(R.Origin + DEBUGr.tMin*R.Dir, RootCentre);
+    //return vec3(float(RootOctant) / 7.0);
+
+    // Initialise stack top with root node.
     stack_frame Stack[MAX_STEPS + 1];
-    uint StackHead = 0;
+    uint StackTop = 0;
+    stack_frame RootFrame = { RootOctant, RootDepth, RootNode, RootCentre };
+    Stack[StackTop] = RootFrame;
+    float Sh = float(RootOctant) / 7.0;
 
     for (int Step = 0; Step < MAX_STEPS; ++Step)
     {
-        // TODO(Liam): Can just shift each iteration instead of recalculating
-        uint Radius = 1 << (MaxDepthUniform - CurrentDepth);
-        uint CurrentOctant = GetOctant(R.Origin, ParentCentre);
+        stack_frame CurrentContext = Stack[StackTop];
 
-        vec3 NodeCentre = GetNodeCentreP(CurrentOctant, Radius, ParentCentre);
+        if (CurrentContext.Depth > MaxDepthUniform) return vec3(1, 0, 0);
+
+        // TODO(Liam): Can just shift each iteration instead of recalculating
+        int Radius = 1 << (MaxDepthUniform - CurrentContext.Depth);
+
+       // vec3 NodeCentre = GetNodeCentreP(CurrentContext.Oct, Radius, CurrentContext.Centre);
+        vec3 NodeCentre = CurrentContext.Centre;
         vec3 NodeMin = NodeCentre - vec3(Radius);
         vec3 NodeMax = NodeCentre + vec3(Radius);
-
+        uint CurrentNode = CurrentContext.Node;
 
         ray_intersection Intersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
 
         // Ray intersects this node
-        if (Intersection.tMin < Intersection.tMax)
+        if (Intersection.tMin < Intersection.tMax && Intersection.tMax > 0)
         {
+            Sh *= float(CurrentContext.Oct) / 7.0;
             // Check if there is geometry inside this node
-            if (IsOctantOccupied(CurrentNode, CurrentOctant))
+            if (IsOctantOccupied(CurrentContext.Node, CurrentContext.Oct))
             {
-                if (IsOctantLeaf(CurrentNode, CurrentOctant))
+                //return vec3(float(CurrentContext.Oct) / 7.0);
+                if (IsOctantLeaf(CurrentContext.Node, CurrentContext.Oct))
                 {
-                    //return vec3(1, 0, 0); // Leaf: return this octant
-                    break;
+                    return vec3(0, 0, 1);
                 }
-                else // Go deeper
+                else // Go deeper (push)
                 {
-                    CurrentNode = GetNodeChild(CurrentNode, CurrentOctant);
-                    ParentCentre = NodeCentre;
+                    vec3 P = R.Origin + Intersection.tMin*R.Dir;
+                    //R.Origin += Intersection.tMin;
+                    //R.Origin = P;
+                    //Out *= (P / vec3(1 << MaxDepthUniform));
 
-                    CurrentOctant = GetOctant(R.Origin, ParentCentre);
-                    ++CurrentDepth;
+                    uint ChildNode = GetNodeChild(CurrentContext.Node, CurrentContext.Oct);
+                    uint ChildOct = GetOctant(P, NodeCentre);//GetOct(Intersection.tMin, Intersection.tMinValues);//GetOctant(P, CurrentContext.Centre);
+                    int Rad = Radius << 1;
 
-                    /*stack_frame Frame = { CurrentOctant, CurrentDepth };
-                    Stack[StackHead] = Frame;
-                    ++StackHead;*/
+                    vec3 ChildCentre = GetNodeCentreP(ChildOct, Rad, CurrentContext.Centre);
+
+                    stack_frame Frame = { ChildOct, CurrentContext.Depth + 1, ChildNode, ChildCentre };
+                    ++StackTop;
+                    Stack[StackTop] = Frame;
                 }
             }
             else // Nothing here... move on to sibling
             {
                 return vec3(1, 0, 0);
                 // TODO(Liam): Handle case where we need to push instead.
-                uint NextOctant = GetNextOctant(Intersection.tMax, Intersection.tValues, CurrentOctant);
+                /*uint NextOctant = GetNextOctant(Intersection.tMax, Intersection.tValues, CurrentOctant);
                 if (IsAdvanceValid(NextOctant, CurrentOctant, R.Dir))
                 {
                     CurrentOctant = NextOctant;
                 }
                 else // Pop
                 {
-                    CurrentOctant = Stack[StackHead].Oct;
-                    CurrentDepth = Stack[StackHead].Depth;
-                    --StackHead;
-                }
+                }*/
             }
         }
         else
         {
-            return vec3(0.16);
-            break;
+            return vec3(Sh);//Out;//return vec3(0.12);
         }
 
     }
 
-    return CrScale(CurrentDepth, MaxDepthUniform);
+    return vec3(1);
+    //return CrScale(CurrentDepth, MaxDepthUniform);
 }
 
 
@@ -286,15 +328,6 @@ bool Trace2(in ray R)
 
     vec3 Min = vec3(-256);
     vec3 Max = vec3(256);
-    /*for (int i = 0; i < 16; ++i)
-    {
-        ray_intersection I = ComputeRayBoxIntersection(R, Min, Max);
-        D = I.tMin;//length(P) - 100;
-
-        if (abs(D) < 0.001) return true;
-
-        P += D*R.Dir;
-    }*/
 
     ray_intersection I = ComputeRayBoxIntersection(R, Min, Max);
 
