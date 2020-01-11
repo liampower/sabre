@@ -35,15 +35,23 @@ struct svo_block
 
 struct svo
 {
+    // How many total blocks are used in the tree.
     u32 UsedBlockCount;
+
+    // The maximum depth of the svo to traverse
     u32 MaxDepth;
+
+    // Extant of the octree in world space.
+    u32 ScaleExponent;
 
     svo_block* CurrentBlock;
     svo_block* DEBUGFirstBlock;
 };
 
 extern "C" svo*
-BuildSparseVoxelOctree(u32 MaxDepth, intersector_fn Surface);
+BuildSparseVoxelOctree(u32 ScaleExponent,
+                       u32 MaxDepth,
+                       intersector_fn Surface);
 
 extern "C" void
 DeleteSparseVoxelOctree(svo* Tree);

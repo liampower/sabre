@@ -109,27 +109,31 @@ AllocateNode(svo* const Tree)
 }
 
 static svo_node*
-ProcessOctant(svo* Tree, svo_oct Octant, u32 Scale, intersector_fn Surface, svo_node* ContainingNode, vec3 OctantCentre)
+ProcessOctant(svo* Tree, svo_oct Octant, u32 Scale, u32 Depth, intersector_fn Surface, svo_node* ContainingNode, vec3 OctantCentre)
 {
     vec3 Radius = vec3(Scale);
     vec3 OctMin = OctantCentre - Radius;
     vec3 OctMax = OctantCentre + Radius;
 
-    if (Surface(OctMin, OctMax) && Scale > 1)
+    if (Surface(OctMin, OctMax))
     {
-        SetOctantOccupied(Octant, VOXEL_PARENT, ContainingNode);
+        if (Depth < Tree->MaxDepth - 1)
+        {
+            SetOctantOccupied(Octant, VOXEL_PARENT, ContainingNode);
 
-        // Allocate a new child for this node
-        svo_node* Child = AllocateNode(Tree);
+            // Allocate a new child for this node
+            svo_node* Child = AllocateNode(Tree);
 
-        return Child;
+            return Child;
+        }
+        else
+        {
+            SetOctantOccupied(Octant, VOXEL_LEAF, ContainingNode);
+        }
+
     }
-    else
-    {
-        SetOctantOccupied(Octant, VOXEL_LEAF, ContainingNode);
 
-        return nullptr;
-    }
+    return nullptr;
 }
 
 
@@ -138,15 +142,18 @@ struct node_context
     svo_node* Node;
     svo_oct   Oct;
     u32       Depth;
+    u32       Scale;
     vec3      Centre;
 };
+
 
 static void
 BuildTree(svo* Tree, intersector_fn Surface, svo_node* Root)
 {
     std::queue<node_context> Queue;
 
-    node_context RootContext = { Root, OCT_C000, 1, vec3(0, 0, 0) };
+    u32 RootScale = 1 << Tree->ScaleExponent;
+    node_context RootContext = { Root, OCT_C000, 0, RootScale, vec3(0, 0, 0) };
     Queue.push(RootContext);
 
     while (false == Queue.empty())
@@ -155,18 +162,17 @@ BuildTree(svo* Tree, intersector_fn Surface, svo_node* Root)
 
         //printf("\nBEGIN L(%d)\n", CurrentContext.Depth);
 
-        u32 Scale = 1 << (Tree->MaxDepth - CurrentContext.Depth);
-
+        u32 Scale = CurrentContext.Scale >> 1;
         for (u32 Oct = 0; Oct < 8; ++Oct)
         {
             vec3 OctantCentre = GetNodeCentrePosition((svo_oct) Oct, Scale, CurrentContext.Centre);
 
-            svo_node* MaybeChild = ProcessOctant(Tree, (svo_oct) Oct, Scale, Surface, CurrentContext.Node, OctantCentre);
+            svo_node* MaybeChild = ProcessOctant(Tree, (svo_oct) Oct, Scale, CurrentContext.Depth, Surface, CurrentContext.Node, OctantCentre);
 
             // Check if octant needs to be subdivided
-            if (MaybeChild && CurrentContext.Depth < Tree->MaxDepth)
+            if (MaybeChild && CurrentContext.Depth < Tree->MaxDepth - 1)
             {
-                node_context ChildContext = { MaybeChild, (svo_oct)Oct, CurrentContext.Depth + 1, OctantCentre };
+                node_context ChildContext = { MaybeChild, (svo_oct)Oct, CurrentContext.Depth + 1, Scale, OctantCentre };
 
                 // If the parent node's child ptr hasn't already been set, we can set it here.
                 // If it's already been set, that means that some octant before this one has 
@@ -189,6 +195,7 @@ BuildTree(svo* Tree, intersector_fn Surface, svo_node* Root)
 }
 
 
+#if 0
 static void
 InsertNode(svo* Tree, intersector_fn Surface, u32 Depth, svo_oct Octant, svo_node* ParentNode, vec3 ParentCentreP)
 {
@@ -226,11 +233,12 @@ InsertNode(svo* Tree, intersector_fn Surface, u32 Depth, svo_oct Octant, svo_nod
         SetOctantOccupied(Octant, VOXEL_LEAF, ParentNode);
     }
 }
+#endif
 
 
 
 extern "C" svo*
-BuildSparseVoxelOctree(u32 MaxDepth, intersector_fn SurfaceFn)
+BuildSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceFn)
 {
     // TODO(Liam): Maybe combine allocation ?
     svo* Tree = (svo*) calloc(1, sizeof(svo));
@@ -238,6 +246,7 @@ BuildSparseVoxelOctree(u32 MaxDepth, intersector_fn SurfaceFn)
     if (Tree)
     {
         Tree->MaxDepth = MaxDepth;
+        Tree->ScaleExponent = ScaleExponent;
 
         Tree->CurrentBlock = (svo_block*) calloc(1, sizeof(svo_block));
         Tree->UsedBlockCount = 1;

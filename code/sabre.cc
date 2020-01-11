@@ -11,7 +11,7 @@
 #include "sabre_svo.h"
 #include "sabre_data.h"
 
-#define SABRE_MAX_TREE_DEPTH 4
+#define SABRE_MAX_TREE_DEPTH 2
 #define SABRE_WORK_SIZE_X 512
 #define SABRE_WORK_SIZE_Y 512
 
@@ -49,11 +49,11 @@ HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei L
 {
     if (GL_DEBUG_TYPE_ERROR == Type)
     {
-        fprintf(stderr, "[OpenGL Error] %s\n", Msg);
+        //fprintf(stderr, "[OpenGL Error] %s\n", Msg);
     }
     else
     {
-        fprintf(stderr, "[OpenGL Info] %s\n", Msg);
+        //fprintf(stderr, "[OpenGL Info] %s\n", Msg);
     }
 }
 
@@ -72,7 +72,7 @@ CubeSphereIntersection(vec3 Min, vec3 Max)
 
     f32 DistanceSqToCube = R * R;
 
-    //printf("MIN (%f, %f, %f), MAX (%f, %f, %f)\n", Min.X, Min.Y, Min.Z, Max.X, Max.Y, Max.Z);
+    //printf("MIN (%f, %f, %f), MAX (%f, %f, %f)", Min.X, Min.Y, Min.Z, Max.X, Max.Y, Max.Z);
 
     // STACKOVER
     if (S.X < Min.X) DistanceSqToCube -= Squared(S.X - Min.X);
@@ -86,11 +86,12 @@ CubeSphereIntersection(vec3 Min, vec3 Max)
 
     if (DistanceSqToCube > 0)
     {
+        //printf("        TRUE\n");
         return true;
     }
     else
     {
-        //printf("******************* RET FALSE ************************\n");
+        //printf("        FALSE\n");
         return false;
     }
 }
@@ -222,7 +223,7 @@ UploadOctreeBlockData(const svo* const Svo)
 
         static_assert(sizeof(svo_node) == sizeof(GLuint), "Node size must == GLuint size!");
 
-        GLuint* GPUTreeBuffer = (GLuint*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+        gl_uint* GPUTreeBuffer = (GLuint*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
 
         svo_block* CurrentBlock = Svo->CurrentBlock;
         usize BlockOffset = 0;
@@ -310,7 +311,7 @@ main(int ArgCount, const char** const Args)
         return EXIT_FAILURE;
     }
 
-    svo* WorldSvo = BuildSparseVoxelOctree(SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
+    svo* WorldSvo = BuildSparseVoxelOctree(5, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
     gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
 
     if (0 == SvoShaderBuffer)
@@ -336,6 +337,7 @@ main(int ArgCount, const char** const Args)
     glBindImageTexture(0, OutputTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 
     glUniform1ui(glGetUniformLocation(ComputeShader, "MaxDepthUniform"), WorldSvo->MaxDepth);
+    glUniform1ui(glGetUniformLocation(ComputeShader, "ScaleExponentUniform"), WorldSvo->ScaleExponent);
     glUniform1ui(glGetUniformLocation(ComputeShader, "BlockCountUniform"), WorldSvo->UsedBlockCount);
 
     gl_int ViewMatrixUniformLocation = glGetUniformLocation(ComputeShader, "ViewMatrixUniform");
@@ -419,7 +421,6 @@ main(int ArgCount, const char** const Args)
         {
             Cam.Position -= Cam.Velocity * Cam.Up;
         }
-#if 0
 
         { // NOTE: Mouse look
             Cam.Right = Normalize(Cross(Cam.Forward, WorldYAxis));
@@ -451,12 +452,17 @@ main(int ArgCount, const char** const Args)
             { 0.0f, 0.0f, 0.0f, 1.0f }
         }};
 
+        f32 Vx[3][3] = {
+            { Cam.Right.X, Cam.Right.Y, Cam.Right.Z },
+            { Cam.Up.X, Cam.Up.Y, Cam.Up.Z },
+            { Cam.Forward.X, Cam.Forward.Y, Cam.Forward.Z },
+        };
+
         CameraTransform =  R * T;
-#endif
 
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoShaderBuffer);
         glUseProgram(ComputeShader);
-        //glUniformMatrix4fv(ViewMatrixUniformLocation, 1, GL_TRUE, *CameraTransform.M);
+        glUniformMatrix3fv(ViewMatrixUniformLocation, 1, GL_TRUE, *Vx);
         f32 F[3] = { Cam.Position.X, Cam.Position.Y, Cam.Position.Z };
         glUniform3fv(glGetUniformLocation(ComputeShader, "ViewPosUniform"), 1, F);
         glDispatchCompute(SABRE_WORK_SIZE_X, SABRE_WORK_SIZE_Y, 1);
