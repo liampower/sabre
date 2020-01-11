@@ -252,7 +252,6 @@ vec3 Raycast(in ray R)
         vec3 NodeMax = NodeCentre + vec3(Radius);
         uint CurrentNode = CurrentContext.Node;
 
-
         ray_intersection Intersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
 
         // Ray intersects this node
@@ -261,8 +260,6 @@ vec3 Raycast(in ray R)
             // Check if there is geometry inside this node
             if (IsOctantOccupied(CurrentContext.Node, CurrentContext.Oct))
             {
-                //return vec3(float(CurrentContext.Oct) / 7.0);
-
                 if (IsOctantLeaf(CurrentContext.Node, CurrentContext.Oct))
                 {
                     return vec3(0, 0, 1);
@@ -292,7 +289,6 @@ vec3 Raycast(in ray R)
             }
             else // Nothing here... move on to sibling
             {
-                //return vec3(1, 1, 0);
                 // TODO(Liam): Handle case where we need to push instead.
                 uint NextOctant = GetNextOctant(Intersection.tMax, Intersection.tValues, CurrentContext.Oct);
 

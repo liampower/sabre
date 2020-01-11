@@ -381,7 +381,6 @@ main(int ArgCount, const char** const Args)
     // NOTE: Camera yaw and pitch
     f32 Yaw, Pitch;
 
-    m4x4 CameraTransform;
     while (GLFW_FALSE == glfwWindowShouldClose(Window))
     {
         glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
@@ -444,25 +443,15 @@ main(int ArgCount, const char** const Args)
             Cam.Forward = Normalize(Rotate((YawRotation * PitchRotation), Cam.Forward));
         }
 
-        m4x4 T = TranslationMatrix(-Cam.Position);
-        m4x4 R = {{
-            { Cam.Right.X, Cam.Right.Y, Cam.Right.Z, 0.0f },
-            { Cam.Up.X,    Cam.Up.Y,    Cam.Up.Z,    0.0f },
-            { -Cam.Forward.X, -Cam.Forward.Y, -Cam.Forward.Z, 0.0f },
-            { 0.0f, 0.0f, 0.0f, 1.0f }
-        }};
-
-        f32 Vx[3][3] = {
+        f32 CameraMatrix[3][3] = {
             { Cam.Right.X, Cam.Right.Y, Cam.Right.Z },
             { Cam.Up.X, Cam.Up.Y, Cam.Up.Z },
             { Cam.Forward.X, Cam.Forward.Y, Cam.Forward.Z },
         };
 
-        CameraTransform =  R * T;
-
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoShaderBuffer);
         glUseProgram(ComputeShader);
-        glUniformMatrix3fv(ViewMatrixUniformLocation, 1, GL_TRUE, *Vx);
+        glUniformMatrix3fv(ViewMatrixUniformLocation, 1, GL_TRUE, *CameraMatrix);
         f32 F[3] = { Cam.Position.X, Cam.Position.Y, Cam.Position.Z };
         glUniform3fv(glGetUniformLocation(ComputeShader, "ViewPosUniform"), 1, F);
         glDispatchCompute(SABRE_WORK_SIZE_X, SABRE_WORK_SIZE_Y, 1);
