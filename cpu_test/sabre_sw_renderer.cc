@@ -1,39 +1,8 @@
-#include "sabre_data.h"
-
-extern const char* const MainVertexCode = R"GLSL(
-#version 450 core
-
-layout (location = 0) in vec2 Position;
-
-out vec2 UV;
-
-void main()
-{
-    gl_Position = vec4(Position, 0.0, 1.0);
-    UV = Position*0.5 + 0.5;
-}
-
-)GLSL";
-
-extern const char* const MainFragmentCode = R"GLSL(
-#version 450 core
-
-out vec4 FragCr;
-
-uniform sampler2D OutputTextureUniform;
-
-in vec2 UV;
-
-void main()
-{
-    FragCr = texture(OutputTextureUniform, UV);
-}
-
-)GLSL";
-
-// TODO(Liam): Theoretical f32 ops we can do in 16ms on a 620M: 3840000000 
-extern const char* const RaycasterComputeKernel = R"GLSL(
-#version 450 core
+#include <intrin.h>
+#include <stdio.h>
+#include <math.h>
+#include "sabre.h"
+#include "sabre_math.h"
 
 #define SVO_NODE_OCCUPIED_MASK  0x0000FF00U
 #define SVO_NODE_LEAF_MASK      0x000000FFU
@@ -45,6 +14,20 @@ extern const char* const RaycasterComputeKernel = R"GLSL(
 #define SCREEN_DIM 512
 
 #define ASSERT(Expr) if (! (Expr)) { return vec3(1); }
+
+#define in
+#define out
+#define inout
+
+typedef unsigned int uint;
+
+static vec3 OutBuffer[512][512];
+
+struct vec2
+{
+    float X;
+    float Y;
+};
 
 struct ray
 {
@@ -70,42 +53,81 @@ struct ray_intersection
     vec3  tMinV;
 };
 
-layout (local_size_x = 2, local_size_y = 2) in;
+//layout (local_size_x = 4, local_size_y = 4) in;
 
-layout (rgba32f, binding = 0) uniform image2D OutputImgUniform;
+//layout (rgba32f, binding = 0) uniform image2D OutputImgUniform;
 
-uniform uint MaxDepthUniform;
-uniform uint BlockCountUniform;
-uniform uint ScaleExponentUniform;
+static uint MaxDepthUniform = 2;
+static uint BlockCountUniform = 1;
+static uint ScaleExponentUniform = 5;
 
-uniform vec3 ViewPosUniform;
-uniform mat3 ViewMatrixUniform;
+static vec3 ViewPosUniform = vec3(-5, -5, -512);
+static mat3 ViewMatrixUniform;
 
-layout (std430, binding = 3) readonly buffer svo_input
+
+struct svo_input
 {
-    uint Nodes[];
-} SvoInputBuffer;
+    uint Nodes[9];
+};
 
+static svo_input SvoInputBuffer = {
+    {
+        130816,
+        32896,
+        16448,
+        8224,
+        4112,
+        2056,
+        1028,
+        514,
+        257,
+    }
+};
 
-vec3 VSelect(vec3 V1, vec3 V0, bvec3 Msk)
+static uint PrevOct;
+
+vec3 VSelect(vec3 A, vec3 B, vec3 Msk)
 {
-    vec3 Out;
+    vec3 Out = A;
 
-    Out.x = Msk.x ? V1.x : V0.x;
-    Out.y = Msk.y ? V1.y : V0.y;
-    Out.z = Msk.z ? V1.z : V0.z;
+    if (Msk.X <= 0) Out.X = B.X;
+    if (Msk.Y <= 0) Out.Y = B.Y;
+    if (Msk.Z <= 0) Out.Z = B.Z;
 
     return Out;
 }
 
-float MaxComponent(vec3 V)
+vec3 Ceil(vec3 V)
 {
-    return max(max(V.x, V.y), V.z);
+    vec3 Out;
+
+    Out.X = ceilf(V.X);
+    Out.Y = ceilf(V.Y);
+    Out.Z = ceilf(V.Z);
+
+    return Out;
 }
 
-float MinComponent(vec3 V)
+bvec3 IsBitSet(uvec3 A, uint Bit)
 {
-    return min(min(V.x, V.y), V.z);
+    return GreaterThan(A & Bit, vec3(0.0f));
+}
+
+uvec3 FindMSB(uvec3 A)
+{
+    uvec3 Result;
+
+    unsigned long MSB;
+    _BitScanReverse(&MSB, A.X);
+    Result.X = (u32)MSB;
+
+     _BitScanReverse(&MSB, A.Y);
+    Result.Y = (u32)MSB;
+
+     _BitScanReverse(&MSB, A.Z);
+    Result.Z = (u32)MSB;
+
+    return Result;
 }
 
 uint GetNodeChild(in uint ParentNode, in uint Oct)
@@ -121,54 +143,41 @@ ray_intersection ComputeRayBoxIntersection(in ray R, in vec3 vMin, in vec3 vMax)
     vec3 t0 = (vMin - R.Origin) * R.InvDir;
     vec3 t1 = (vMax - R.Origin) * R.InvDir;
 
-    vec3 tMin = min(t0, t1);
-    vec3 tMax = max(t0, t1);
+    vec3 tMin = Min(t0, t1);
+    vec3 tMax = Max(t0, t1);
 
     float ttMin = MaxComponent(tMin);
     float ttMax = MinComponent(tMax);
 
     ray_intersection Result = { ttMin, ttMax, tMax, tMin };
+
     return Result;
 }
 
 
-bool IsAdvanceValid(in uint NewOct, in uint OldOct, in vec3 RayDir)
+uint GetOct(in float tMin, in vec3 tValues)
 {
-    ivec3 Sgn = ivec3(sign(RayDir));
-    uvec3 OctBits = uvec3(1, 2, 4);
-    
-    ivec3 NewOctBits = ivec3(bvec3(uvec3(NewOct) & OctBits));
-    ivec3 OldOctBits = ivec3(bvec3(uvec3(OldOct) & OctBits));
+    const uvec3 OctBits = uvec3(1, 2, 4);
+    bvec3 E = Equals(vec3(tMin), tValues);
 
-    ivec3 OctSgn = NewOctBits - OldOctBits;
-
-    if (Sgn.x <= 0 && OctSgn.x > 0) return false;
-    if (Sgn.y <= 0 && OctSgn.y > 0) return false;
-    if (Sgn.z <= 0 && OctSgn.z > 0) return false;
-
-    if (Sgn.x > 0 && OctSgn.x < 0) return false;
-    if (Sgn.y > 0 && OctSgn.y < 0) return false;
-    if (Sgn.z > 0 && OctSgn.z < 0) return false;
-
-    return true;
+    return uint(Dot(uvec3(E.X, E.Y, E.Z), OctBits));
 }
-
 
 uint GetNextOctant(in float tMax, in vec3 tValues, in uint CurrentOct)
 {
     uint NextOct = CurrentOct;
 
-    if (tMax == tValues.x)
+    if (tMax == tValues.X)
     {
         NextOct ^= 1;//|= CurrentOct ^ 1;
     }
 
-    if (tMax == tValues.y)
+    if (tMax == tValues.Y)
     {
         NextOct ^= 2;//CurrentOct ^ 2;
     }
 
-    if (tMax == tValues.z)
+    if (tMax == tValues.Z)
     {
         NextOct ^= 4;//|= CurrentOct ^ 4;
     }
@@ -178,12 +187,12 @@ uint GetNextOctant(in float tMax, in vec3 tValues, in uint CurrentOct)
 
 uint GetOctant(in vec3 P, in vec3 ParentCentreP)
 {
-    const uvec3 OctBits = uvec3(1, 2, 4);
-    uvec3 G = uvec3(greaterThan(P, ParentCentreP));
+    uvec3 G = uvec3(GreaterThan(P, ParentCentreP));
 
     // TODO(Liam): Can use a DP here 
-    return G.x + G.y*2 + G.z*4;
+    return G.X + G.Y*2 + G.Z*4;
 }
+
 
 
 bool IsOctantOccupied(in uint Node, in uint Oct)
@@ -215,52 +224,44 @@ vec3 GetNodeCentreP(in uint Oct, in uint Radius, in vec3 ParentP)
     if (0 == (Oct & 2)) Y = -1.0;
     if (0 == (Oct & 4)) Z = -1.0;
 
-    return ParentP + (vec3(X, Y, Z) * float(Radius));
+    return ParentP + (vec3(X, Y, Z) * Radius);
 }
 
-vec3 Oct2Cr(in uint Oct)
+
+// From 0 to Max
+vec3 CrScale(in uint V, in uint Max)
 {
-    return vec3( bvec3(uvec3(Oct) & uvec3(1, 2, 4))).bgr;
+    float S = 0.1 + (float(V) / float(Max));
+
+    return S * vec3(0, 1, 0);
 }
 
-
-void GetNodeBounds(in uint Oct, in uint Scale, in vec3 ParentCentre, out vec3 Min, out vec3 Max)
+bool IsAdvanceValid(in uint NewOct, in uint OldOct, in vec3 RayDir)
 {
-    vec3 Dir;
-    vec3 Rad = vec3(Scale);
-    bvec3 Msk = bvec3(uvec3(Oct) & uvec3(1, 2, 4));;
+    vec3 Sgn = Sign(RayDir);
+    
+    uvec3 OctBits = uvec3(1, 2, 4);
+    
+    const uvec3 NewOctBits = uvec3(NewOct, NewOct, NewOct) & OctBits;
+    const uvec3 OldOctBits = uvec3(OldOct, OldOct, OldOct) & OctBits;
 
-    Dir.x = Msk.x ? 1.0 : -1.0;
-    Dir.y = Msk.y ? 1.0 : -1.0;
-    Dir.z = Msk.z ? 1.0 : -1.0;
+    bvec3 Inc = GreaterThan(NewOctBits, OldOctBits);
 
-    if (bool(Oct & 2))
-    {
-        Min = ParentCentre; 
-        Max = ParentCentre + (Dir * Rad);
-    }
-    else
-    {
-        Max = ParentCentre; 
-        Min = ParentCentre + (Dir * Rad);
-    }
+    if (Sgn.X <= 0 && Inc.X) return false;
+    if (Sgn.Y <= 0 && Inc.Y) return false;
+    if (Sgn.Z <= 0 && Inc.Z) return false;
 
+    return true;
 }
-
 
 uvec3 HDB(uvec3 A, uvec3 B)
 {
-    uvec3 DB = (A ^ B);
+    uvec3 Diff = A ^ B;
 
     // Find highest set bits
-    uvec3 HighestSetBits = findMSB(DB);
+    uvec3 HighestBits = FindMSB(Diff);
 
-    return HighestSetBits;
-}
-
-bvec3 IsBitSet(uvec3 A, uint Msk)
-{
-    return notEqual(A & Msk, uvec3(0));
+    return HighestBits;
 }
 
 struct st_frame
@@ -272,14 +273,14 @@ struct st_frame
     vec3 ParentCentre;
 };
 
-vec3 Raycast(in ray R)
+vec3 Raycast2(in ray R)
 {
     // Extant of the root cube
     int Scale = 1 << (ScaleExponentUniform);
     
     vec3 RootMin = vec3(0);
     vec3 RootMax = vec3(Scale);
-    vec3 Sgn = sign(R.Dir);
+    vec3 Sgn = Sign(R.Dir);
 
     // Intersection of the ray with the root cube (i.e. entire tree)
     ray_intersection CurrentIntersection = ComputeRayBoxIntersection(R, RootMin, RootMax);
@@ -311,7 +312,7 @@ vec3 Raycast(in ray R)
         // Stack of previous voxels
         st_frame Stack[64];
         Scale >>= 1;
-        Stack[Scale] = st_frame(ParentNode, CurrentDepth, Scale, CurrentIntersection.tMin, ParentCentre);
+        Stack[Scale] = { ParentNode, CurrentDepth, Scale, CurrentIntersection.tMin, ParentCentre };
 
         // Descend once into tree
         Scale >>= 1;
@@ -325,7 +326,6 @@ vec3 Raycast(in ray R)
             vec3 NodeCentre = GetNodeCentreP(CurrentOct, Scale, ParentCentre);
             vec3 NodeMin = NodeCentre - vec3(Scale);
             vec3 NodeMax = NodeCentre + vec3(Scale);
-            //GetNodeBounds(CurrentOct, Scale << 1, ParentCentre, NodeMin, NodeMax);
 
             CurrentIntersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
 
@@ -352,44 +352,30 @@ vec3 Raycast(in ray R)
                         ++CurrentDepth;
 
                         ++Sp;
-                        Stack[Scale] = st_frame(ParentNode, CurrentDepth, Scale, CurrentIntersection.tMin, ParentCentre);
+                        Stack[Scale] = { ParentNode, CurrentDepth, Scale, CurrentIntersection.tMin, ParentCentre };
 
                         continue;
                     }
                 }
 
                 // Octant not occupied, need to handle advance/pop
-                bvec3 Msk = greaterThan(Sgn, vec3(0.0));
-
-                // The test t-value should be the min if ray dir is < 0, max if >= 0
-                vec3 tTest = CurrentIntersection.tMaxV;//VSelect(CurrentIntersection.tMinV, CurrentIntersection.tMaxV, Msk);
-
+                vec3 tTest = VSelect(CurrentIntersection.tMinV, CurrentIntersection.tMaxV, Sgn);
                 uint NextOct = GetNextOctant(CurrentIntersection.tMax, tTest, CurrentOct);
-
-                if (NextOct == CurrentOct) return vec3(0.5, 0.5, 0);
-
-                RayP = R.Origin + (CurrentIntersection.tMax + 0.5) * R.Dir;
+                RayP = R.Origin + CurrentIntersection.tMax * R.Dir;
 
                 if (IsAdvanceValid(NextOct, CurrentOct, R.Dir))
                 {
                     CurrentOct = NextOct;
-                    //return Oct2Cr(CurrentOct);
                 }
                 else
                 {
-                    //return vec3(0.5, 0, 0.5);
                     uvec3 NodeCentreBits = uvec3(NodeCentre);
-                    uvec3 RayPBits = uvec3(RayP);
+                    uvec3 RayPBits = uvec3(Ceil(RayP));
 
                     uvec3 HighestDiffBits = HDB(NodeCentreBits, RayPBits);
                     int NextScale = 1 << int(MaxComponent(HighestDiffBits));
 
-                    if (NextScale == Scale) return vec3(0, 1, 0);
-
                     if (NextScale > (1 << ScaleExponentUniform)) return vec3(0, 1, 1);
-
-                    if (NextScale >= MAX_STEPS) return vec3(0);
-                    if (NextScale <= 0) return vec3(0.4);
 
                     if (NextScale > 0 && NextScale < MAX_STEPS)
                     {
@@ -403,31 +389,29 @@ vec3 Raycast(in ray R)
                     }
                     else
                     {
-                        return vec3(1, 0, 1);
+                        return vec3(0, 1, 1);
                     }
                     
                 }
             }
             else
             {
-                return vec3(1);
+                return vec3(0.12f, 0.0f, 0.0f);
             }
         }
     }
     else
     {
         // Ray doesn't hit octree --- output background colour
-        return vec3(0.12);
+        return vec3(0.12f);
     }
 
     return vec3(0, 0, 1);
 }
 
+
 bool Trace2(in ray R)
 {
-    vec3 P = R.Origin + R.Dir;
-    float D = 0.0;
-
     vec3 Min = vec3(-4);
     vec3 Max = vec3(4);
 
@@ -437,25 +421,42 @@ bool Trace2(in ray R)
     return I.tMin <= I.tMax;
 }
 
-void main()
+int main()
 {
+    vec3 Right =  vec3(-0.999962, 0.000000, 0.008727);
+    vec3 Up = vec3(-0.000457, 0.998630, -0.052334);
+    vec3 Forward = vec3(0.008715, 0.052336, 0.998592);
+    vec3 Position = vec3(16.512547, 18.147781, -86.801567);
+
+    mat3 View = {{
+        { Right.X, Right.Y, Right.Z },
+        { Up.X, Up.Y, Up.Z },
+        { -Forward.X, -Forward.Y, -Forward.Z },
+    }};
+
     // Ray XY coordinates of the screen pixels; goes from 0-512
     // in each dimension.
-    vec2 PixelCoords = ivec2(gl_GlobalInvocationID.xy);
-    vec3 ScreenOrigin = vec3(ViewPosUniform.x - 256, ViewPosUniform.y - 256, ViewPosUniform.z - 512);
+    for (int X = 0; X < 512; ++X)
+    {
+        for (int Y = 0; Y < 512; ++Y)
+        {
+            vec2 PixelCoords = { (float)Y, (float)X };
+            vec3 ScreenOrigin = vec3(ViewPosUniform.X - 256, ViewPosUniform.Y - 256, ViewPosUniform.Z - 512);
 
-	vec3 ScreenCoord = ScreenOrigin + vec3(PixelCoords, 0);
+            vec3 ScreenCoord = ScreenOrigin + vec3(PixelCoords.X, PixelCoords.Y, 0);
 
-    vec3 RayP = ViewPosUniform;
-    vec3 RayD = normalize(ScreenCoord - ViewPosUniform);
+            vec3 RayP = Position;
+            vec3 RayD = Normalize(ScreenCoord - Position);
 
-    RayD = RayD * ViewMatrixUniform;
+            RayD = RayD * View;
 
-    ray R = { RayP, RayD, 1.0 / RayD };
+            ray R = { RayP, RayD, Invert(RayD) };
 
-    vec3 OutCr = Raycast(R);
+            vec3 OutCr = Raycast2(R);
 
-    imageStore(OutputImgUniform, ivec2(PixelCoords), vec4(OutCr, 1.0));
+            OutBuffer[X][Y] = OutCr;
+        }
+    }
+
+    return 0;
 }
-)GLSL";
-

@@ -24,6 +24,30 @@ enum svo_voxel_type
     VOXEL_LEAF   = 1U
 };
 
+static void
+GetNodeBounds(u32 Oct, u32 Scale, vec3 ParentCentre, vec3* Min, vec3* Max)
+{
+    printf("SCALE %d\n", Scale);
+    vec3 Dir;
+    vec3 Rad = vec3(Scale);
+    bvec3 Msk = bvec3(uvec3(Oct) & uvec3(1, 2, 4));;
+
+    Dir.X = (Oct & 1) ? 1.0 : -1.0;
+    Dir.Y = (Oct & 2) ? 1.0 : -1.0;
+    Dir.Z = (Oct & 4) ? 1.0 : -1.0;
+
+    if (Oct & 2)
+    {
+        *Min = ParentCentre; 
+        *Max = ParentCentre + (Dir * Rad);
+    }
+    else
+    {
+        *Max = ParentCentre; 
+        *Min = ParentCentre + (Dir * Rad);
+    }
+
+}
 
 static inline void
 SetOctantOccupied(svo_oct SubOctant, svo_voxel_type Type, svo_node* OutEntry)
@@ -63,15 +87,16 @@ SetNodeChildPointer(u16 ChildPtr, bool InSameBlock, svo_node* OutParentNode)
 
 // TODO(Liam): Need a *way* more clear API here!
 static inline vec3
-GetNodeCentrePosition(svo_oct Octant, u32 Radius, vec3 ParentCentreP)
+GetNodeCentrePosition(svo_oct Octant, u32 Scale, vec3 ParentCentreP)
 {
+    u32 Rad = Scale >> 1;
     u32 Oct = (u32) Octant;
 
     f32 X = (Oct & 1U) ? 1.0f : -1.0f;
     f32 Y = (Oct & 2U) ? 1.0f : -1.0f;
     f32 Z = (Oct & 4U) ? 1.0f : -1.0f;
 
-    return ParentCentreP + (vec3(X, Y, Z) * Radius);
+    return ParentCentreP + (vec3(X, Y, Z) * Rad);
 }
 
 
@@ -109,11 +134,15 @@ AllocateNode(svo* const Tree)
 }
 
 static svo_node*
-ProcessOctant(svo* Tree, svo_oct Octant, u32 Scale, u32 Depth, intersector_fn Surface, svo_node* ContainingNode, vec3 OctantCentre)
+ProcessOctant(svo* Tree, svo_oct Octant, u32 Scale, u32 Depth, intersector_fn Surface, svo_node* ContainingNode, vec3 OctantCentre, vec3 ParentCentre)
 {
-    vec3 Radius = vec3(Scale);
+    vec3 Radius = vec3(Scale >> 1);
     vec3 OctMin = OctantCentre - Radius;
     vec3 OctMax = OctantCentre + Radius;
+
+    //vec3 OctMin, OctMax;
+    //GetNodeBounds((u32)Octant, Scale, ParentCentre, &OctMin, &OctMax);
+
 
     if (Surface(OctMin, OctMax))
     {
@@ -147,27 +176,32 @@ struct node_context
 };
 
 
+
 static void
 BuildTree(svo* Tree, intersector_fn Surface, svo_node* Root)
 {
     std::queue<node_context> Queue;
 
-    u32 RootScale = 1 << Tree->ScaleExponent;
-    node_context RootContext = { Root, OCT_C000, 0, RootScale, vec3(0, 0, 0) };
+    u32 RootScale = 1 << (Tree->ScaleExponent);
+    vec3 RootCentre = vec3(RootScale >> 1);
+
+    node_context RootContext = { Root, OCT_C000, 0, RootScale, RootCentre };
     Queue.push(RootContext);
 
     while (false == Queue.empty())
     {
         node_context CurrentContext = Queue.front();
 
-        //printf("\nBEGIN L(%d)\n", CurrentContext.Depth);
+        printf("\nBEGIN L(%d)\n", CurrentContext.Depth);
 
         u32 Scale = CurrentContext.Scale >> 1;
+
+        //printf("SCALE %u   CTR (%f %f %f)\n", Scale, CurrentContext.Centre.X, CurrentContext.Centre.Y, CurrentContext.Centre.Z);
         for (u32 Oct = 0; Oct < 8; ++Oct)
         {
             vec3 OctantCentre = GetNodeCentrePosition((svo_oct) Oct, Scale, CurrentContext.Centre);
 
-            svo_node* MaybeChild = ProcessOctant(Tree, (svo_oct) Oct, Scale, CurrentContext.Depth, Surface, CurrentContext.Node, OctantCentre);
+            svo_node* MaybeChild = ProcessOctant(Tree, (svo_oct) Oct, Scale, CurrentContext.Depth, Surface, CurrentContext.Node, OctantCentre, CurrentContext.Centre);
 
             // Check if octant needs to be subdivided
             if (MaybeChild && CurrentContext.Depth < Tree->MaxDepth - 1)
@@ -193,47 +227,6 @@ BuildTree(svo* Tree, intersector_fn Surface, svo_node* Root)
         Queue.pop();
     }
 }
-
-
-#if 0
-static void
-InsertNode(svo* Tree, intersector_fn Surface, u32 Depth, svo_oct Octant, svo_node* ParentNode, vec3 ParentCentreP)
-{
-    u32 Scale = 1 << (Tree->MaxDepth - Depth);
-
-    if (Scale > 0 && Depth <= Tree->MaxDepth)
-    {
-        vec3 Radius = vec3(Scale);
-
-        vec3 NodeCentreP = GetNodeCentrePosition(Octant, Scale, ParentCentreP);
-        vec3 NodeMinP = NodeCentreP - Radius;
-        vec3 NodeMaxP = NodeCentreP + Radius;
-
-        // Test the surface for this octant
-        if (Surface(NodeMinP, NodeMaxP))
-        {
-            // Set this octant occupied
-            SetOctantOccupied(Octant, VOXEL_PARENT, ParentNode);
-
-            // Allocate a new "sub-parent"
-            svo_node* Child = AllocateNode(Tree);
-
-            for (u32 ChildOctant = 0; ChildOctant < 8; ++ChildOctant)
-            {
-                InsertNode(Tree, Surface, Depth + 1, (svo_oct) ChildOctant, Child, NodeCentreP);
-            }
-        }
-        else
-        {
-            SetOctantOccupied(Octant, VOXEL_LEAF, ParentNode);
-        }
-    }
-    else
-    {
-        SetOctantOccupied(Octant, VOXEL_LEAF, ParentNode);
-    }
-}
-#endif
 
 
 

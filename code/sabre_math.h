@@ -15,6 +15,7 @@
 
 #define V3(X, Y, Z) { (float)(X), (float)(Y), (float)(Z) }
 
+
 #if defined(__LLVM__) || defined(_MSC_VER)
   #define vcall __vectorcall
 #endif
@@ -23,6 +24,19 @@
   #define inline __attribute__((always_inline))
   #define aligned(N) __attribute__((aligned(N)))
 #endif
+
+
+struct bvec3
+{
+    bool X;
+    bool Y;
+    bool Z;
+};
+
+struct mat3
+{
+    float M[3][3];
+};
 
 
 
@@ -53,6 +67,22 @@ struct vec3
         Y = (float) Uniform;
         Z = (float) Uniform;
     }
+
+    inline explicit
+    vec3(float Uniform)
+    {
+        X = Uniform;
+        Y = Uniform;
+        Z = Uniform;
+    }
+
+    inline
+    vec3(const vec3& Copy)
+    {
+        X = Copy.X;
+        Y = Copy.Y;
+        Z = Copy.Z;
+    }
 };
 
 struct uvec3
@@ -71,6 +101,30 @@ struct uvec3
         Z = InZ;
     }
 
+    inline explicit
+    uvec3(bvec3 B)
+    {
+        X = (u32)B.X;
+        Y = (u32)B.Y;
+        Z = (u32)B.Z;
+    }
+
+    inline explicit
+    uvec3(vec3 V)
+    {
+        X = (u32)V.X;
+        Y = (u32)V.Y;
+        Z = (u32)V.Z;
+    }
+
+    inline explicit
+    uvec3(u32 Uniform)
+    {
+        X = Uniform;
+        Y = Uniform;
+        Z = Uniform;
+    }
+
     inline 
     operator vec3()
     {
@@ -82,7 +136,157 @@ struct uvec3
 
         return Result;
     }
+
+    inline
+    operator bvec3()
+    {
+        bvec3 Result;
+        
+        Result.X = (X != 0);
+        Result.Y = (Y != 0);
+        Result.Z = (Z != 0);
+
+        return Result;
+    }
 };
+
+
+static inline u32
+Dot(uvec3 A, uvec3 B)
+{
+    return A.X*B.X + A.Y*B.Y + A.Z*B.Z;
+}
+
+
+static inline vec3
+Invert(vec3 V)
+{
+    vec3 Out = vec3(0.0f);
+
+    if (V.X != 0.0f) Out.X = 1.0f / V.X;
+    if (V.Y != 0.0f) Out.Y = 1.0f / V.Y;
+    if (V.Z != 0.0f) Out.Z = 1.0f / V.Z;
+
+    return Out;
+}
+
+
+static inline float
+Min(float A, float B)
+{
+    return (A > B) ? B : A;
+}
+
+static inline float
+Max(float A, float B)
+{
+    return (A > B) ? A : B;
+}
+
+
+static inline vec3
+Min(vec3 A, vec3 B)
+{
+    vec3 Out;
+
+    Out.X = Min(A.X, B.X);
+    Out.Y = Min(A.Y, B.Y);
+    Out.Z = Min(A.Z, B.Z);
+
+    return Out;
+}
+
+static inline vec3
+Max(vec3 A, vec3 B)
+{
+    vec3 Out;
+
+    Out.X = Max(A.X, B.X);
+    Out.Y = Max(A.Y, B.Y);
+    Out.Z = Max(A.Z, B.Z);
+
+    return Out;
+}
+
+static inline bvec3
+GreaterThan(vec3 A, vec3 B)
+{
+    bvec3 Out;
+
+    Out.X = A.X > B.X;
+    Out.Y = A.Y > B.Y;
+    Out.Z = A.Z > B.Z;
+
+    return Out;
+}
+
+static inline bvec3
+GreaterThan(uvec3 A, uvec3 B)
+{
+    bvec3 Out;
+
+    Out.X = A.X > B.X;
+    Out.Y = A.Y > B.Y;
+    Out.Z = A.Z > B.Z;
+
+    return Out;
+}
+
+static inline bvec3
+GreaterThanEqual(uvec3 A, uvec3 B)
+{
+    bvec3 Out;
+
+    Out.X = A.X >= B.X;
+    Out.Y = A.Y >= B.Y;
+    Out.Z = A.Z >= B.Z;
+
+    return Out;
+}
+
+static inline bvec3
+LessThan(vec3 A, vec3 B)
+{
+    bvec3 Out;
+
+    Out.X = A.X < B.X;
+    Out.Y = A.Y < B.Y;
+    Out.Z = A.Z < B.Z;
+
+    return Out;
+}
+
+static inline bvec3
+Equals(vec3 A, vec3 B)
+{
+    bvec3 Out;
+
+    Out.X = A.X == B.X;
+    Out.Y = A.Y == B.Y;
+    Out.Z = A.Z == B.Z;
+
+    return Out;
+}
+
+static inline float
+Sign(float V)
+{
+    if (V > 0) return 1.0f;
+    if (V < 0) return -1.0f;
+    else       return 0.0f;
+}
+
+static inline vec3
+Sign(vec3 V)
+{
+    vec3 Out;
+
+    Out.X = Sign(V.X);
+    Out.Y = Sign(V.Y);
+    Out.Z = Sign(V.Z);
+
+    return Out;
+}
 
 inline vec3 
 operator+(vec3 L, vec3 R)
@@ -138,11 +342,6 @@ operator<(vec3 L, vec3 R)
     return (L.X < R.X) && (L.Y < R.Y) && (L.Z < R.Z);
 }
 
-inline bool
-operator>(vec3 L, vec3 R)
-{
-    return (L.X > R.X) && (L.Y > R.Y) && (L.Z > R.Z);
-}
 
 inline vec3 
 operator-(vec3 A)
@@ -240,6 +439,19 @@ Length(vec3 V)
     return sqrtf(V.X*V.X + V.Y*V.Y + V.Z*V.Z);
 }
 
+static inline float
+MaxComponent(vec3 V)
+{
+    return Max(Max(V.X, V.Y), V.Z);
+}
+
+static inline float
+MinComponent(vec3 V)
+{
+    return Min(Min(V.X, V.Y), V.Z);
+}
+
+
 // }}}
 
 // {{{ Matrices
@@ -311,6 +523,18 @@ Translate3D(m4x4* Matrix, const vec3 Translation)
     Matrix->M[2][3] = Translation.Z;
 }
 
+static inline vec3
+operator*(vec3 V, mat3 M)
+{
+    vec3 Out;
+
+    Out.X = V.X*M.M[0][0] + V.Y*M.M[1][0] + V.Z*M.M[2][0];
+    Out.Y = V.X*M.M[0][1] + V.Y*M.M[1][1] + V.Z*M.M[2][1];
+    Out.Z = V.X*M.M[0][2] + V.Y*M.M[1][2] + V.Z*M.M[2][2];
+
+    return Out;
+}
+
 
 // NOTE: The projection is specified to be in the NEGATIVE z direction.
 // 'CotHalfFov' means '1.0 / tan(Fov/2)'
@@ -371,6 +595,66 @@ operator+(uvec3 Left, uvec3 Right)
     Result.X = Left.X + Right.X;
     Result.Y = Left.Y + Right.Y;
     Result.Z = Left.Z + Right.Z;
+
+    return Result;
+}
+
+inline uvec3
+operator^(uvec3 L, uvec3 R)
+{
+    uvec3 Result;
+
+    Result.X = L.X ^ R.X;
+    Result.Y = L.Y ^ R.Y;
+    Result.Z = L.Z ^ R.Z;
+
+    return Result;
+}
+
+inline uvec3
+operator&(uvec3 L, uvec3 R)
+{
+    uvec3 Result;
+
+    Result.X = L.X & R.X;
+    Result.Y = L.Y & R.Y;
+    Result.Z = L.Z & R.Z;
+
+    return Result;
+}
+
+inline uvec3
+operator>>(uvec3 L, uvec3 R)
+{
+    uvec3 Result;
+
+    Result.X = L.X >> R.X;
+    Result.Y = L.Y >> R.Y;
+    Result.Z = L.Z >> R.Z;
+
+    return Result;
+}
+
+inline uvec3
+operator&(uvec3 L, uint Scalar)
+{
+    uvec3 Result;
+
+    Result.X = L.X & Scalar;
+    Result.Y = L.Y & Scalar;
+    Result.Z = L.Z & Scalar;
+
+    return Result;
+}
+
+inline uvec3
+operator<<(uvec3 L, uvec3 R)
+{
+    uvec3 Result;
+
+    Result.X = L.X << R.X;
+    Result.Y = L.Y << R.Y;
+    Result.Z = L.Z << R.Z;
 
     return Result;
 }
