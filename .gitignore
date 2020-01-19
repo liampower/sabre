@@ -1,9 +1,13 @@
 *.o
+*.obj
 *.pdb
 *.exe
 *.ilk
+*.exp
+sabre.lib
 tags
 .vs/
+data/
 code/data.h
 .ninja_deps
 .ninja_log

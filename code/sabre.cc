@@ -11,7 +11,8 @@
 #include "sabre_svo.h"
 #include "sabre_data.h"
 
-#define SABRE_MAX_TREE_DEPTH 2
+#define SABRE_MAX_TREE_DEPTH 3
+#define SABRE_SCALE_EXPONENT 5
 #define SABRE_WORK_SIZE_X 512
 #define SABRE_WORK_SIZE_Y 512
 
@@ -22,6 +23,12 @@ typedef GLint  gl_int;
 static constexpr u32 DisplayWidth = 512;
 static constexpr u32 DisplayHeight = 512;
 static constexpr const char* const DisplayTitle = "Sabre";
+
+
+// NOTE: Forces use of nVidia GPU on hybrid graphics systems.
+extern "C" {
+    _declspec(dllexport) int NvOptimusEnablement = 0x00000001;
+}
 
 static const f32 ScreenQuadVerts[12] = {
     -1.0f, -1.0f,
@@ -64,10 +71,20 @@ Squared(f32 X)
     return X*X;
 }
 
+
+static inline void
+OutputGraphicsDeviceInfo(void)
+{
+    printf("Graphics Vendor: %s\n", glGetString(GL_VENDOR));
+    printf("Graphics Renderer: %s\n", glGetString(GL_RENDERER));
+}
+
+// NOTE(Liam): Warning! Does not work if Min,Max are not the **actual** (dimension-wise) min and
+// max corners.
 static inline bool
 CubeSphereIntersection(vec3 Min, vec3 Max)
 {
-    const vec3 S = vec3(0, 0, 0);
+    const vec3 S = vec3(16, 16, 16);
     const f32 R = 16.0f;
 
     f32 DistanceSqToCube = R * R;
@@ -86,7 +103,8 @@ CubeSphereIntersection(vec3 Min, vec3 Max)
 
     if (DistanceSqToCube > 0)
     {
-        //printf("        TRUE\n");
+        printf("MIN (%f, %f, %f), MAX (%f, %f, %f)", Min.X, Min.Y, Min.Z, Max.X, Max.Y, Max.Z);
+        printf("        TRUE\n");
         return true;
     }
     else
@@ -254,6 +272,7 @@ UploadOctreeBlockData(const svo* const Svo)
 extern int
 main(int ArgCount, const char** const Args)
 {
+
     if (GLFW_FALSE == glfwInit())
     {
         fprintf(stderr, "Failed to initialise GLFW\n");
@@ -279,6 +298,8 @@ main(int ArgCount, const char** const Args)
         glfwTerminate();
         return EXIT_FAILURE;
     }
+
+    OutputGraphicsDeviceInfo();
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_DEPTH_CLAMP);
@@ -311,7 +332,7 @@ main(int ArgCount, const char** const Args)
         return EXIT_FAILURE;
     }
 
-    svo* WorldSvo = BuildSparseVoxelOctree(5, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
+    svo* WorldSvo = BuildSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
     gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
 
     if (0 == SvoShaderBuffer)
@@ -370,7 +391,7 @@ main(int ArgCount, const char** const Args)
     Cam.Forward = vec3(0, 0, -1);
     Cam.Right = vec3(1, 0, 0);
     Cam.Up = vec3(0, 1, 0);
-    Cam.Position = vec3(0, 0, -4);
+    Cam.Position = vec3(4, 4, 96);
     Cam.Velocity = 2.4f;
 
     const vec3 WorldYAxis = vec3(0, 1, 0);
@@ -421,6 +442,14 @@ main(int ArgCount, const char** const Args)
             Cam.Position -= Cam.Velocity * Cam.Up;
         }
 
+        if (glfwGetKey(Window, GLFW_KEY_Y))
+        {
+            printf("Right: (%f, %f, %f)\n", Cam.Right.X, Cam.Right.Y, Cam.Right.Z);
+            printf("Up: (%f, %f, %f)\n", Cam.Up.X, Cam.Up.Y, Cam.Up.Z);
+            printf("Forward: (%f, %f, %f)\n", Cam.Forward.X, Cam.Forward.Y, Cam.Forward.Z);
+            printf("Position: (%f, %f, %f)\n", Cam.Position.X, Cam.Position.Y, Cam.Position.Z);
+        }
+
         { // NOTE: Mouse look
             Cam.Right = Normalize(Cross(Cam.Forward, WorldYAxis));
             Cam.Up = Normalize(Cross(Cam.Right, Cam.Forward));
@@ -446,7 +475,7 @@ main(int ArgCount, const char** const Args)
         f32 CameraMatrix[3][3] = {
             { Cam.Right.X, Cam.Right.Y, Cam.Right.Z },
             { Cam.Up.X, Cam.Up.Y, Cam.Up.Z },
-            { Cam.Forward.X, Cam.Forward.Y, Cam.Forward.Z },
+            { -Cam.Forward.X, -Cam.Forward.Y, -Cam.Forward.Z },
         };
 
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoShaderBuffer);
