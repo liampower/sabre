@@ -195,7 +195,7 @@ bool IsOctantLeaf(in uint Node, in uint Oct)
     return (Node & (1 << Oct)) != 0;
 }
 
-vec3 GetNodeCentreP(in uint Oct, in uint Radius, in vec3 ParentP)
+vec3 GetNodeCentreP(in uint Oct, in uint Scale, in vec3 ParentP)
 {
     // TODO(Liam): We can actually use a bitwise AND op on uvec3s
     // so we don't have to work on scalars.
@@ -214,7 +214,9 @@ vec3 GetNodeCentreP(in uint Oct, in uint Radius, in vec3 ParentP)
     if (0 == (Oct & 2)) Y = -1.0;
     if (0 == (Oct & 4)) Z = -1.0;
 
-    return ParentP + (vec3(X, Y, Z) * float(Radius));
+    uint Radius = (Scale >> 1);
+
+    return ParentP + (vec3(X, Y, Z) * Radius);
 }
 
 vec3 Oct2Cr(in uint Oct)
@@ -282,9 +284,6 @@ vec3 Raycast(in ray R)
         st_frame Stack[65];
         Scale >>= 1;
         Stack[Scale] = st_frame(ParentNode, CurrentDepth, Scale, CurrentIntersection.tMin, ParentCentre);
-
-        // Descend once into tree
-        Scale >>= 1;
 
         // Begin stepping along the ray
         for (Step = 0; Step < MAX_STEPS; ++Step)
@@ -358,7 +357,6 @@ vec3 Raycast(in ray R)
                         ParentNode = Stack[Sp].Node;
 
                         CurrentOct = GetOctant(RayP, ParentCentre);
-                        if (ParentCentre.x == 24.0) return vec3(1, 0, 0);
                     }
                     else
                     {
