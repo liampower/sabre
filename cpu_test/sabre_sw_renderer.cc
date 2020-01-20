@@ -285,7 +285,7 @@ bool IsOctantLeaf(in uint Node, in uint Oct)
     return (Node & (1 << Oct)) != 0;
 }
 
-vec3 GetNodeCentreP(in uint Oct, in uint Radius, in vec3 ParentP)
+vec3 GetNodeCentreP(in uint Oct, in uint Scale, in vec3 ParentP)
 {
     // TODO(Liam): We can actually use a bitwise AND op on uvec3s
     // so we don't have to work on scalars.
@@ -303,6 +303,8 @@ vec3 GetNodeCentreP(in uint Oct, in uint Radius, in vec3 ParentP)
     if (0 == (Oct & 1)) X = -1.0;
     if (0 == (Oct & 2)) Y = -1.0;
     if (0 == (Oct & 4)) Z = -1.0;
+
+    uint Radius = Scale >> 1;
 
     return ParentP + (vec3(X, Y, Z) * Radius);
 }
@@ -367,6 +369,8 @@ vec3 Raycast2(in ray R)
 
     int Step;
 
+    vec3 P = GetNodeCentreP(0, 16, vec3(16));
+
     // Check if the ray is within the octree at all
     if (CurrentIntersection.tMin <= CurrentIntersection.tMax && CurrentIntersection.tMax > 0)
     {
@@ -390,12 +394,9 @@ vec3 Raycast2(in ray R)
         int CurrentDepth = 1;
 
         // Stack of previous voxels
-        st_frame Stack[65] = { 0  };
+        st_frame Stack[65] = { 0 };
         Scale >>= 1;
-        Stack[Scale] = { ParentNode, CurrentDepth, Scale, CurrentIntersection.tMin, ParentCentre };
-
-        // Descend once into tree
-        Scale >>= 1;
+        Stack[CurrentDepth] = { ParentNode, CurrentDepth, Scale, CurrentIntersection.tMin, ParentCentre };
 
         // Begin stepping along the ray
         for (Step = 0; Step < MAX_STEPS; ++Step)
@@ -431,8 +432,7 @@ vec3 Raycast2(in ray R)
                         Scale >>= 1;
                         ++CurrentDepth;
 
-                        ++Sp;
-                        Stack[Scale] = { ParentNode, CurrentDepth, Scale, CurrentIntersection.tMin, ParentCentre };
+                        Stack[CurrentDepth] = { ParentNode, CurrentDepth, Scale, CurrentIntersection.tMin, ParentCentre };
 
                         continue;
                     }
@@ -456,15 +456,15 @@ vec3 Raycast2(in ray R)
 
                     uvec3 HighestDiffBits = HDB(NodeCentreBits, RayPBits);
                     int NextScale = 1 << int(MaxComponent(HighestDiffBits));
+                    uint NextDepth = uint(MaxComponent(HighestDiffBits));
 
                     if (NextScale == Scale) return vec3(1, 0, 0);
                     if (NextScale >= 0 && NextScale < MAX_STEPS)
                     {
-                        Sp = NextScale;
-                        CurrentDepth = Stack[Sp].Depth;
-                        Scale = Stack[Sp].Scale >> 1;
-                        ParentCentre = Stack[Sp].ParentCentre;
-                        ParentNode = Stack[Sp].Node;
+                        CurrentDepth = ScaleExponentUniform - NextDepth;
+                        Scale = Stack[CurrentDepth].Scale >> 1;
+                        ParentCentre = Stack[CurrentDepth].ParentCentre;
+                        ParentNode = Stack[CurrentDepth].Node;
 
                         CurrentOct = GetOctant(RayP, ParentCentre);
                     }

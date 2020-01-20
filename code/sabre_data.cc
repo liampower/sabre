@@ -281,7 +281,7 @@ vec3 Raycast(in ray R)
         int CurrentDepth = 1;
 
         // Stack of previous voxels
-        st_frame Stack[65];
+        st_frame Stack[MAX_STEPS + 1];
         Scale >>= 1;
         Stack[Scale] = st_frame(ParentNode, CurrentDepth, Scale, CurrentIntersection.tMin, ParentCentre);
 
@@ -345,14 +345,11 @@ vec3 Raycast(in ray R)
                     uvec3 HighestDiffBits = HDB(NodeCentreBits, RayPBits);
                     uint NextScale = 1 << uint(MaxComponent(HighestDiffBits));
 
-                    if (NextScale == Scale) return vec3(1, 0, 0);
-                    if (NextScale > MAX_STEPS) return vec3(0, 0, 1);
-
                     if (NextScale >= 0 && NextScale < MAX_STEPS)
                     {
                         Sp = NextScale;
                         CurrentDepth = Stack[Sp].Depth;
-                        Scale = Stack[Sp].Scale >> 1;
+                        Scale = Stack[Sp].Scale;
                         ParentCentre = Stack[Sp].ParentCentre;
                         ParentNode = Stack[Sp].Node;
 
