@@ -57,7 +57,7 @@ struct ray_intersection
 
 //layout (rgba32f, binding = 0) uniform image2D OutputImgUniform;
 
-static uint MaxDepthUniform = 2;
+static uint MaxDepthUniform = 4;
 static uint BlockCountUniform = 1;
 static uint ScaleExponentUniform = 5;
 
@@ -67,9 +67,10 @@ static mat3 ViewMatrixUniform;
 
 struct svo_input
 {
-    uint Nodes[9];
+    uint Nodes[];
 };
 
+#if 0
 static svo_input SvoInputBuffer = {
     {
         130816,
@@ -81,6 +82,85 @@ static svo_input SvoInputBuffer = {
         1028,
         514,
         257,
+    }
+};
+#endif
+
+static svo_input SvoInputBuffer = {
+    {
+130816,
+655104,
+1179392,
+1703680,
+2227968,
+2752256,
+3276544,
+3800832,
+4325120,
+32896,
+64764,
+64250,
+65535,
+61166,
+65535,
+65535,
+65535,
+64764,
+16448,
+65535,
+62965,
+65535,
+56797,
+65535,
+65535,
+64250,
+65535,
+8224,
+62451,
+65535,
+65535,
+48059,
+65535,
+65535,
+62965,
+62451,
+4112,
+65535,
+65535,
+65535,
+30583,
+61166,
+65535,
+65535,
+65535,
+2056,
+53199,
+44975,
+65535,
+65535,
+56797,
+65535,
+65535,
+53199,
+1028,
+65535,
+24415,
+65535,
+65535,
+48059,
+65535,
+44975,
+65535,
+514,
+16191,
+65535,
+65535,
+65535,
+30583,
+65535,
+24415,
+16191,
+257,
     }
 };
 
@@ -310,7 +390,7 @@ vec3 Raycast2(in ray R)
         int CurrentDepth = 1;
 
         // Stack of previous voxels
-        st_frame Stack[64];
+        st_frame Stack[65] = { 0  };
         Scale >>= 1;
         Stack[Scale] = { ParentNode, CurrentDepth, Scale, CurrentIntersection.tMin, ParentCentre };
 
@@ -340,7 +420,7 @@ vec3 Raycast2(in ray R)
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
                         // Done - return leaf colour
-                        return vec3(1, 0, 0);
+                        return vec3(0.4, 0, 0.3);
                     }
                     else
                     {
@@ -359,9 +439,11 @@ vec3 Raycast2(in ray R)
                 }
 
                 // Octant not occupied, need to handle advance/pop
-                vec3 tTest = VSelect(CurrentIntersection.tMinV, CurrentIntersection.tMaxV, Sgn);
-                uint NextOct = GetNextOctant(CurrentIntersection.tMax, tTest, CurrentOct);
-                RayP = R.Origin + CurrentIntersection.tMax * R.Dir;
+                uint NextOct = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
+
+                if (NextOct == CurrentOct) return vec3(0.5, 0.5, 0);
+
+                RayP = R.Origin + (CurrentIntersection.tMax + 0.04) * R.Dir;
 
                 if (IsAdvanceValid(NextOct, CurrentOct, R.Dir))
                 {
@@ -370,14 +452,13 @@ vec3 Raycast2(in ray R)
                 else
                 {
                     uvec3 NodeCentreBits = uvec3(NodeCentre);
-                    uvec3 RayPBits = uvec3(Ceil(RayP));
+                    uvec3 RayPBits = uvec3(RayP);
 
                     uvec3 HighestDiffBits = HDB(NodeCentreBits, RayPBits);
                     int NextScale = 1 << int(MaxComponent(HighestDiffBits));
 
-                    if (NextScale > (1 << ScaleExponentUniform)) return vec3(0, 1, 1);
-
-                    if (NextScale > 0 && NextScale < MAX_STEPS)
+                    if (NextScale == Scale) return vec3(1, 0, 0);
+                    if (NextScale >= 0 && NextScale < MAX_STEPS)
                     {
                         Sp = NextScale;
                         CurrentDepth = Stack[Sp].Depth;
@@ -389,14 +470,14 @@ vec3 Raycast2(in ray R)
                     }
                     else
                     {
-                        return vec3(0, 1, 1);
+                        return vec3(1, 0, 1);
                     }
                     
                 }
             }
             else
             {
-                return vec3(0.12f, 0.0f, 0.0f);
+                return vec3(1);
             }
         }
     }
@@ -423,10 +504,10 @@ bool Trace2(in ray R)
 
 int main()
 {
-    vec3 Right =  vec3(-0.999962, 0.000000, 0.008727);
-    vec3 Up = vec3(-0.000457, 0.998630, -0.052334);
-    vec3 Forward = vec3(0.008715, 0.052336, 0.998592);
-    vec3 Position = vec3(16.512547, 18.147781, -86.801567);
+    vec3 Right =  vec3(0.768842, -0.000000, 0.639439);
+    vec3 Up = vec3(0.229154, 0.933580, -0.275528);
+    vec3 Forward = vec3(0.596968, -0.358368, -0.717776);
+    vec3 Position = vec3(-40.042274, 53.898918, 70.908836);
 
     mat3 View = {{
         { Right.X, Right.Y, Right.Z },

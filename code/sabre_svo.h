@@ -5,21 +5,7 @@ constexpr u32 SVO_ENTRIES_PER_BLOCK = 4096;
 
 typedef bool (*intersector_fn)(vec3, vec3);
 
-#if 0
-union alignas(4) svo_node
-{
-    struct
-    {
-        u8  LeafMask;
-        u8  OccupiedMask;
-        u16 ChildPtr;
-    };
-
-    u32 Packed;
-};
-#endif
-
-struct svo_node
+struct alignas(4) svo_node
 {
     u8  LeafMask;
     u8  OccupiedMask;

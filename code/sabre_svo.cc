@@ -192,7 +192,7 @@ BuildTree(svo* Tree, intersector_fn Surface, svo_node* Root)
     {
         node_context CurrentContext = Queue.front();
 
-        printf("\nBEGIN L(%d)\n", CurrentContext.Depth);
+        //printf("\nBEGIN L(%d)\n", CurrentContext.Depth);
 
         u32 Scale = CurrentContext.Scale >> 1;
 

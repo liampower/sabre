@@ -103,8 +103,8 @@ CubeSphereIntersection(vec3 Min, vec3 Max)
 
     if (DistanceSqToCube > 0)
     {
-        printf("MIN (%f, %f, %f), MAX (%f, %f, %f)", Min.X, Min.Y, Min.Z, Max.X, Max.Y, Max.Z);
-        printf("        TRUE\n");
+        //printf("MIN (%f, %f, %f), MAX (%f, %f, %f)", Min.X, Min.Y, Min.Z, Max.X, Max.Y, Max.Z);
+        //printf("        TRUE\n");
         return true;
     }
     else

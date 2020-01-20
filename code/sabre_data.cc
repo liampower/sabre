@@ -178,7 +178,6 @@ uint GetNextOctant(in float tMax, in vec3 tValues, in uint CurrentOct)
 
 uint GetOctant(in vec3 P, in vec3 ParentCentreP)
 {
-    const uvec3 OctBits = uvec3(1, 2, 4);
     uvec3 G = uvec3(greaterThan(P, ParentCentreP));
 
     // TODO(Liam): Can use a DP here 
@@ -224,30 +223,6 @@ vec3 Oct2Cr(in uint Oct)
 }
 
 
-void GetNodeBounds(in uint Oct, in uint Scale, in vec3 ParentCentre, out vec3 Min, out vec3 Max)
-{
-    vec3 Dir;
-    vec3 Rad = vec3(Scale);
-    bvec3 Msk = bvec3(uvec3(Oct) & uvec3(1, 2, 4));;
-
-    Dir.x = Msk.x ? 1.0 : -1.0;
-    Dir.y = Msk.y ? 1.0 : -1.0;
-    Dir.z = Msk.z ? 1.0 : -1.0;
-
-    if (bool(Oct & 2))
-    {
-        Min = ParentCentre; 
-        Max = ParentCentre + (Dir * Rad);
-    }
-    else
-    {
-        Max = ParentCentre; 
-        Min = ParentCentre + (Dir * Rad);
-    }
-
-}
-
-
 uvec3 HDB(uvec3 A, uvec3 B)
 {
     uvec3 DB = (A ^ B);
@@ -256,11 +231,6 @@ uvec3 HDB(uvec3 A, uvec3 B)
     uvec3 HighestSetBits = findMSB(DB);
 
     return HighestSetBits;
-}
-
-bvec3 IsBitSet(uvec3 A, uint Msk)
-{
-    return notEqual(A & Msk, uvec3(0));
 }
 
 struct st_frame
@@ -309,7 +279,7 @@ vec3 Raycast(in ray R)
         int CurrentDepth = 1;
 
         // Stack of previous voxels
-        st_frame Stack[64];
+        st_frame Stack[65];
         Scale >>= 1;
         Stack[Scale] = st_frame(ParentNode, CurrentDepth, Scale, CurrentIntersection.tMin, ParentCentre);
 
@@ -325,7 +295,6 @@ vec3 Raycast(in ray R)
             vec3 NodeCentre = GetNodeCentreP(CurrentOct, Scale, ParentCentre);
             vec3 NodeMin = NodeCentre - vec3(Scale);
             vec3 NodeMax = NodeCentre + vec3(Scale);
-            //GetNodeBounds(CurrentOct, Scale << 1, ParentCentre, NodeMin, NodeMax);
 
             CurrentIntersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
 
@@ -340,7 +309,7 @@ vec3 Raycast(in ray R)
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
                         // Done - return leaf colour
-                        return vec3(1, 0, 0);
+                        return vec3(0.4, 0, 0.3);
                     }
                     else
                     {
@@ -359,12 +328,7 @@ vec3 Raycast(in ray R)
                 }
 
                 // Octant not occupied, need to handle advance/pop
-                bvec3 Msk = greaterThan(Sgn, vec3(0.0));
-
-                // The test t-value should be the min if ray dir is < 0, max if >= 0
-                vec3 tTest = CurrentIntersection.tMaxV;//VSelect(CurrentIntersection.tMinV, CurrentIntersection.tMaxV, Msk);
-
-                uint NextOct = GetNextOctant(CurrentIntersection.tMax, tTest, CurrentOct);
+                uint NextOct = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
 
                 if (NextOct == CurrentOct) return vec3(0.5, 0.5, 0);
 
@@ -373,25 +337,19 @@ vec3 Raycast(in ray R)
                 if (IsAdvanceValid(NextOct, CurrentOct, R.Dir))
                 {
                     CurrentOct = NextOct;
-                    //return Oct2Cr(CurrentOct);
                 }
                 else
                 {
-                    //return vec3(0.5, 0, 0.5);
                     uvec3 NodeCentreBits = uvec3(NodeCentre);
                     uvec3 RayPBits = uvec3(RayP);
 
                     uvec3 HighestDiffBits = HDB(NodeCentreBits, RayPBits);
-                    int NextScale = 1 << int(MaxComponent(HighestDiffBits));
+                    uint NextScale = 1 << uint(MaxComponent(HighestDiffBits));
 
-                    if (NextScale == Scale) return vec3(0, 1, 0);
+                    if (NextScale == Scale) return vec3(1, 0, 0);
+                    if (NextScale > MAX_STEPS) return vec3(0, 0, 1);
 
-                    if (NextScale > (1 << ScaleExponentUniform)) return vec3(0, 1, 1);
-
-                    if (NextScale >= MAX_STEPS) return vec3(0);
-                    if (NextScale <= 0) return vec3(0.4);
-
-                    if (NextScale > 0 && NextScale < MAX_STEPS)
+                    if (NextScale >= 0 && NextScale < MAX_STEPS)
                     {
                         Sp = NextScale;
                         CurrentDepth = Stack[Sp].Depth;
@@ -400,6 +358,7 @@ vec3 Raycast(in ray R)
                         ParentNode = Stack[Sp].Node;
 
                         CurrentOct = GetOctant(RayP, ParentCentre);
+                        if (ParentCentre.x == 24.0) return vec3(1, 0, 0);
                     }
                     else
                     {
@@ -410,7 +369,7 @@ vec3 Raycast(in ray R)
             }
             else
             {
-                return vec3(1);
+                return vec3(0.5, 0.2, 0.6);
             }
         }
     }
@@ -425,9 +384,6 @@ vec3 Raycast(in ray R)
 
 bool Trace2(in ray R)
 {
-    vec3 P = R.Origin + R.Dir;
-    float D = 0.0;
-
     vec3 Min = vec3(-4);
     vec3 Max = vec3(4);
 
