@@ -305,7 +305,9 @@ vec3 Raycast(in ray R)
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
                         // Done - return leaf colour
-                        return vec3(0.4, 0, 0.3);
+                        vec3 N = normalize(R.Origin - vec3(16));
+                        float L = float(CurrentOct) / 7.0;
+                        return L * vec3(0.4, 0, 0.3);
                     }
                     else
                     {
@@ -325,7 +327,7 @@ vec3 Raycast(in ray R)
                 // Octant not occupied, need to handle advance/pop
                 uint NextOct = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
 
-                if (NextOct == CurrentOct) return vec3(0.5, 0.5, 0);
+                if (NextOct == CurrentOct) return vec3(0.5, 0.5, 0.6);
 
                 RayP = R.Origin + (CurrentIntersection.tMax + 1) * R.Dir;
 
@@ -335,15 +337,20 @@ vec3 Raycast(in ray R)
                 }
                 else
                 {
-                    if (any(lessThanEqual(RayP, vec3(0)))) return vec3(0, 1, 1);
+                    if (any(lessThanEqual(RayP, vec3(0)))) return vec3(0, 1, 0);
 
                     uvec3 NodeCentreBits = uvec3(NodeCentre);
-                    uvec3 RayPBits = uvec3(ceil(RayP));
+                    uvec3 RayPBits = uvec3(RayP);
 
                     uvec3 HighestDiffBits = HDB(NodeCentreBits, RayPBits);
-                    uint M = uint(MaxComponent(HighestDiffBits));
+                    uint M = 0;
+                    if (HighestDiffBits.x > M && HighestDiffBits.x <= ScaleExponentUniform) M = HighestDiffBits.x; //= uint(MaxComponent(HighestDiffBits));
+                    if (HighestDiffBits.y > M && HighestDiffBits.y <= ScaleExponentUniform) M = HighestDiffBits.y;
+                    if (HighestDiffBits.z > M && HighestDiffBits.z <= ScaleExponentUniform) M = HighestDiffBits.z;
+
                     uint NextDepth = (ScaleExponentUniform - M);
 
+                    if (M > ScaleExponentUniform) return vec3(1, 1, 0);
                     if (NextDepth >= 0 && NextDepth <= MAX_STEPS)
                     {
                         CurrentDepth = NextDepth;
