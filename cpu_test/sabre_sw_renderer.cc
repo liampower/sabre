@@ -10,7 +10,7 @@
 // far pointers!
 #define SVO_NODE_CHILD_PTR_MASK 0xFFFF0000U
 
-#define MAX_STEPS 32
+#define MAX_STEPS 64
 #define SCREEN_DIM 512
 
 #define ASSERT(Expr) if (! (Expr)) { return vec3(1); }
@@ -177,6 +177,17 @@ vec3 VSelect(vec3 A, vec3 B, vec3 Msk)
     return Out;
 }
 
+uvec3 Abs(vec3 V)
+{
+    uvec3 Out;
+
+    Out.X = fabs(V.X);
+    Out.Y = fabs(V.Y);
+    Out.Z = fabs(V.Z);
+
+    return Out;
+}
+
 vec3 Ceil(vec3 V)
 {
     vec3 Out;
@@ -234,14 +245,6 @@ ray_intersection ComputeRayBoxIntersection(in ray R, in vec3 vMin, in vec3 vMax)
     return Result;
 }
 
-
-uint GetOct(in float tMin, in vec3 tValues)
-{
-    const uvec3 OctBits = uvec3(1, 2, 4);
-    bvec3 E = Equals(vec3(tMin), tValues);
-
-    return uint(Dot(uvec3(E.X, E.Y, E.Z), OctBits));
-}
 
 uint GetNextOctant(in float tMax, in vec3 tValues, in uint CurrentOct)
 {
@@ -338,10 +341,10 @@ bool IsAdvanceValid(in uint NewOct, in uint OldOct, in vec3 RayDir)
 
 uvec3 HDB(uvec3 A, uvec3 B)
 {
-    uvec3 Diff = A ^ B;
+    uvec3 DB = (A ^ B);
 
     // Find highest set bits
-    uvec3 HighestBits = FindMSB(Diff);
+    uvec3 HighestBits = FindMSB(DB);
 
     return HighestBits;
 }
@@ -355,7 +358,7 @@ struct st_frame
     vec3 ParentCentre;
 };
 
-vec3 Raycast2(in ray R)
+vec3 Raycast(in ray R)
 {
     // Extant of the root cube
     int Scale = 1 << (ScaleExponentUniform);
@@ -401,7 +404,7 @@ vec3 Raycast2(in ray R)
         // Begin stepping along the ray
         for (Step = 0; Step < MAX_STEPS; ++Step)
         {
-            if (CurrentDepth > MaxDepthUniform) return vec3(1, 0, 1);
+            if (CurrentDepth >= MaxDepthUniform) return vec3(1, 0, 1);
 
             // Go down 1 level
             vec3 NodeCentre = GetNodeCentreP(CurrentOct, Scale, ParentCentre);
@@ -452,7 +455,7 @@ vec3 Raycast2(in ray R)
                 else
                 {
                     uvec3 NodeCentreBits = uvec3(NodeCentre);
-                    uvec3 RayPBits = uvec3(RayP);
+                    uvec3 RayPBits = Abs(RayP);
 
                     uvec3 HighestDiffBits = HDB(NodeCentreBits, RayPBits);
                     int NextScale = 1 << int(MaxComponent(HighestDiffBits));
@@ -533,7 +536,7 @@ int main()
 
             ray R = { RayP, RayD, Invert(RayD) };
 
-            vec3 OutCr = Raycast2(R);
+            vec3 OutCr = Raycast(R);
 
             OutBuffer[X][Y] = OutCr;
         }
