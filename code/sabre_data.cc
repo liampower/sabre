@@ -41,7 +41,7 @@ extern const char* const RaycasterComputeKernel = R"GLSL(
 // far pointers!
 #define SVO_NODE_CHILD_PTR_MASK 0xFFFF0000U
 
-#define MAX_STEPS 64
+#define MAX_STEPS 16
 #define SCREEN_DIM 512
 
 #define ASSERT(Expr) if (! (Expr)) { return vec3(1); }
@@ -70,7 +70,7 @@ struct ray_intersection
     vec3  tMinV;
 };
 
-layout (local_size_x = 4, local_size_y = 4) in;
+layout (local_size_x = 8, local_size_y = 8) in;
 
 layout (rgba32f, binding = 0) uniform image2D OutputImgUniform;
 
@@ -102,11 +102,10 @@ uint GetNodeChild(in uint ParentNode, in uint Oct)
     uint ChildPtr = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
     uint OccBits = (ParentNode & SVO_NODE_OCCUPIED_MASK) >> 8; 
     uint LeafBits = (ParentNode & SVO_NODE_LEAF_MASK);
-    uint Cmsk = OccBits & (~LeafBits);
-    uint Smsk = (1 << Oct) - 1;
+    uint OccupiedNonLeafOcts = OccBits & (~LeafBits);
+    uint SetBitsBehindOctIdx = (1 << Oct) - 1;
 
-    uint ChildOffset = bitCount(Cmsk & Smsk); 
-
+    uint ChildOffset = bitCount(OccupiedNonLeafOcts & SetBitsBehindOctIdx); 
 
     // TODO(Liam): Broken?
     return SvoInputBuffer.Nodes[ChildPtr + ChildOffset];
@@ -281,7 +280,6 @@ vec3 Raycast(in ray R)
         // Begin stepping along the ray
         for (Step = 0; Step < MAX_STEPS; ++Step)
         {
-
             // Go down 1 level
             vec3 NodeCentre = GetNodeCentreP(CurrentOct, Scale, ParentCentre);
             vec3 NodeMin = NodeCentre - vec3(Scale >> 1);
@@ -300,7 +298,7 @@ vec3 Raycast(in ray R)
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
                         // Done - return leaf colour
-                        float O = float(CurrentOct) / 7.0;
+                        float O = float(Step) / MAX_STEPS;
                         return O * vec3(0.4, 0, 0.3);
                     }
                     else
@@ -325,14 +323,10 @@ vec3 Raycast(in ray R)
 
                 if (IsAdvanceValid(NextOct, CurrentOct, R.Dir))
                 {
-                    //return Oct2Cr(NextOct);
                     CurrentOct = NextOct;
                 }
                 else
                 {
-                    //return 0.5 * Oct2Cr(NextOct);
-                    //if (any(lessThanEqual(RayP, vec3(0)))) return vec3(0, 1, 0);
-
                     // Determined that NodeCentre is never < 0
                     uvec3 NodeCentreBits = uvec3(NodeCentre);
                     uvec3 RayPBits = uvec3(RayP);
