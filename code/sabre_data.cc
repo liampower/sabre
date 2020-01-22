@@ -287,8 +287,6 @@ vec3 Raycast(in ray R)
             vec3 NodeMin = NodeCentre - vec3(Scale >> 1);
             vec3 NodeMax = NodeCentre + vec3(Scale >> 1);
 
-            if (any(lessThan(NodeMin, vec3(0)))) return (float(CurrentDepth) / MaxDepthUniform) * vec3(1, 0, 0);
-
             CurrentIntersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
 
             if (CurrentIntersection.tMin <= CurrentIntersection.tMax && CurrentIntersection.tMax > 0)
@@ -339,8 +337,16 @@ vec3 Raycast(in ray R)
                     uvec3 NodeCentreBits = uvec3(NodeCentre);
                     uvec3 RayPBits = uvec3(RayP);
 
-                    uvec3 HighestDiffBits = clamp(HDB(NodeCentreBits, RayPBits), 0, ScaleExponentUniform);
+                    // NOTE(Liam): It is **okay** to have negative values here
+                    // because the HDB will end up being equal to ScaleExponentUniform.
+                    uvec3 HighestDiffBits = HDB(NodeCentreBits, RayPBits);
+
                     uint M = uint(MaxComponent(HighestDiffBits));
+
+                    M = 0;
+                    if (HighestDiffBits.x > M && HighestDiffBits.x < ScaleExponentUniform) M = HighestDiffBits.x;
+                    if (HighestDiffBits.y > M && HighestDiffBits.y < ScaleExponentUniform) M = HighestDiffBits.y;
+                    if (HighestDiffBits.z > M && HighestDiffBits.z < ScaleExponentUniform) M = HighestDiffBits.z;
 
                     uint NextDepth = (ScaleExponentUniform - M);
 

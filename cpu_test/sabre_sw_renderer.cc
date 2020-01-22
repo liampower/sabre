@@ -486,10 +486,10 @@ bool Trace2(in ray R)
 
 int main()
 {
-    vec3 Right =  vec3(0.768842, -0.000000, 0.639439);
-    vec3 Up = vec3(0.229154, 0.933580, -0.275528);
-    vec3 Forward = vec3(0.596968, -0.358368, -0.717776);
-    vec3 Position = vec3(-40.042274, 53.898918, 70.908836);
+    vec3 Right =  vec3(0.821647, -0.000000, 0.569997);
+    vec3 Up = vec3(-0.095058, 0.985996, 0.137025);
+    vec3 Forward = vec3(0.562015, 0.166769, -0.810140);
+    vec3 Position = vec3(4.459143, 10.918401, 28.265924);
 
     mat3 View = {{
         { Right.X, Right.Y, Right.Z },
