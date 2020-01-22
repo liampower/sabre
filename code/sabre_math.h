@@ -150,6 +150,70 @@ struct uvec3
     }
 };
 
+struct ivec3
+{
+    i32 X;
+    i32 Y;
+    i32 Z;
+
+    inline explicit
+    ivec3(i32 InX, i32 InY, i32 InZ)
+    {
+        X = InX;
+        Y = InY;
+        Z = InZ;
+    }
+
+    inline explicit
+    ivec3(i32 Uniform)
+    {
+        X = Uniform;
+        Y = Uniform;
+        Z = Uniform;
+    }
+
+    inline explicit
+    ivec3(bvec3 B)
+    {
+        X = (i32)B.X;
+        Y = (i32)B.Y;
+        Z = (i32)B.Z;
+    }
+
+    inline explicit
+    ivec3(vec3 B)
+    {
+        X = (i32)B.X;
+        Y = (i32)B.Y;
+        Z = (i32)B.Z;
+    }
+
+    inline
+    operator bvec3()
+    {
+        bvec3 Result;
+        
+        Result.X = (X != 0);
+        Result.Y = (Y != 0);
+        Result.Z = (Z != 0);
+
+        return Result;
+    }
+};
+
+
+inline ivec3
+operator-(ivec3 L, ivec3 R)
+{
+    ivec3 Result = ivec3(0);
+
+    Result.X = L.X - R.X;
+    Result.Y = L.Y - R.Y;
+    Result.Z = L.Z - R.Z;
+
+    return Result;
+}
+
 
 static inline u32
 Dot(uvec3 A, uvec3 B)
@@ -170,6 +234,23 @@ Invert(vec3 V)
     return Out;
 }
 
+
+static inline uvec3
+Clamp(uvec3 Val, u32 Min, u32 Max)
+{
+    uvec3 Out = Val;
+
+    if (Out.X > Max) Out.X = Max;
+    if (Out.X < Min) Out.X = Min;
+
+    if (Out.Y > Max) Out.Y = Max;
+    if (Out.Y < Min) Out.Y = Min;
+
+    if (Out.Z > Max) Out.Z = Max;
+    if (Out.Z < Min) Out.Z = Min;
+
+    return Out;
+}
 
 static inline float
 Min(float A, float B)

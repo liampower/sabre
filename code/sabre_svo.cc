@@ -24,30 +24,6 @@ enum svo_voxel_type
     VOXEL_LEAF   = 1U
 };
 
-static void
-GetNodeBounds(u32 Oct, u32 Scale, vec3 ParentCentre, vec3* Min, vec3* Max)
-{
-    printf("SCALE %d\n", Scale);
-    vec3 Dir;
-    vec3 Rad = vec3(Scale);
-    bvec3 Msk = bvec3(uvec3(Oct) & uvec3(1, 2, 4));;
-
-    Dir.X = (Oct & 1) ? 1.0 : -1.0;
-    Dir.Y = (Oct & 2) ? 1.0 : -1.0;
-    Dir.Z = (Oct & 4) ? 1.0 : -1.0;
-
-    if (Oct & 2)
-    {
-        *Min = ParentCentre; 
-        *Max = ParentCentre + (Dir * Rad);
-    }
-    else
-    {
-        *Max = ParentCentre; 
-        *Min = ParentCentre + (Dir * Rad);
-    }
-
-}
 
 static inline void
 SetOctantOccupied(svo_oct SubOctant, svo_voxel_type Type, svo_node* OutEntry)

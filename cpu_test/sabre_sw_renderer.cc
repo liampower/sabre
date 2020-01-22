@@ -166,17 +166,6 @@ static svo_input SvoInputBuffer = {
 
 static uint PrevOct;
 
-vec3 VSelect(vec3 A, vec3 B, vec3 Msk)
-{
-    vec3 Out = A;
-
-    if (Msk.X <= 0) Out.X = B.X;
-    if (Msk.Y <= 0) Out.Y = B.Y;
-    if (Msk.Z <= 0) Out.Z = B.Z;
-
-    return Out;
-}
-
 uvec3 Abs(vec3 V)
 {
     uvec3 Out;
@@ -188,21 +177,11 @@ uvec3 Abs(vec3 V)
     return Out;
 }
 
-vec3 Ceil(vec3 V)
+uint BitCount(uint X)
 {
-    vec3 Out;
-
-    Out.X = ceilf(V.X);
-    Out.Y = ceilf(V.Y);
-    Out.Z = ceilf(V.Z);
-
-    return Out;
+    return __popcnt(X);
 }
 
-bvec3 IsBitSet(uvec3 A, uint Bit)
-{
-    return GreaterThan(A & Bit, vec3(0.0f));
-}
 
 uvec3 FindMSB(uvec3 A)
 {
@@ -224,9 +203,16 @@ uvec3 FindMSB(uvec3 A)
 uint GetNodeChild(in uint ParentNode, in uint Oct)
 {
     uint ChildPtr = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
-    
+    uint OccBits = (ParentNode & SVO_NODE_OCCUPIED_MASK) >> 8; 
+    uint LeafBits = (ParentNode & SVO_NODE_LEAF_MASK);
+    uint Cmsk = OccBits & (~LeafBits);
+    uint Smsk = (1 << Oct) - 1;
+
+    uint ChildOffset = BitCount(Cmsk & Smsk); 
+
+
     // TODO(Liam): Broken?
-    return SvoInputBuffer.Nodes[ChildPtr + Oct];
+    return SvoInputBuffer.Nodes[ChildPtr + ChildOffset];
 }
 
 ray_intersection ComputeRayBoxIntersection(in ray R, in vec3 vMin, in vec3 vMax)
@@ -241,8 +227,29 @@ ray_intersection ComputeRayBoxIntersection(in ray R, in vec3 vMin, in vec3 vMax)
     float ttMax = MinComponent(tMax);
 
     ray_intersection Result = { ttMin, ttMax, tMax, tMin };
-
     return Result;
+}
+
+
+bool IsAdvanceValid(in uint NewOct, in uint OldOct, in vec3 RayDir)
+{
+    ivec3 Sgn = ivec3(Sign(RayDir));
+    uvec3 OctBits = uvec3(1, 2, 4);
+    
+    ivec3 NewOctBits = ivec3(bvec3(uvec3(NewOct) & OctBits));
+    ivec3 OldOctBits = ivec3(bvec3(uvec3(OldOct) & OctBits));
+
+    ivec3 OctSgn = NewOctBits - OldOctBits;
+
+    if (Sgn.X < 0 && OctSgn.X > 0) return false;
+    if (Sgn.Y < 0 && OctSgn.Y > 0) return false;
+    if (Sgn.Z < 0 && OctSgn.Z > 0) return false;
+
+    if (Sgn.X > 0 && OctSgn.X < 0) return false;
+    if (Sgn.Y > 0 && OctSgn.Y < 0) return false;
+    if (Sgn.Z > 0 && OctSgn.Z < 0) return false;
+
+    return true;
 }
 
 
@@ -250,17 +257,17 @@ uint GetNextOctant(in float tMax, in vec3 tValues, in uint CurrentOct)
 {
     uint NextOct = CurrentOct;
 
-    if (tMax == tValues.X)
+    if (tMax >= tValues.X)
     {
         NextOct ^= 1;//|= CurrentOct ^ 1;
     }
 
-    if (tMax == tValues.Y)
+    if (tMax >= tValues.Y)
     {
         NextOct ^= 2;//CurrentOct ^ 2;
     }
 
-    if (tMax == tValues.Z)
+    if (tMax >= tValues.Z)
     {
         NextOct ^= 4;//|= CurrentOct ^ 4;
     }
@@ -275,7 +282,6 @@ uint GetOctant(in vec3 P, in vec3 ParentCentreP)
     // TODO(Liam): Can use a DP here 
     return G.X + G.Y*2 + G.Z*4;
 }
-
 
 
 bool IsOctantOccupied(in uint Node, in uint Oct)
@@ -321,38 +327,21 @@ vec3 CrScale(in uint V, in uint Max)
     return S * vec3(0, 1, 0);
 }
 
-bool IsAdvanceValid(in uint NewOct, in uint OldOct, in vec3 RayDir)
-{
-    vec3 Sgn = Sign(RayDir);
-    
-    uvec3 OctBits = uvec3(1, 2, 4);
-    
-    const uvec3 NewOctBits = uvec3(NewOct, NewOct, NewOct) & OctBits;
-    const uvec3 OldOctBits = uvec3(OldOct, OldOct, OldOct) & OctBits;
-
-    bvec3 Inc = GreaterThan(NewOctBits, OldOctBits);
-
-    if (Sgn.X <= 0 && Inc.X) return false;
-    if (Sgn.Y <= 0 && Inc.Y) return false;
-    if (Sgn.Z <= 0 && Inc.Z) return false;
-
-    return true;
-}
 
 uvec3 HDB(uvec3 A, uvec3 B)
 {
     uvec3 DB = (A ^ B);
 
     // Find highest set bits
-    uvec3 HighestBits = FindMSB(DB);
+    uvec3 HighestSetBits = FindMSB(DB);
 
-    return HighestBits;
+    return HighestSetBits;
 }
 
 struct st_frame
 {
     uint Node;
-    int Depth;
+    uint Depth;
     int Scale;
     float tMin;
     vec3 ParentCentre;
@@ -372,8 +361,6 @@ vec3 Raycast(in ray R)
 
     int Step;
 
-    vec3 P = GetNodeCentreP(0, 16, vec3(16));
-
     // Check if the ray is within the octree at all
     if (CurrentIntersection.tMin <= CurrentIntersection.tMax && CurrentIntersection.tMax > 0)
     {
@@ -390,26 +377,22 @@ vec3 Raycast(in ray R)
         // Current octant the ray is in (confirmed good)
         uint CurrentOct = GetOctant(RayP, ParentCentre);
         
-        // Initialise stack pointer to top of tree
-        uint Sp = 0;
-
         // Initialise depth to 1
-        int CurrentDepth = 1;
+        uint CurrentDepth = 1;
 
         // Stack of previous voxels
-        st_frame Stack[65] = { 0 };
+        st_frame Stack[MAX_STEPS + 1] = { 0 };
         Scale >>= 1;
         Stack[CurrentDepth] = { ParentNode, CurrentDepth, Scale, CurrentIntersection.tMin, ParentCentre };
 
         // Begin stepping along the ray
         for (Step = 0; Step < MAX_STEPS; ++Step)
         {
-            if (CurrentDepth >= MaxDepthUniform) return vec3(1, 0, 1);
 
             // Go down 1 level
             vec3 NodeCentre = GetNodeCentreP(CurrentOct, Scale, ParentCentre);
-            vec3 NodeMin = NodeCentre - vec3(Scale);
-            vec3 NodeMax = NodeCentre + vec3(Scale);
+            vec3 NodeMin = NodeCentre - vec3(Scale >> 1);
+            vec3 NodeMax = NodeCentre + vec3(Scale >> 1);
 
             CurrentIntersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
 
@@ -444,9 +427,7 @@ vec3 Raycast(in ray R)
                 // Octant not occupied, need to handle advance/pop
                 uint NextOct = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
 
-                if (NextOct == CurrentOct) return vec3(0.5, 0.5, 0);
-
-                RayP = R.Origin + (CurrentIntersection.tMax + 0.04) * R.Dir;
+                RayP = R.Origin + (CurrentIntersection.tMax + 1) * R.Dir;
 
                 if (IsAdvanceValid(NextOct, CurrentOct, R.Dir))
                 {
@@ -455,17 +436,17 @@ vec3 Raycast(in ray R)
                 else
                 {
                     uvec3 NodeCentreBits = uvec3(NodeCentre);
-                    uvec3 RayPBits = Abs(RayP);
+                    uvec3 RayPBits = uvec3(RayP);
 
-                    uvec3 HighestDiffBits = HDB(NodeCentreBits, RayPBits);
-                    int NextScale = 1 << int(MaxComponent(HighestDiffBits));
-                    uint NextDepth = uint(MaxComponent(HighestDiffBits));
+                    uvec3 HighestDiffBits = Clamp(HDB(NodeCentreBits, RayPBits), 0, ScaleExponentUniform);
+                    uint M = uint(MaxComponent(HighestDiffBits));
 
-                    if (NextScale == Scale) return vec3(1, 0, 0);
-                    if (NextScale >= 0 && NextScale < MAX_STEPS)
+                    uint NextDepth = (ScaleExponentUniform - M);
+
+                    if (NextDepth >= 0 && NextDepth <= MAX_STEPS)
                     {
-                        CurrentDepth = ScaleExponentUniform - NextDepth;
-                        Scale = Stack[CurrentDepth].Scale >> 1;
+                        CurrentDepth = NextDepth;
+                        Scale = Stack[CurrentDepth].Scale;
                         ParentCentre = Stack[CurrentDepth].ParentCentre;
                         ParentNode = Stack[CurrentDepth].Node;
 
@@ -473,9 +454,8 @@ vec3 Raycast(in ray R)
                     }
                     else
                     {
-                        return vec3(1, 0, 1);
+                        return vec3(1, 1, 0);
                     }
-                    
                 }
             }
             else
@@ -492,7 +472,6 @@ vec3 Raycast(in ray R)
 
     return vec3(0, 0, 1);
 }
-
 
 bool Trace2(in ray R)
 {

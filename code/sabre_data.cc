@@ -70,7 +70,7 @@ struct ray_intersection
     vec3  tMinV;
 };
 
-layout (local_size_x = 2, local_size_y = 2) in;
+layout (local_size_x = 4, local_size_y = 4) in;
 
 layout (rgba32f, binding = 0) uniform image2D OutputImgUniform;
 
@@ -87,17 +87,6 @@ layout (std430, binding = 3) readonly buffer svo_input
 } SvoInputBuffer;
 
 
-vec3 VSelect(vec3 V1, vec3 V0, bvec3 Msk)
-{
-    vec3 Out;
-
-    Out.x = Msk.x ? V1.x : V0.x;
-    Out.y = Msk.y ? V1.y : V0.y;
-    Out.z = Msk.z ? V1.z : V0.z;
-
-    return Out;
-}
-
 float MaxComponent(vec3 V)
 {
     return max(max(V.x, V.y), V.z);
@@ -111,9 +100,16 @@ float MinComponent(vec3 V)
 uint GetNodeChild(in uint ParentNode, in uint Oct)
 {
     uint ChildPtr = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
-    
+    uint OccBits = (ParentNode & SVO_NODE_OCCUPIED_MASK) >> 8; 
+    uint LeafBits = (ParentNode & SVO_NODE_LEAF_MASK);
+    uint Cmsk = OccBits & (~LeafBits);
+    uint Smsk = (1 << Oct) - 1;
+
+    uint ChildOffset = bitCount(Cmsk & Smsk); 
+
+
     // TODO(Liam): Broken?
-    return SvoInputBuffer.Nodes[ChildPtr + Oct];
+    return SvoInputBuffer.Nodes[ChildPtr + ChildOffset];
 }
 
 ray_intersection ComputeRayBoxIntersection(in ray R, in vec3 vMin, in vec3 vMax)
@@ -214,7 +210,7 @@ vec3 GetNodeCentreP(in uint Oct, in uint Scale, in vec3 ParentP)
     if (0 == (Oct & 2)) Y = -1.0;
     if (0 == (Oct & 4)) Z = -1.0;
 
-    uint Radius = (Scale >> 1);
+    uint Radius = Scale >> 1;
 
     return ParentP + (vec3(X, Y, Z) * Radius);
 }
@@ -285,12 +281,13 @@ vec3 Raycast(in ray R)
         // Begin stepping along the ray
         for (Step = 0; Step < MAX_STEPS; ++Step)
         {
-            //if (CurrentDepth > MaxDepthUniform) return vec3(1);
 
             // Go down 1 level
             vec3 NodeCentre = GetNodeCentreP(CurrentOct, Scale, ParentCentre);
-            vec3 NodeMin = NodeCentre - vec3(Scale);
-            vec3 NodeMax = NodeCentre + vec3(Scale);
+            vec3 NodeMin = NodeCentre - vec3(Scale >> 1);
+            vec3 NodeMax = NodeCentre + vec3(Scale >> 1);
+
+            if (any(lessThan(NodeMin, vec3(0)))) return (float(CurrentDepth) / MaxDepthUniform) * vec3(1, 0, 0);
 
             CurrentIntersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
 
@@ -305,9 +302,8 @@ vec3 Raycast(in ray R)
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
                         // Done - return leaf colour
-                        vec3 N = normalize(R.Origin - vec3(16));
-                        float L = float(CurrentOct) / 7.0;
-                        return L * vec3(0.4, 0, 0.3);
+                        float O = float(CurrentOct) / 7.0;
+                        return O * vec3(0.4, 0, 0.3);
                     }
                     else
                     {
@@ -327,30 +323,27 @@ vec3 Raycast(in ray R)
                 // Octant not occupied, need to handle advance/pop
                 uint NextOct = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
 
-                if (NextOct == CurrentOct) return vec3(0.5, 0.5, 0.6);
-
                 RayP = R.Origin + (CurrentIntersection.tMax + 1) * R.Dir;
 
                 if (IsAdvanceValid(NextOct, CurrentOct, R.Dir))
                 {
+                    //return Oct2Cr(NextOct);
                     CurrentOct = NextOct;
                 }
                 else
                 {
-                    if (any(lessThanEqual(RayP, vec3(0)))) return vec3(0, 1, 0);
+                    //return 0.5 * Oct2Cr(NextOct);
+                    //if (any(lessThanEqual(RayP, vec3(0)))) return vec3(0, 1, 0);
 
+                    // Determined that NodeCentre is never < 0
                     uvec3 NodeCentreBits = uvec3(NodeCentre);
                     uvec3 RayPBits = uvec3(RayP);
 
-                    uvec3 HighestDiffBits = HDB(NodeCentreBits, RayPBits);
-                    uint M = 0;
-                    if (HighestDiffBits.x > M && HighestDiffBits.x <= ScaleExponentUniform) M = HighestDiffBits.x; //= uint(MaxComponent(HighestDiffBits));
-                    if (HighestDiffBits.y > M && HighestDiffBits.y <= ScaleExponentUniform) M = HighestDiffBits.y;
-                    if (HighestDiffBits.z > M && HighestDiffBits.z <= ScaleExponentUniform) M = HighestDiffBits.z;
+                    uvec3 HighestDiffBits = clamp(HDB(NodeCentreBits, RayPBits), 0, ScaleExponentUniform);
+                    uint M = uint(MaxComponent(HighestDiffBits));
 
                     uint NextDepth = (ScaleExponentUniform - M);
 
-                    if (M > ScaleExponentUniform) return vec3(1, 1, 0);
                     if (NextDepth >= 0 && NextDepth <= MAX_STEPS)
                     {
                         CurrentDepth = NextDepth;
