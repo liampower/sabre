@@ -25,11 +25,13 @@ static constexpr u32 DisplayHeight = 512;
 static constexpr const char* const DisplayTitle = "Sabre";
 
 
-// NOTE: Forces use of nVidia GPU on hybrid graphics systems.
+// NOTE(Liam): Forces use of nVidia GPU on hybrid graphics systems.
 extern "C" {
     _declspec(dllexport) int NvOptimusEnablement = 0x00000001;
 }
 
+// NOTE(Liam): Vertices of a full-screen quad
+// which we render to using a compute shader.
 static const f32 ScreenQuadVerts[12] = {
     -1.0f, -1.0f,
     -1.0f,  1.0f,
@@ -333,6 +335,9 @@ main(int ArgCount, const char** const Args)
     }
 
     svo* WorldSvo = BuildSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
+
+    InsertVoxel(WorldSvo, vec3(1, 1, 1), 4);
+
     gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
 
     if (0 == SvoShaderBuffer)

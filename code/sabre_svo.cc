@@ -18,12 +18,30 @@ enum svo_oct
     OCT_C111 = 7
 };
 
+
 enum svo_voxel_type
 {
     VOXEL_PARENT = 0U,
     VOXEL_LEAF   = 1U
 };
 
+static inline int
+CountSetBits(uint Msk)
+{
+    return __builtin_popcount(Msk);
+}
+
+static inline bool
+IsOctantOccupied(svo_node* ContainingNode, svo_oct Oct)
+{
+    return ContainingNode->OccupiedMask & (1U << (u32)Oct);
+}
+
+static inline bool
+IsOctantLeaf(svo_node* ContainingNode, svo_oct Oct)
+{
+    return ContainingNode->LeafMask & (1U << (u32)Oct);
+}
 
 static inline void
 SetOctantOccupied(svo_oct SubOctant, svo_voxel_type Type, svo_node* OutEntry)
@@ -40,6 +58,11 @@ SetOctantOccupied(svo_oct SubOctant, svo_voxel_type Type, svo_node* OutEntry)
    }
 }
 
+static inline svo_node*
+GetNodeChild(svo_node* Parent, svo* Tree, svo_oct ChildOct)
+{
+    return nullptr;
+}
 
 static inline void
 SetNodeChildPointer(u16 ChildPtr, bool InSameBlock, svo_node* OutParentNode)
@@ -75,6 +98,14 @@ GetNodeCentrePosition(svo_oct Octant, u32 Scale, vec3 ParentCentreP)
     return ParentCentreP + (vec3(X, Y, Z) * Rad);
 }
 
+static inline svo_oct
+GetOctantForPosition(vec3 P, vec3 ParentCentreP)
+{
+    uvec3 G = uvec3(GreaterThan(P, ParentCentreP));
+
+    return (svo_oct) (G.X + G.Y*2 + G.Z*4);
+}
+
 
 static void
 AllocateNewBlock(svo* const Tree)
@@ -107,6 +138,18 @@ AllocateNode(svo* const Tree)
     ++Tree->CurrentBlock->NextFreeSlot;
 
     return Child;
+}
+
+static void
+PushNode(svo* const Tree, svo_node Node)
+{
+    if (NeedMoreBlocks(Tree))
+    {
+        AllocateNewBlock(Tree);
+    }
+
+    Tree->CurrentBlock->Entries[Tree->CurrentBlock->NextFreeSlot] = Node;
+    ++Tree->CurrentBlock->NextFreeSlot;
 }
 
 static svo_node*
@@ -219,7 +262,7 @@ BuildSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceFn
 
         Tree->CurrentBlock = (svo_block*) calloc(1, sizeof(svo_block));
         Tree->UsedBlockCount = 1;
-        Tree->DEBUGFirstBlock = Tree->CurrentBlock;
+        Tree->RootBlock = Tree->CurrentBlock;
 
         svo_node* Root = AllocateNode(Tree);
 
@@ -233,6 +276,118 @@ BuildSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceFn
     }
 }
 
+struct svo_children
+{
+    u32 ChildCount;
+    svo_node Chilren[8];
+};
+
+#if 0
+static inline svo_node*
+GetNodeChild(svo* const Tree, svo_oct Oct, svo_node* ParentNode)
+{
+    u32 OccupiedNonLeafOcts = OccBits & (~LeafBits);
+    u32 SetBitsBehindOctIdx = (1 << Oct) - 1;
+
+    u32 ChildOffset = CountSetBits(OccupiedNonLeafOcts & SetBitsBehindOctIdx); 
+
+    return ParentNode->ChildPtr + ChildOffset;
+}
+#endif
+
+extern "C" void
+InsertVoxel(svo* Svo, vec3 P, u32 VoxelScale)
+{
+    // FIXME(Liam): What do do if P is outside root bounds??
+    u32 SvoScale = 1 << (Svo->ScaleExponent - 1);
+    vec3 ParentCentreP = vec3(SvoScale);
+    u32 CurrentOct = GetOctantForPosition(P, ParentCentreP);
+
+    // Initialised to root node
+    // TODO(Liam): Switch to a forward-linked list??
+    svo_node* ParentNode = &Svo->RootBlock->Entries[0]; 
+
+    for (u32 Scale = SvoScale; Scale > VoxelScale; Scale >>= 1)
+    {
+        if (Scale <= VoxelScale)
+        {
+            SetOctantOccupied((svo_oct)CurrentOct, VOXEL_LEAF, ParentNode); 
+        }
+
+        // Check if the current octant is already occupied
+        if (IsOctantOccupied(ParentNode, (svo_oct)CurrentOct))
+        {
+            if (IsOctantLeaf(ParentNode, (svo_oct)CurrentOct))
+            {
+                return;
+            }
+            else // This node is a parent
+            {
+                // Descend further into tree.
+                ParentCentreP = GetNodeCentrePosition((svo_oct)CurrentOct, Scale >> 1, ParentCentreP);
+                CurrentOct = GetOctantForPosition(P, ParentCentreP);
+
+                ParentNode = GetNodeChild(ParentNode, Svo, (svo_oct)CurrentOct);
+
+                continue;
+            }
+        }
+        else
+        {
+            // ... if not, we need to mark it as occupied and
+            // allocate a child ptr.
+            SetOctantOccupied((svo_oct)CurrentOct, VOXEL_PARENT, ParentNode);
+
+            // Copy child octants to new memory (ugh)
+
+            {
+                // Identifies octants that are occupied but not leaves.
+                u32 NonLeafChildMsk = ParentNode->OccupiedMask & ~(ParentNode->LeafMask);
+                svo_node* NewParent;
+                svo_node* FirstChild = nullptr;
+
+                for (u32 ChildIndex = 0; ChildIndex < 8; ++ChildIndex)
+                {
+                    u32 ChildOct = (u32)__builtin_ctz((int)NonLeafChildMsk);
+
+                    if (ChildOct == CurrentOct)
+                    {
+                        // Allocate a new child node for this octant and 
+                        // assign the current parent to it.
+                        NewParent = AllocateNode(Svo);
+
+                        if (! FirstChild) FirstChild = NewParent;
+                    }
+                    else
+                    {
+                        u32 SetBitsBehindOctIdx = (1 << ChildIndex) - 1;
+                        u32 ChildOffset = CountSetBits(NonLeafChildMsk & SetBitsBehindOctIdx);
+
+                        // FIXME(Liam): Fix to work with block memory
+                        svo_node* SiblingNode = &Svo->CurrentBlock->Entries[ParentNode->ChildPtr + ChildOffset];
+
+                        // Copy the old node to a new memory region
+                        PushNode(Svo, *SiblingNode);
+
+                        if (! FirstChild) FirstChild = SiblingNode;
+                    }
+
+                    // Clear this oct from the mask
+                    NonLeafChildMsk &= ~(1U << ChildIndex);
+                }
+
+
+                // Set the parent's Child ptr to point to the new node.
+                if (FirstChild)
+                {
+                    // FIXME(Liam): Broken for multi-blocks
+                    u16 ChildPtr = (u16)(FirstChild - ParentNode);
+                    SetNodeChildPointer(ChildPtr, true, ParentNode);
+                }
+            }
+        }
+    }
+}
 
 extern "C" void
 DeleteSparseVoxelOctree(svo* Tree)
