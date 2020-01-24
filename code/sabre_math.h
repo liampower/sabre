@@ -338,13 +338,13 @@ LessThan(vec3 A, vec3 B)
 }
 
 static inline bvec3
-Equals(vec3 A, vec3 B)
+Equals(vec3 A, vec3 B, float Tolerance)
 {
     bvec3 Out;
 
-    Out.X = A.X == B.X;
-    Out.Y = A.Y == B.Y;
-    Out.Z = A.Z == B.Z;
+    Out.X = fabs(B.X - A.X) <= Tolerance;
+    Out.Y = fabs(B.Y - A.Y) <= Tolerance;
+    Out.Z = fabs(B.Z - A.Z) <= Tolerance;
 
     return Out;
 }
