@@ -25,10 +25,10 @@ enum svo_voxel_type
     VOXEL_LEAF   = 1U
 };
 
-static inline int
-CountSetBits(uint Msk)
+static inline u32
+CountSetBits(u32 Msk)
 {
-    return __builtin_popcount(Msk);
+    return (u32)(__builtin_popcount(Msk));
 }
 
 static inline bool
@@ -348,7 +348,7 @@ InsertVoxel(svo* Svo, vec3 P, u32 VoxelScale)
 
                 for (u32 ChildIndex = 0; ChildIndex < 8; ++ChildIndex)
                 {
-                    u32 ChildOct = (u32)__builtin_ctz((int)NonLeafChildMsk);
+                    u32 ChildOct = (u32)__builtin_ctz(NonLeafChildMsk);
 
                     if (ChildOct == CurrentOct)
                     {
