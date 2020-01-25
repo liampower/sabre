@@ -29,6 +29,7 @@ union alignas(4) svo_node
 struct svo_block
 {
     usize      NextFreeSlot;
+    usize      NextFarPtrSlot;
     svo_block* Prev;
     svo_node   Entries[SVO_ENTRIES_PER_BLOCK];
     far_ptr    FarPtrs[SVO_FAR_PTRS_PER_BLOCK];
