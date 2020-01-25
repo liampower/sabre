@@ -342,9 +342,9 @@ Equals(vec3 A, vec3 B, float Tolerance)
 {
     bvec3 Out;
 
-    Out.X = fabs(B.X - A.X) <= Tolerance;
-    Out.Y = fabs(B.Y - A.Y) <= Tolerance;
-    Out.Z = fabs(B.Z - A.Z) <= Tolerance;
+    Out.X = fabsf(B.X - A.X) <= Tolerance;
+    Out.Y = fabsf(B.Y - A.Y) <= Tolerance;
+    Out.Z = fabsf(B.Z - A.Z) <= Tolerance;
 
     return Out;
 }
