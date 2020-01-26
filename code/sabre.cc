@@ -236,6 +236,7 @@ UploadOctreeBlockData(const svo* const Svo)
     if (SvoBuffer)
     {
         usize BlockDataSize = sizeof(svo_node) * SVO_ENTRIES_PER_BLOCK;
+        // TODO(Liam): Waste here on the last block
         usize TotalDataSize = BlockDataSize * Svo->UsedBlockCount;
 
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoBuffer);
@@ -245,6 +246,7 @@ UploadOctreeBlockData(const svo* const Svo)
 
         gl_uint* GPUTreeBuffer = (GLuint*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
 
+#if 0
         svo_block* CurrentBlock = Svo->CurrentBlock;
         usize BlockOffset = 0;
 
@@ -261,6 +263,13 @@ UploadOctreeBlockData(const svo* const Svo)
             BlockOffset += CurrentBlock->NextFreeSlot; // (in nodes)
             CurrentBlock = CurrentBlock->Prev;
         }
+#endif
+
+        // FIXME(Liam): What do do about multi-block data in the renderer? 
+        // Easiest approach would be to ignore far ptrs in the renderer and 
+        // work with a single block at a time.
+        // Thus, we copy only the root block for the time being.
+        memcpy(GPUTreeBuffer, Svo->RootBlock->Entries, Svo->RootBlock->NextFreeSlot*sizeof(svo_node));
 
         glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
         

@@ -1,25 +1,19 @@
 #include <assert.h>
 #include <stdlib.h>
+#include <intrin.h>
 #include <queue>
+#include <iostream>
+#include <memory>
 
 #include "sabre.h"
 #include "sabre_math.h"
 #include "sabre_svo.h"
 
-#define FAR_PTR_BIT_MASK 0x8000
-
-enum svo_oct
+struct poly
 {
-    OCT_C000 = 0,
-    OCT_C001 = 1,
-    OCT_C010 = 2,
-    OCT_C011 = 3,
-    OCT_C100 = 4,
-    OCT_C101 = 5,
-    OCT_C110 = 6,
-    OCT_C111 = 7
+    u8  VertexCount;
+    u32 VertexIndices[];
 };
-
 
 enum svo_voxel_type
 {
@@ -30,7 +24,24 @@ enum svo_voxel_type
 static inline u32
 CountSetBits(u32 Msk)
 {
+#if defined(_MSC_VER)
+    return (u32)(__popcnt(Msk));
+#else
     return (u32)(__builtin_popcount(Msk));
+#endif
+}
+
+static inline u32
+FindMSB(u32 Msk)
+{
+#if defined(_MSC_VER)
+    unsigned long MSB;
+    _BitScanReverse(&MSB, Msk);
+
+    return (u32)MSB;
+#else
+    return __builtin_ctz(Msk);
+#endif
 }
 
 static inline bool
@@ -76,7 +87,7 @@ GetNodeChild(svo_node* Parent, svo* Tree, svo_oct ChildOct)
     u32 ChildPtrBase = Parent->ChildPtr & 0x7FFF;
 
     // Check if the node references a child outside this block.
-    if (Parent->ChildPtr & FAR_PTR_BIT_MASK)
+    if (Parent->ChildPtr & SVO_FAR_PTR_BIT_MASK)
     {
         svo_block* OldBlk = Tree->CurrentBlock->Prev;
 
@@ -111,7 +122,7 @@ AllocateFarPtr(svo* const Tree)
     }
 }
 
-static inline void
+static void
 SetNodeChildPointer(u16 ChildPtr, bool InNewBlock, svo* Tree, svo_node* OutParentNode)
 {
     // If the child is in a new block, we need to allocate and assign a 
@@ -124,6 +135,7 @@ SetNodeChildPointer(u16 ChildPtr, bool InNewBlock, svo* Tree, svo_node* OutParen
 
         // TODO(Liam): Check type conversions here
         OutParentNode->ChildPtr = (u16)(FarPtr - Tree->CurrentBlock->FarPtrs);
+		OutParentNode->ChildPtr |= SVO_FAR_PTR_BIT_MASK;
     }
     else
     {
@@ -163,8 +175,11 @@ AllocateNewBlock(svo* const Tree)
 {
     svo_block* OldBlock = Tree->CurrentBlock;
     svo_block* NewBlock = (svo_block*) calloc(1, sizeof(svo_block));
+ 
+    // Link blocks together
+    NewBlock->Prev = OldBlock;
+    OldBlock->Next = NewBlock;
 
-    NewBlock->Prev = OldBlock; // Link together
     Tree->CurrentBlock = NewBlock;
     ++Tree->UsedBlockCount;
 }
@@ -259,7 +274,6 @@ struct node_context
     u32       Scale;
     vec3      Centre;
 };
-
 
 
 static void
@@ -408,7 +422,7 @@ InsertVoxel(svo* Svo, vec3 P, u32 VoxelScale)
 
                 for (u32 ChildIndex = 0; ChildIndex < 8; ++ChildIndex)
                 {
-                    u32 ChildOct = (u32)__builtin_ctz(NonLeafChildMsk);
+                    u32 ChildOct = (u32)FindMSB(NonLeafChildMsk);
 
                     if (ChildOct == CurrentOct)
                     {
@@ -449,6 +463,7 @@ InsertVoxel(svo* Svo, vec3 P, u32 VoxelScale)
         }
     }
 }
+
 
 extern "C" void
 DeleteSparseVoxelOctree(svo* Tree)

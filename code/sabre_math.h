@@ -69,6 +69,14 @@ struct vec3
     }
 
     inline explicit
+    vec3(u32 Uniform)
+    {
+        X = (float) Uniform;
+        Y = (float) Uniform;
+        Z = (float) Uniform;
+    }
+
+    inline explicit
     vec3(float Uniform)
     {
         X = Uniform;
@@ -287,6 +295,18 @@ Max(vec3 A, vec3 B)
     Out.Z = Max(A.Z, B.Z);
 
     return Out;
+}
+
+static inline bool
+Any(bvec3 V)
+{
+    return (V.X || V.Y || V.Z);
+}
+
+static inline bool
+All(bvec3 V)
+{
+    return (V.X && V.Y && V.Z);
 }
 
 static inline bvec3
