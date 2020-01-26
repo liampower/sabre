@@ -8,8 +8,7 @@
 #include <vector>
 #include <queue>
 
-#define TINYPLY_IMPLEMENTATION
-#include "tinyply.h"
+#include "rply.h"
 
 #include "sabre_svo.cc"
 
@@ -56,50 +55,74 @@ AllocateEmptySvo(void)
 
 static_assert(sizeof(vec3) == 3*sizeof(float), "Sizeof(vec3) must equal 3*sizeof(float)");
 
+struct poly
+{
+    vec3 V[3];
+};
+
+struct mesh
+{
+    usize TriangleCount;
+    usize VertexCount;
+
+    usize Nv;
+    usize Nt;
+
+    f32*  VertexData;
+    poly* TriangleData;
+};
+
+static int
+VertexCallback(p_ply_argument Arg)
+{
+    mesh* Mesh;
+    ply_get_argument_user_data(Arg, NULL, &Mesh);
+
+    Mesh->VertexData[Mesh->Nv] = ply_get_argument_value(Arg);
+    ++Mesh->Nv;
+
+    return 1;
+}
+
+static int
+TriangleCallback(p_ply_argument Arg)
+{
+    long Length, ValueIndex;
+    ply_get_argument_property(Arg, NULL, &Length, &ValueIndex);
+
+    mesh* Mesh;
+    ply_get_argument_user_data(Arg, NULL, &Mesh);
+}
+
+static mesh*
+LoadMeshFile(const char* const FilePath)
+{
+    p_ply PlyFile = ply_open(FilePath, NULL, 0, NULL); 
+
+    if (PlyFile)
+    {
+        long VertexCount = 0;
+        long TriangleCount = 0;
+
+        mesh* Mesh = (mesh*)calloc(1, sizeof(mesh));
+
+        ply_read_header(PlyFile);
+        VertexCount = ply_set_read_cb(PlyFile, "vertex", "x", &VertexCallback, Mesh);
+
+    }
+    else
+    {
+        fprintf(stderr, "Failed to open PLY file\n");
+
+        return nullptr;
+    }
+}
+
+
 static svo*
 BuildSvoFromPlyFile(const char* const FilePath)
 {
-    std::ifstream In(FilePath, std::ifstream::in);
-    
-    PlyFile Ply;
-    Ply.parse_header(In);
-
-    for (const auto& Comment : Ply.get_comments())
-    {
-        fprintf(stdout, "%s\n", Comment.c_str());
-    }
-
-    std::shared_ptr<PlyData> VertexData;
-    try
-    {
-        VertexData = Ply.request_properties_from_element("vertex", { "x", "y", "z" });
-    }
-    catch (const std::exception& e)
-    {
-        fprintf(stderr, "FAILURE: %s\n", e.what());
-    }
-
-    std::shared_ptr<PlyData> PolyData;
-    try
-    {
-        PolyData = Ply.request_properties_from_element("face", { "vertex_indices" }, 0); 
-    }
-    catch (const std::exception& e)
-    {
-        fprintf(stderr, "FAILURE: %s\n", e.what());
-    }
-
-    Ply.read(In);
-
-    fprintf(stdout, "%zu\n", VertexData->count);
-
-    std::vector<vec3> Vtx(VertexData->count);
-    std::memcpy(Vtx.data(), VertexData->buffer.get(), VertexData->buffer.size_bytes());
-    assert(VertexData->buffer.get());
-
-    std::vector<poly> Polys(PolyData->count);
-    std::memcpy(Polys.data(), PolyData->buffer.get(), PolyData->buffer.size_bytes());
-    assert(PolyData->buffer.get());
+    mesh* Mesh = LoadMeshFile(FilePath);
     
     svo* Svo = AllocateEmptySvo();
 
