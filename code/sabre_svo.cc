@@ -71,6 +71,34 @@ SetOctantOccupied(svo_oct SubOctant, svo_voxel_type Type, svo_node* OutEntry)
    }
 }
 
+#if 0
+static inline usize
+GetBlockFreeSlotCount(svo_block* Blk)
+{
+    return (SVO_ENTRIES_PER_BLOCK - Blk->NextFreeSlot)
+}
+
+static inline svo_node*
+AllocateChildNode(svo_node* Parent, svo_block* ParentBlk, svo* Tree)
+{
+    usize FreeSlotCount = GetBlockFreeSlotCount(ParentBlk);
+
+    // No more space in parent block at all.
+    // Need to allocate an entirely new block
+    if (FreeSlotCount == 0)
+    {
+        svo_block* NextBlk = AllocateNewBlock2(ParentBlk, Tree);
+
+        svo_node* ChildNode = &NextBlk->Entries[NextBlk->NextFreeSlot];
+        ++NextBlk->NextFreeSlot;
+
+        // Setup a far ptr
+        far_ptr* FarPtr = AllocateFarPtr2(ParentBlk);
+        FarPtr.Block = NextBlk;
+    }
+}
+#endif
+
 
 // TODO(Liam) Running into a *lot* of problems with passing the blocks around.
 // May need to reconsider design where we split the world up into uniform octree
@@ -104,6 +132,25 @@ GetNodeChild(svo_node* Parent, svo* Tree, svo_oct ChildOct)
         return &Tree->CurrentBlock->Entries[ChildPtrBase + ChildOffset];
     }
 }
+
+#if 0
+static inline far_ptr*
+AllocateFarPtr2(svo_block* ContainingBlk)
+{
+    usize NextFarPtrSlot = ContainingBlk->NextFarPtrSlot;
+    if (NextFarPtrSlot < SVO_FAR_PTRS_PER_BLOCK)
+    {
+        far_ptr* Ptr = &ContainingBlk->FarPtrs[NextFreeSlot];
+        ++ContainingBlk->NextFarPtrSlot;
+
+        return Ptr;
+    }
+    else
+    {
+        return nullptr;
+    }
+}
+#endif
 
 static far_ptr*
 AllocateFarPtr(svo* const Tree)
@@ -169,6 +216,19 @@ GetOctantForPosition(vec3 P, vec3 ParentCentreP)
     return (svo_oct) (G.X + G.Y*2 + G.Z*4);
 }
 
+#if 0
+static svo_block
+AllocateNewBlock2(svo_block* const PrevBlk, svo* const Tree)
+{
+    svo_block* NextBlk = (svo_block*) calloc(1, sizeof(svo_block));
+    PrevBlk->Next = NextBlk;
+    NextBlk->Prev = PrevBlk;
+
+    ++Tree->UsedBlockCount;
+
+    return NextBlk;
+}
+#endif
 
 static void
 AllocateNewBlock(svo* const Tree)
@@ -336,6 +396,44 @@ BuildTree(svo* Tree, intersector_fn Surface, svo_node* Root)
 }
 
 
+static void
+BuildTree2(svo* Tree, intersector_fn Surface, svo_node* RootNode, u32 RootScale)
+{
+    std::queue<node_context> Queue;
+
+    vec3 RootCentre = vec3(RootScale >> 1);
+
+    node_context RootContext = { RootNode, OCT_C000, 0, RootScale, RootCentre };
+    u32 CurrentScale = RootScale >> 1;
+
+    vec3 ParentCentre = RootCentre;
+
+    u32 CurrentDepth = 1;
+    for (u32 Oct = 0; Oct < 8; ++Oct)
+    {
+        vec3 Rad = vec3(CurrentScale >> 1);
+        vec3 OctMin = ParentCentre - Rad;
+        vec3 OctMax = ParentCentre + Rad;
+
+        if (Surface(OctMin, OctMax))
+        {
+            if (CurrentDepth < Tree->MaxDepth - 1)
+            {
+                SetOctantOccupied((svo_oct)Oct, VOXEL_PARENT, RootNode);
+
+                // Allocate child
+                bool NewBlk = false;
+                svo_node* ChildNode = AllocateNode(Tree, &NewBlk);
+
+            }
+        }
+        else
+        {
+            
+        }
+
+    }
+}
 
 extern "C" svo*
 BuildSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceFn)
@@ -358,6 +456,7 @@ BuildSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceFn
         bool _Ignored;
         svo_node* Root = AllocateNode(Tree, &_Ignored);
 
+        u32 RootScale = 1 << Tree->ScaleExponent;
         BuildTree(Tree, SurfaceFn, Root);
 
         return Tree;
@@ -377,6 +476,8 @@ InsertVoxel(svo* Svo, vec3 P, u32 VoxelScale)
 
     vec3 ParentCentreP = vec3(SvoScale);
     u32 CurrentOct = GetOctantForPosition(P, ParentCentreP);
+
+    bool CreatedParent = false;
 
     // Initialised to root node
     // TODO(Liam): Switch to a forward-linked list??
@@ -413,15 +514,27 @@ InsertVoxel(svo* Svo, vec3 P, u32 VoxelScale)
             // allocate a child ptr.
             SetOctantOccupied((svo_oct)CurrentOct, VOXEL_PARENT, ParentNode);
 
+            // Do not need to copy children if we created the parent (because all of the 
+            // enclosed space is guaranteed to have no siblings)
+            //
             // Copy child octants to new memory (ugh)
 
+            if (CreatedParent)
+            {
+                bool NewBlk;
+                ParentNode = AllocateNode(Svo, &NewBlk);
+                continue;
+            }
+            else
             {
                 // Identifies octants that are occupied but not leaves.
                 u32 NonLeafChildMsk = ParentNode->OccupiedMask & ~(ParentNode->LeafMask);
                 svo_node* NewParent;
                 svo_node* FirstChild = nullptr;
 
-                for (u32 ChildIndex = 0; ChildIndex < 8; ++ChildIndex)
+                u32 ChildCount = CountSetBits(NonLeafChildMsk);
+
+                for (u32 ChildIndex = 0; ChildIndex < ChildCount; ++ChildIndex)
                 {
                     u32 ChildOct = (u32)FindMSB(NonLeafChildMsk);
 
@@ -436,7 +549,7 @@ InsertVoxel(svo* Svo, vec3 P, u32 VoxelScale)
                     }
                     else
                     {
-                        u32 SetBitsBehindOctIdx = (1 << ChildIndex) - 1;
+                        u32 SetBitsBehindOctIdx = (1 << ChildOct) - 1;
                         u32 ChildOffset = CountSetBits(NonLeafChildMsk & SetBitsBehindOctIdx);
 
                         // FIXME(Liam): Fix to work with block memory
@@ -449,7 +562,7 @@ InsertVoxel(svo* Svo, vec3 P, u32 VoxelScale)
                     }
 
                     // Clear this oct from the mask
-                    NonLeafChildMsk &= ~(1U << ChildIndex);
+                    NonLeafChildMsk &= ~(1U << ChildOct);
                 }
 
 
@@ -458,8 +571,16 @@ InsertVoxel(svo* Svo, vec3 P, u32 VoxelScale)
                 {
                     // FIXME(Liam): Broken for multi-blocks
                     u16 ChildPtr = (u16)(FirstChild - ParentNode);
-                    SetNodeChildPointer(ChildPtr, true, Svo, ParentNode);
+                    SetNodeChildPointer(ChildPtr, false, Svo, ParentNode);
                 }
+
+                if (NewParent)
+                {
+                    ParentNode = NewParent;
+                }
+
+                CreatedParent = true;
+
             }
         }
     }

@@ -1,7 +1,7 @@
 #ifndef SABRE_SVO_H
 #define SABRE_SVO_H
 
-static constexpr u32 SVO_ENTRIES_PER_BLOCK  = 4096;
+static constexpr u32 SVO_ENTRIES_PER_BLOCK  = 32;
 static constexpr u32 SVO_FAR_PTRS_PER_BLOCK = 64;
 static constexpr u32 SVO_FAR_PTR_BIT_MASK   = 0x8000;
 
@@ -27,6 +27,11 @@ struct far_ptr
     u32 Offset;       // Which slot inside that block the node resides at. 
 };
 
+enum svo_blk_flags
+{
+    SVO_BLK_LEAKY = 0x000001,
+};
+
 union alignas(4) svo_node
 {
     struct
@@ -48,6 +53,16 @@ struct svo_block
     svo_node   Entries[SVO_ENTRIES_PER_BLOCK];
     far_ptr    FarPtrs[SVO_FAR_PTRS_PER_BLOCK];
 };
+
+#if 0
+struct svo_edit
+{
+};
+
+void UpdateSvo(svo_edit* Cmds, usize CmdCount);
+#endif
+
+
 
 struct svo
 {
