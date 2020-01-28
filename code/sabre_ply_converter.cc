@@ -10,6 +10,9 @@
 
 #include "rply.h"
 
+#define CGLTF_IMPLEMENTATION
+#include "cgltf.h"
+
 #include "sabre_svo.cc"
 
 struct node_ctx
@@ -55,11 +58,7 @@ AllocateEmptySvo(void)
 
 static_assert(sizeof(vec3) == 3*sizeof(float), "Sizeof(vec3) must equal 3*sizeof(float)");
 
-struct poly
-{
-    vec3 V[3];
-};
-
+#if 0
 struct mesh
 {
     usize TriangleCount;
@@ -117,13 +116,12 @@ LoadMeshFile(const char* const FilePath)
         return nullptr;
     }
 }
+#endif
 
 
 static svo*
 BuildSvoFromPlyFile(const char* const FilePath)
 {
-    mesh* Mesh = LoadMeshFile(FilePath);
-    
     svo* Svo = AllocateEmptySvo();
 
 
@@ -139,6 +137,7 @@ BuildSvoFromPlyFile(const char* const FilePath)
     bool _Ignored;
     svo_node* RootNode = AllocateNode(Svo, &_Ignored);
 
+    std::vector<vec3> Vtx;
     if (GeometryWithinNode(RootMin, RootMax, Vtx))
     {
         // Push root node
@@ -193,8 +192,6 @@ BuildSvoFromPlyFile(const char* const FilePath)
     }
 
 
-    In.close();
-
     return Svo;
 
 }
@@ -204,5 +201,14 @@ int
 main(int ArgCount, const char** Args)
 {
 
-    BuildSvoFromPlyFile("C:/Users/Liam/sabre/data/TestModels/sphere_r16.ply");
+    cgltf_options options = {0};
+    cgltf_data* Data = NULL;
+    cgltf_result result = cgltf_parse_file(&options, "C:/Users/Liam/sabre/data/TestModels/sphere_r16.glb", &Data);
+    if (result == cgltf_result_success)
+    {
+        cgltf_accessor Accessor = Data->accessors[0];
+        fprintf(stdout, "LOADED MODEL\n");
+        cgltf_free(Data);
+    }
+    //BuildSvoFromPlyFile("C:/Users/Liam/sabre/data/TestModels/sphere_r16.ply");
 }

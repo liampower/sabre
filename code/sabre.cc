@@ -345,7 +345,7 @@ main(int ArgCount, const char** const Args)
 
     svo* WorldSvo = BuildSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
 
-    InsertVoxel(WorldSvo, vec3(1, 1, 1), 4);
+    InsertVoxel(WorldSvo, vec3(32, 0, 32), 4);
 
     gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
 

@@ -374,6 +374,7 @@ InsertVoxel(svo* Svo, vec3 P, u32 VoxelScale)
 {
     // FIXME(Liam): What do do if P is outside root bounds??
     u32 SvoScale = 1 << (Svo->ScaleExponent - 1);
+
     vec3 ParentCentreP = vec3(SvoScale);
     u32 CurrentOct = GetOctantForPosition(P, ParentCentreP);
 
@@ -381,7 +382,7 @@ InsertVoxel(svo* Svo, vec3 P, u32 VoxelScale)
     // TODO(Liam): Switch to a forward-linked list??
     svo_node* ParentNode = &Svo->RootBlock->Entries[0]; 
 
-    for (u32 Scale = SvoScale; Scale > VoxelScale; Scale >>= 1)
+    for (u32 Scale = SvoScale; Scale >= VoxelScale; Scale >>= 1)
     {
         if (Scale <= VoxelScale)
         {
