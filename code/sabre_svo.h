@@ -1,7 +1,7 @@
 #ifndef SABRE_SVO_H
 #define SABRE_SVO_H
 
-static constexpr u32 SVO_ENTRIES_PER_BLOCK  = 32;
+static constexpr u32 SVO_ENTRIES_PER_BLOCK  = 1;
 static constexpr u32 SVO_FAR_PTRS_PER_BLOCK = 64;
 static constexpr u32 SVO_FAR_PTR_BIT_MASK   = 0x8000;
 

@@ -244,32 +244,20 @@ UploadOctreeBlockData(const svo* const Svo)
 
         static_assert(sizeof(svo_node) == sizeof(GLuint), "Node size must == GLuint size!");
 
-        gl_uint* GPUTreeBuffer = (GLuint*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+        GLuint* GPUTreeBuffer = (GLuint*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
 
-#if 0
-        svo_block* CurrentBlock = Svo->CurrentBlock;
-        usize BlockOffset = 0;
+        // TODO(Liam): Don't send all the blocks to the renderer! Use only a subset.
+        // TODO(Liam): How on earth to handle far ptrs in renderer?
+        svo_block* CurrentBlk = Svo->RootBlock;
+        usize NextDataOffset = 0;
 
-        for (u32 BlockIndex = 0; BlockIndex < Svo->UsedBlockCount; ++BlockIndex)
+        while (CurrentBlk)
         {
-            //memcpy(GPUTreeBuffer + BlockOffset, CurrentBlock->Entries, BlockDataSize);
+            memcpy(GPUTreeBuffer + NextDataOffset, CurrentBlk->Entries, CurrentBlk->NextFreeSlot * sizeof(svo_node));
 
-            // FIXME(Liam): Slow as balls
-            for (u32 NodeIndex = 0; NodeIndex < CurrentBlock->NextFreeSlot; ++NodeIndex)
-            {
-                GPUTreeBuffer[BlockOffset + NodeIndex] = PackSvoNodeToGLUint(&CurrentBlock->Entries[NodeIndex]);
-            }
-
-            BlockOffset += CurrentBlock->NextFreeSlot; // (in nodes)
-            CurrentBlock = CurrentBlock->Prev;
+            NextDataOffset += BlockDataSize;
+            CurrentBlk = CurrentBlk->Next;
         }
-#endif
-
-        // FIXME(Liam): What do do about multi-block data in the renderer? 
-        // Easiest approach would be to ignore far ptrs in the renderer and 
-        // work with a single block at a time.
-        // Thus, we copy only the root block for the time being.
-        memcpy(GPUTreeBuffer, Svo->RootBlock->Entries, Svo->RootBlock->NextFreeSlot*sizeof(svo_node));
 
         glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
         
@@ -346,7 +334,7 @@ main(int ArgCount, const char** const Args)
     svo* WorldSvo = BuildSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
 
     //InsertVoxel(WorldSvo, vec3(32, 0, 32), 4);
-    InsertVoxel(WorldSvo, vec3(48, 48, 48), 32);
+    //InsertVoxel(WorldSvo, vec3(48, 48, 48), 32);
 
     gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
 
