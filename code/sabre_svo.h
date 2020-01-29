@@ -1,7 +1,7 @@
 #ifndef SABRE_SVO_H
 #define SABRE_SVO_H
 
-static constexpr u32 SVO_ENTRIES_PER_BLOCK  = 1;
+static constexpr u32 SVO_ENTRIES_PER_BLOCK  = 32768;
 static constexpr u32 SVO_FAR_PTRS_PER_BLOCK = 64;
 static constexpr u32 SVO_FAR_PTR_BIT_MASK   = 0x8000;
 
@@ -77,6 +77,9 @@ struct svo
 
     svo_block* CurrentBlock;
     svo_block* RootBlock;
+
+    svo_block** BlkTable;
+    usize       BlkCount;
 };
 
 extern "C" svo*

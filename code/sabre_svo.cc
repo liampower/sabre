@@ -44,6 +44,23 @@ FindMSB(u32 Msk)
 #endif
 }
 
+#if 0
+static svo_node*
+GetHighestVisibleAncestor(svo* Tree, intersector_fn VisibilityFn)
+{
+    // Begin at root
+    svo_node* HVAncestor = &Tree->RootBlock->Entries[0];
+    u32 Scale = 1 << Tree->ScaleExponent;
+    u32 Depth = 0;
+
+    while (Depth < Tree->MaxDepth)
+    {
+        vec3 Rad = vec3(Scale >> 1);
+        vec3 NodeMin = 
+    }
+}
+#endif
+
 static inline bool
 IsOctantOccupied(svo_node* ContainingNode, svo_oct Oct)
 {
