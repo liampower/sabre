@@ -111,7 +111,23 @@ GetNodeChild(svo_node* Parent, svo* Tree, svo_oct ChildOct)
         // Extract the far ptr from this block
         far_ptr FarPtr = OldBlk->FarPtrs[ChildPtrBase];
 
-        svo_block* NextBlk = FarPtr.Block;
+        svo_block* NextBlk = OldBlk;
+
+        u32 BlksJumped = 0;
+
+        do
+        {
+            if (FarPtr.BlkOffset < 0)
+            {
+                NextBlk = NextBlk->Prev;
+                --BlksJumped;
+            }
+            else
+            {
+                NextBlk = NextBlk->Next;
+                ++BlksJumped;
+            }
+        } while (BlksJumped < FarPtr.BlkOffset);
 
         return &NextBlk->Entries[ChildPtrBase + ChildOffset];
     }
@@ -133,7 +149,7 @@ AllocateFarPtr(svo_block* ContainingBlk)
 }
 
 static void
-SetNodeChildPointer(u16 ChildPtr, bool InNewBlock, svo* Tree, svo_node* OutParentNode)
+SetNodeChildPointer(u16 ChildPtr, bool InNewBlock, svo* Tree, svo_node* OutParentNode, svo_block* ParentBlk)
 {
     // If the child is in a new block, we need to allocate and assign a 
     // far ptr for the old block.
@@ -143,10 +159,14 @@ SetNodeChildPointer(u16 ChildPtr, bool InNewBlock, svo* Tree, svo_node* OutParen
         // to be the previous
         
         svo_block* ContainingBlk = Tree->CurrentBlock->Prev;
+        assert(ContainingBlk != nullptr);
 
-        far_ptr* FarPtr = AllocateFarPtr(ContainingBlk);
-        FarPtr->Block = Tree->CurrentBlock;
-        FarPtr->Offset = ChildPtr;
+        assert(ParentBlk != nullptr);
+        far_ptr* FarPtr = AllocateFarPtr(ParentBlk);
+
+        // One block forward
+        FarPtr->BlkOffset = 1;
+        FarPtr->NodeOffset = ChildPtr;
 
         // TODO(Liam): Check type conversions here
         OutParentNode->ChildPtr = (u16)(FarPtr - ContainingBlk->FarPtrs);
@@ -301,15 +321,14 @@ BuildTree(svo* Tree, intersector_fn Surface, svo_node* Root)
     node_context RootContext = { Root, OCT_C000, 0, RootScale, RootCentre };
     Queue.push(RootContext);
 
+    svo_block* ParentBlk = Tree->CurrentBlock;
+    
     while (false == Queue.empty())
     {
         node_context CurrentContext = Queue.front();
 
-        //printf("\nBEGIN L(%d)\n", CurrentContext.Depth);
-
         u32 Scale = CurrentContext.Scale >> 1;
 
-        //printf("SCALE %u   CTR (%f %f %f)\n", Scale, CurrentContext.Centre.X, CurrentContext.Centre.Y, CurrentContext.Centre.Z);
         for (u32 Oct = 0; Oct < 8; ++Oct)
         {
             vec3 OctantCentre = GetNodeCentrePosition((svo_oct) Oct, Scale, CurrentContext.Centre);
@@ -333,12 +352,12 @@ BuildTree(svo* Tree, intersector_fn Surface, svo_node* Root)
                     {
                         // Since this block was just created, it is okay to set the child ptr
                         // to the beginning of the blk
-                        SetNodeChildPointer(0, Result.NewBlock, Tree, CurrentContext.Node);
+                        SetNodeChildPointer(0, Result.NewBlock, Tree, CurrentContext.Node, ParentBlk);
                     }
                     else
                     {
                         ptrdiff_t ChildOffset = Result.MaybeChild - Tree->CurrentBlock->Entries;
-                        SetNodeChildPointer((u16) ChildOffset, Result.NewBlock, Tree, CurrentContext.Node);
+                        SetNodeChildPointer((u16) ChildOffset, Result.NewBlock, Tree, CurrentContext.Node, ParentBlk);
                     }
                 }
 
@@ -398,6 +417,7 @@ InsertVoxel(svo* Svo, vec3 P, u32 VoxelScale)
     // Initialised to root node
     // TODO(Liam): Switch to a forward-linked list??
     svo_node* ParentNode = &Svo->RootBlock->Entries[0]; 
+    svo_block* ParentBlk = Svo->RootBlock;
 
     for (u32 Scale = SvoScale; Scale >= VoxelScale; Scale >>= 1)
     {

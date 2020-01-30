@@ -11,7 +11,7 @@
 #include "sabre_svo.h"
 #include "sabre_data.h"
 
-#define SABRE_MAX_TREE_DEPTH 8
+#define SABRE_MAX_TREE_DEPTH 4
 #define SABRE_SCALE_EXPONENT 5
 #define SABRE_WORK_SIZE_X 512
 #define SABRE_WORK_SIZE_Y 512
@@ -226,43 +226,69 @@ PackSvoNodeToGLUint(svo_node* Node)
 static gl_uint
 UploadOctreeBlockData(const svo* const Svo)
 {
-    gl_uint SvoBuffer;
+    printf("BLKCOUNT: %d\n", Svo->UsedBlockCount);
+    gl_uint SvoBuffer, FarPtrBuffer;
+
+    // TODO(Liam): Look into combining these allocations
     glGenBuffers(1, &SvoBuffer);
+    glGenBuffers(1, &FarPtrBuffer);
 
     // FIXME(Liam): BIG cleanup here needed - may need to bite the bullet
     // and just have the nodes be typedef'd into U32s anyway.
-    static_assert(sizeof(svo_node) == sizeof(u32), "svo_node needs to be 32 bits!");
+    static_assert(sizeof(svo_node) == sizeof(GLuint), "Node size must == GLuint size!");
 
-    if (SvoBuffer)
+    if (SvoBuffer && FarPtrBuffer)
     {
-        usize BlockDataSize = sizeof(svo_node) * SVO_ENTRIES_PER_BLOCK;
+        usize SvoBlockDataSize = sizeof(svo_node) * SVO_ENTRIES_PER_BLOCK;
         // TODO(Liam): Waste here on the last block
-        usize TotalDataSize = BlockDataSize * Svo->UsedBlockCount;
+        usize MaxSvoDataSize = SvoBlockDataSize * Svo->UsedBlockCount;
 
+        usize FarPtrBlockDataSize = sizeof(far_ptr) * SVO_FAR_PTRS_PER_BLOCK;
+        usize MaxFarPtrDataSize = FarPtrBlockDataSize * Svo->UsedBlockCount;
+
+        // Allocate space for the far ptr buffer
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, FarPtrBuffer);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, MaxFarPtrDataSize, nullptr, GL_DYNAMIC_COPY);
+        far_ptr* GPUFarPtrBuffer = (far_ptr*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+
+        // Allocate space for the node data buffer
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoBuffer);
-        glBufferData(GL_SHADER_STORAGE_BUFFER, TotalDataSize, nullptr, GL_DYNAMIC_COPY);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, MaxSvoDataSize, nullptr, GL_DYNAMIC_COPY);
+        GLuint* GPUSvoBuffer = (GLuint*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
 
-        static_assert(sizeof(svo_node) == sizeof(GLuint), "Node size must == GLuint size!");
+        // Reset SSBO buffer binding
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
-        GLuint* GPUTreeBuffer = (GLuint*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
 
         // TODO(Liam): Don't send all the blocks to the renderer! Use only a subset.
         // TODO(Liam): How on earth to handle far ptrs in renderer?
         svo_block* CurrentBlk = Svo->RootBlock;
-        usize NextDataOffset = 0;
+        usize NextSvoDataOffset = 0;
+        usize NextFarPtrDataOffset = 0;
 
         while (CurrentBlk)
         {
-            assert(NextDataOffset + (CurrentBlk->NextFreeSlot*sizeof(svo_node)) <= TotalDataSize);
-            memcpy(GPUTreeBuffer + NextDataOffset, CurrentBlk->Entries, CurrentBlk->NextFreeSlot * sizeof(svo_node));
+            assert(NextSvoDataOffset + (CurrentBlk->NextFreeSlot*sizeof(svo_node)) <= MaxSvoDataSize);
+            // Copy far ptrs block
+            memcpy(GPUSvoBuffer + NextSvoDataOffset, CurrentBlk->Entries, CurrentBlk->NextFreeSlot * sizeof(svo_node));
+            NextSvoDataOffset += CurrentBlk->NextFreeSlot;
 
-            NextDataOffset += CurrentBlk->NextFreeSlot;
+            memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, CurrentBlk->NextFarPtrSlot * sizeof(far_ptr)); 
+            NextFarPtrDataOffset += CurrentBlk->NextFarPtrSlot;
+
             CurrentBlk = CurrentBlk->Next;
         }
 
+        // Unmap both buffers
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, FarPtrBuffer);
+        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoBuffer);
         glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
         
+        // Associate buffers with shader slots
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, SvoBuffer);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, FarPtrBuffer);
     }
 
     return SvoBuffer;

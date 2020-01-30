@@ -1,7 +1,7 @@
 #ifndef SABRE_SVO_H
 #define SABRE_SVO_H
 
-static constexpr u32 SVO_ENTRIES_PER_BLOCK  = 32768;
+static constexpr u32 SVO_ENTRIES_PER_BLOCK  = 16;
 static constexpr u32 SVO_FAR_PTRS_PER_BLOCK = 64;
 static constexpr u32 SVO_FAR_PTR_BIT_MASK   = 0x8000;
 
@@ -23,13 +23,18 @@ enum svo_oct
 
 struct far_ptr
 {
-    svo_block* Block; // Which particular block this node points into.
-    u32 Offset;       // Which slot inside that block the node resides at. 
+    // How many blocks forwards (negative values are backwards) needed
+    // to be traversed to arrive at the resident block
+    i32 BlkOffset;
+
+    // Which slot in the resident block the particular child node
+    // resides at.
+    u32 NodeOffset;
 };
 
 enum svo_blk_flags
 {
-    SVO_BLK_LEAKY = 0x000001,
+    SVO_BLK_LEAKY = 0x000001
 };
 
 union alignas(4) svo_node

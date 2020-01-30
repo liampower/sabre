@@ -39,7 +39,11 @@ extern const char* const RaycasterComputeKernel = R"GLSL(
 #define SVO_NODE_LEAF_MASK      0x000000FFU
 // TODO(Liam): Need to fix this up to support
 // far pointers!
-#define SVO_NODE_CHILD_PTR_MASK 0xFFFF0000U
+#define SVO_NODE_CHILD_PTR_MASK 0x7FFF0000U
+#define SVO_FAR_PTR_BIT_MASK    0x80000000U
+
+#define SVO_FAR_PTRS_PER_BLOCK  64
+#define SVO_ENTRIES_PER_BLOCK   16
 
 #define MAX_STEPS 16
 #define SCREEN_DIM 512
@@ -70,6 +74,12 @@ struct ray_intersection
     vec3  tMinV;
 };
 
+struct far_ptr
+{
+    int  BlkOffset;
+    uint NodeOffset;
+};
+
 layout (local_size_x = 8, local_size_y = 8) in;
 
 layout (rgba32f, binding = 0) uniform image2D OutputImgUniform;
@@ -86,6 +96,10 @@ layout (std430, binding = 3) readonly buffer svo_input
     uint Nodes[];
 } SvoInputBuffer;
 
+layout (std430, binding = 4) readonly buffer svo_far_ptr_index
+{
+    far_ptr FarPtrs[];
+} SvoFarPtrBuffer;
 
 float MaxComponent(vec3 V)
 {
@@ -97,18 +111,40 @@ float MinComponent(vec3 V)
     return min(min(V.x, V.y), V.z);
 }
 
-uint GetNodeChild(in uint ParentNode, in uint Oct)
+uint GetNodeChild(in uint ParentNode, in uint Oct, inout int BlkIndex)
 {
-    uint ChildPtr = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
-    uint OccBits = (ParentNode & SVO_NODE_OCCUPIED_MASK) >> 8; 
-    uint LeafBits = (ParentNode & SVO_NODE_LEAF_MASK);
-    uint OccupiedNonLeafOcts = OccBits & (~LeafBits);
-    uint SetBitsBehindOctIdx = (1 << Oct) - 1;
+    if (! bool(ParentNode & SVO_FAR_PTR_BIT_MASK))
+    {
+        uint ChildPtr = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
+        uint OccBits = (ParentNode & SVO_NODE_OCCUPIED_MASK) >> 8; 
+        uint LeafBits = (ParentNode & SVO_NODE_LEAF_MASK);
+        uint OccupiedNonLeafOcts = OccBits & (~LeafBits);
+        uint SetBitsBehindOctIdx = (1 << Oct) - 1;
 
-    uint ChildOffset = bitCount(OccupiedNonLeafOcts & SetBitsBehindOctIdx); 
+        uint ChildOffset = bitCount(OccupiedNonLeafOcts & SetBitsBehindOctIdx); 
 
-    // TODO(Liam): Broken?
-    return SvoInputBuffer.Nodes[ChildPtr + ChildOffset];
+        // TODO(Liam): Broken?
+        return SvoInputBuffer.Nodes[ChildPtr + ChildOffset];
+    }
+    else
+    {
+        // Perform far ptr lookup
+        uint ParentBlk = BlkIndex;
+        uint FarPtrIndex = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
+        far_ptr FarPtr = SvoFarPtrBuffer.FarPtrs[ParentBlk*SVO_FAR_PTRS_PER_BLOCK + FarPtrIndex];
+        BlkIndex += FarPtr.BlkOffset;
+
+        uint ChildBlkStart = FarPtr.BlkOffset * SVO_ENTRIES_PER_BLOCK;
+
+        uint OccBits = (ParentNode & SVO_NODE_OCCUPIED_MASK) >> 8; 
+        uint LeafBits = (ParentNode & SVO_NODE_LEAF_MASK);
+        uint OccupiedNonLeafOcts = OccBits & (~LeafBits);
+        uint SetBitsBehindOctIdx = (1 << Oct) - 1;
+
+        uint ChildOffset = bitCount(OccupiedNonLeafOcts & SetBitsBehindOctIdx); 
+
+        return SvoInputBuffer.Nodes[BlkIndex + FarPtr.NodeOffset + ChildOffset];
+    }
 }
 
 ray_intersection ComputeRayBoxIntersection(in ray R, in vec3 vMin, in vec3 vMax)
@@ -243,6 +279,8 @@ vec3 Raycast(in ray R)
 {
     // Extant of the root cube
     int Scale = 1 << (ScaleExponentUniform);
+
+    int BlkIndex = 0;
     
     vec3 RootMin = vec3(0);
     vec3 RootMax = vec3(Scale);
@@ -304,7 +342,7 @@ vec3 Raycast(in ray R)
                     else
                     {
                         // Voxel has children --- execute push
-                        ParentNode = GetNodeChild(ParentNode, CurrentOct);
+                        ParentNode = GetNodeChild(ParentNode, CurrentOct, BlkIndex);
                         CurrentOct = GetOctant(RayP, NodeCentre);
                         ParentCentre = NodeCentre;
                         Scale >>= 1;
