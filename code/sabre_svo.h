@@ -101,4 +101,9 @@ DeleteSparseVoxelOctree(svo* Tree);
 extern "C" svo*
 BuildFromPlyFile(const char* const FileName);
 
+extern "C" svo*
+CreateSparseVoxelOctree(u32 ScaleExponent,
+                        u32 MaxDepth,
+                        intersector_fn Surface);
+
 #endif
