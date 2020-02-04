@@ -523,6 +523,58 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
                         // First, attempt to allocate within the same block
                         svo_node* Child = AllocateNode(CurrentBlk);
 
+                        if (nullptr == Child)
+                        {
+                            svo_block* NewBlk = AllocateAndLinkNewBlock(CurrentBlk, Tree);
+                            Child = AllocateNode(NewBlk);
+                            CurrentBlk = NewBlk;
+                            ++CurrentBlkIndex;
+                        }
+
+                        assert(Child);
+                        assert(CurrentBlk);
+                        assert(CurrentCtx.ParentBlk);
+                        assert(CurrentCtx.Node);
+
+
+                        // Didn't move to  new block, no need to 
+                        // allocate far ptrs
+                        if (CurrentBlk == CurrentCtx.ParentBlk)
+                        {
+                            if (CurrentCtx.Node->ChildPtr == 0x0000)
+                            {
+                                // Same block; okay to compute offset using the current block
+                                ptrdiff_t ChildOffset = Child - CurrentBlk->Entries;
+
+                                // Extract first 15 bits
+                                u16 ChildPtrBits = (u16)(ChildOffset) & 0x7FFFU;
+                                CurrentCtx.Node->ChildPtr = ChildPtrBits;
+                            }
+                        }
+                        else // Need a far ptr
+                        {
+                            // Compute offset using the new block
+                            ptrdiff_t ChildOffset = Child - CurrentBlk->Entries;
+                            // Extract first 15 bits
+                            u16 ChildPtrBits = (u16)(ChildOffset) & 0x7FFF;
+
+                            // TODO(Liam): Handle failure case
+                            far_ptr* FarPtr = AllocateFarPtr(CurrentCtx.ParentBlk);
+                            FarPtr->BlkOffset = (i32)(Tree->UsedBlockCount - CurrentCtx.ParentBlkIndex);
+                            FarPtr->NodeOffset = ChildPtrBits;
+
+                            // Set the child ptr value to the far bit with the remaining 15 bits
+                            // set as the index into the far ptrs storage block.
+                            CurrentCtx.Node->ChildPtr = SVO_FAR_PTR_BIT_MASK | (CurrentCtx.ParentBlk->NextFarPtrSlot - 1);
+                        }
+
+                        if (Child)
+                        {
+                            q_ctx ChildCtx = { Child, (svo_oct)Oct, CurrentCtx.Depth + 1, NextScale, OctCentre, CurrentBlkIndex, CurrentBlk };
+                            Queue.push(ChildCtx);
+                        }
+                
+#if 0
                         if (Child)
                         {
                             // If the parent node's child ptr hasn't already been set, we can set it here.
@@ -547,8 +599,16 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
                             // Allocate from the new blk instead
                             Child = AllocateNode(NewBlk);
 
+                            CurrentBlk = NewBlk;
+                            CurrentBlkIndex = CurrentCtx.ParentBlkIndex + 1;
+
+                        }
+
+                        // Moved out of parent blk
+                        if (CurrentBlk != CurrentCtx.ParentBlk)
+                        {
                             // Compute offset using the new block
-                            ptrdiff_t ChildOffset = Child - NewBlk->Entries;
+                            ptrdiff_t ChildOffset = Child - CurrentBlk->Entries;
                             // Extract first 15 bits
                             u16 ChildPtrBits = (u16)(ChildOffset) & 0x7FFF;
 
@@ -561,9 +621,6 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
                             // set as the index into the far ptrs storage block.
                             CurrentCtx.Node->ChildPtr = SVO_FAR_PTR_BIT_MASK | (CurrentCtx.ParentBlk->NextFarPtrSlot - 1);
 
-                            CurrentBlk = NewBlk;
-                            CurrentBlkIndex = CurrentCtx.ParentBlkIndex + 1;
-
                         }
 
                         // Push the child node onto the queue for potential subdivision
@@ -572,6 +629,7 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
                             q_ctx ChildCtx = { Child, (svo_oct)Oct, CurrentCtx.Depth + 1, NextScale, OctCentre, CurrentBlkIndex, CurrentBlk };
                             Queue.push(ChildCtx);
                         }
+#endif
                     }
                     else
                     {
