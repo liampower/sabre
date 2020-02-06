@@ -9,6 +9,7 @@
 #include "sabre_math.h"
 #include "sabre_svo.h"
 
+
 struct poly
 {
     u8  VertexCount;
@@ -493,6 +494,8 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
         std::queue<q_ctx> Queue;
         Queue.push(RootCtx);
 
+        i32 ParentBlkIndex = 0;
+
         while (false == Queue.empty())
         {
             q_ctx CurrentCtx = Queue.front();
@@ -500,7 +503,6 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
 
             // Index of the block holding the node which is the
             // parent of the current level we're examining.
-            i32 ParentBlkIndex = (i32)Tree->UsedBlockCount;
 
             // Process each octant of this node
             for (u32 Oct = 0; Oct < 8; ++Oct)
@@ -537,35 +539,35 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
                         assert(CurrentCtx.Node);
 
 
-                        // Didn't move to  new block, no need to 
-                        // allocate far ptrs
-                        if (CurrentBlk == CurrentCtx.ParentBlk)
+                        if (CurrentCtx.Node->ChildPtr == 0x0000)
                         {
-                            if (CurrentCtx.Node->ChildPtr == 0x0000)
+                            // Didn't move to  new block, no need to 
+                            // allocate far ptrs
+                            if (CurrentBlk == CurrentCtx.ParentBlk)
                             {
-                                // Same block; okay to compute offset using the current block
-                                ptrdiff_t ChildOffset = Child - CurrentBlk->Entries;
+                                    // Same block; okay to compute offset using the current block
+                                    ptrdiff_t ChildOffset = Child - CurrentBlk->Entries;
 
-                                // Extract first 15 bits
-                                u16 ChildPtrBits = (u16)(ChildOffset) & 0x7FFFU;
-                                CurrentCtx.Node->ChildPtr = ChildPtrBits;
+                                    // Extract first 15 bits
+                                    u16 ChildPtrBits = (u16)(ChildOffset) & 0x7FFFU;
+                                    CurrentCtx.Node->ChildPtr = ChildPtrBits;
                             }
-                        }
-                        else // Need a far ptr
-                        {
-                            // Compute offset using the new block
-                            ptrdiff_t ChildOffset = Child - CurrentBlk->Entries;
-                            // Extract first 15 bits
-                            u16 ChildPtrBits = (u16)(ChildOffset) & 0x7FFF;
+                            else // Need a far ptr
+                            {
+                                // Compute offset using the new block
+                                ptrdiff_t ChildOffset = Child - CurrentBlk->Entries;
+                                // Extract first 15 bits
+                                u16 ChildPtrBits = (u16)(ChildOffset) & 0x7FFF;
 
-                            // TODO(Liam): Handle failure case
-                            far_ptr* FarPtr = AllocateFarPtr(CurrentCtx.ParentBlk);
-                            FarPtr->BlkOffset = (i32)(Tree->UsedBlockCount - CurrentCtx.ParentBlkIndex);
-                            FarPtr->NodeOffset = ChildPtrBits;
+                                // TODO(Liam): Handle failure case
+                                far_ptr* FarPtr = AllocateFarPtr(CurrentCtx.ParentBlk);
+                                FarPtr->BlkOffset = (i32)((Tree->UsedBlockCount - 1) - CurrentCtx.ParentBlkIndex);
+                                FarPtr->NodeOffset = ChildPtrBits;
 
-                            // Set the child ptr value to the far bit with the remaining 15 bits
-                            // set as the index into the far ptrs storage block.
-                            CurrentCtx.Node->ChildPtr = SVO_FAR_PTR_BIT_MASK | (CurrentCtx.ParentBlk->NextFarPtrSlot - 1);
+                                // Set the child ptr value to the far bit with the remaining 15 bits
+                                // set as the index into the far ptrs storage block.
+                                CurrentCtx.Node->ChildPtr = SVO_FAR_PTR_BIT_MASK | (CurrentCtx.ParentBlk->NextFarPtrSlot - 1);
+                            }
                         }
 
                         if (Child)

@@ -37,13 +37,8 @@ extern const char* const RaycasterComputeKernel = R"GLSL(
 
 #define SVO_NODE_OCCUPIED_MASK  0x0000FF00U
 #define SVO_NODE_LEAF_MASK      0x000000FFU
-// TODO(Liam): Need to fix this up to support
-// far pointers!
 #define SVO_NODE_CHILD_PTR_MASK 0x7FFF0000U
 #define SVO_FAR_PTR_BIT_MASK    0x80000000U
-
-#define SVO_FAR_PTRS_PER_BLOCK  64
-#define SVO_ENTRIES_PER_BLOCK   16
 
 #define MAX_STEPS 16
 #define SCREEN_DIM 512
@@ -87,6 +82,8 @@ layout (rgba32f, binding = 0) uniform image2D OutputImgUniform;
 uniform uint MaxDepthUniform;
 uniform uint BlockCountUniform;
 uniform uint ScaleExponentUniform;
+uniform uint EntriesPerBlockUniform;
+uniform uint FarPtrsPerBlockuniform;
 
 uniform vec3 ViewPosUniform;
 uniform mat3 ViewMatrixUniform;
@@ -113,37 +110,32 @@ float MinComponent(vec3 V)
 
 uint GetNodeChild(in uint ParentNode, in uint Oct, inout int BlkIndex)
 {
+    uint ChildPtr = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
+    uint OccBits = (ParentNode & SVO_NODE_OCCUPIED_MASK) >> 8; 
+    uint LeafBits = (ParentNode & SVO_NODE_LEAF_MASK);
+    uint OccupiedNonLeafOcts = OccBits & (~LeafBits);
+    uint SetBitsBehindOctIdx = (1 << Oct) - 1;
+
+    uint ChildOffset = bitCount(OccupiedNonLeafOcts & SetBitsBehindOctIdx); 
+
     if (! bool(ParentNode & SVO_FAR_PTR_BIT_MASK))
     {
-        uint ChildPtr = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
-        uint OccBits = (ParentNode & SVO_NODE_OCCUPIED_MASK) >> 8; 
-        uint LeafBits = (ParentNode & SVO_NODE_LEAF_MASK);
-        uint OccupiedNonLeafOcts = OccBits & (~LeafBits);
-        uint SetBitsBehindOctIdx = (1 << Oct) - 1;
+        BlkIndex = int(ChildPtr + ChildOffset) / int(EntriesPerBlockUniform);
 
-        uint ChildOffset = bitCount(OccupiedNonLeafOcts & SetBitsBehindOctIdx); 
-
-        // TODO(Liam): Broken?
         return SvoInputBuffer.Nodes[ChildPtr + ChildOffset];
     }
     else
     {
-        // Perform far ptr lookup
-        uint ParentBlk = BlkIndex;
+        // Find the far ptr associated with this node. To do this, we need to compute
+        // the byte offset for this block, then index into that block's far ptr
+        // list for this node.
         uint FarPtrIndex = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
-        far_ptr FarPtr = SvoFarPtrBuffer.FarPtrs[ParentBlk*SVO_FAR_PTRS_PER_BLOCK + FarPtrIndex];
+        far_ptr FarPtr = SvoFarPtrBuffer.FarPtrs[BlkIndex*FarPtrsPerBlockuniform + FarPtrIndex];
+
         BlkIndex += FarPtr.BlkOffset;
+        uint ChildBlkStart = BlkIndex * EntriesPerBlockUniform;
 
-        uint ChildBlkStart = FarPtr.BlkOffset * SVO_ENTRIES_PER_BLOCK;
-
-        uint OccBits = (ParentNode & SVO_NODE_OCCUPIED_MASK) >> 8; 
-        uint LeafBits = (ParentNode & SVO_NODE_LEAF_MASK);
-        uint OccupiedNonLeafOcts = OccBits & (~LeafBits);
-        uint SetBitsBehindOctIdx = (1 << Oct) - 1;
-
-        uint ChildOffset = bitCount(OccupiedNonLeafOcts & SetBitsBehindOctIdx); 
-
-        return SvoInputBuffer.Nodes[BlkIndex + FarPtr.NodeOffset + ChildOffset];
+        return SvoInputBuffer.Nodes[ChildBlkStart + FarPtr.NodeOffset + ChildOffset];
     }
 }
 
@@ -273,6 +265,7 @@ struct st_frame
     int Scale;
     float tMin;
     vec3 ParentCentre;
+    int BlkIndex;
 };
 
 vec3 Raycast(in ray R)
@@ -313,7 +306,12 @@ vec3 Raycast(in ray R)
         // Stack of previous voxels
         st_frame Stack[MAX_STEPS + 1];
         Scale >>= 1;
-        Stack[CurrentDepth] = st_frame(ParentNode, CurrentDepth, Scale, CurrentIntersection.tMin, ParentCentre);
+        Stack[CurrentDepth] = st_frame(ParentNode, 
+                                       CurrentDepth, 
+                                       Scale, 
+                                       CurrentIntersection.tMin, 
+                                       ParentCentre,
+                                       BlkIndex);
 
         // Begin stepping along the ray
         for (Step = 0; Step < MAX_STEPS; ++Step)
@@ -342,13 +340,19 @@ vec3 Raycast(in ray R)
                     else
                     {
                         // Voxel has children --- execute push
+                        // NOTE(Liam): BlkIndex (potentially) updated here
                         ParentNode = GetNodeChild(ParentNode, CurrentOct, BlkIndex);
                         CurrentOct = GetOctant(RayP, NodeCentre);
                         ParentCentre = NodeCentre;
                         Scale >>= 1;
                         ++CurrentDepth;
 
-                        Stack[CurrentDepth] = st_frame(ParentNode, CurrentDepth, Scale, CurrentIntersection.tMin, ParentCentre);
+                        Stack[CurrentDepth] = st_frame(ParentNode, 
+                                                       CurrentDepth, 
+                                                       Scale, 
+                                                       CurrentIntersection.tMin, 
+                                                       ParentCentre,
+                                                       BlkIndex);
 
                         continue;
                     }
@@ -388,6 +392,7 @@ vec3 Raycast(in ray R)
                         Scale = Stack[CurrentDepth].Scale;
                         ParentCentre = Stack[CurrentDepth].ParentCentre;
                         ParentNode = Stack[CurrentDepth].Node;
+                        BlkIndex = Stack[CurrentDepth].BlkIndex;
 
                         CurrentOct = GetOctant(RayP, ParentCentre);
                     }
@@ -399,7 +404,8 @@ vec3 Raycast(in ray R)
             }
             else
             {
-                return vec3(0.5, 0.2, 0.6);
+                float O = float(Step) / MAX_STEPS;
+                return O * vec3(0.5, 0.2, 0.6);
             }
         }
     }

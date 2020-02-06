@@ -86,8 +86,8 @@ OutputGraphicsDeviceInfo(void)
 static inline bool
 CubeSphereIntersection(vec3 Min, vec3 Max)
 {
-    const vec3 S = vec3(16, 16, 16);
-    const f32 R = 16.0f;
+    const vec3 S = vec3(16);
+    const f32 R = 8.0f;
 
     f32 DistanceSqToCube = R * R;
 
@@ -390,6 +390,8 @@ main(int ArgCount, const char** const Args)
     glUniform1ui(glGetUniformLocation(ComputeShader, "MaxDepthUniform"), WorldSvo->MaxDepth);
     glUniform1ui(glGetUniformLocation(ComputeShader, "ScaleExponentUniform"), WorldSvo->ScaleExponent);
     glUniform1ui(glGetUniformLocation(ComputeShader, "BlockCountUniform"), WorldSvo->UsedBlockCount);
+    glUniform1ui(glGetUniformLocation(ComputeShader, "EntriesPerBlockUniform"), SVO_ENTRIES_PER_BLOCK);
+    glUniform1ui(glGetUniformLocation(ComputeShader, "FarPtrsPerBlockuniform"), SVO_FAR_PTRS_PER_BLOCK);
 
     gl_int ViewMatrixUniformLocation = glGetUniformLocation(ComputeShader, "ViewMatrixUniform");
 
