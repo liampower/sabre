@@ -133,8 +133,13 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout int BlkIndex)
         uint FarPtrBlkStart = BlkIndex*FarPtrsPerBlockUniform;
         far_ptr FarPtr = SvoFarPtrBuffer.FarPtrs[FarPtrBlkStart + FarPtrIndex];
 
-        uint ChildBlkStart = (BlkIndex + FarPtr.BlkOffset) * EntriesPerBlockUniform;
-        BlkIndex += (FarPtr.BlkOffset + int((FarPtr.NodeOffset + ChildOffset) / EntriesPerBlockUniform));
+        // Skip to the block containing the first child
+        BlkIndex += FarPtr.BlkOffset;
+        uint ChildBlkStart = BlkIndex * EntriesPerBlockUniform;
+
+        // Skip any blocks required to get to the actual child node
+        BlkIndex += int(FarPtr.NodeOffset + ChildOffset) / int(EntriesPerBlockUniform);
+        //BlkIndex += (FarPtr.BlkOffset + int((ChildOffset + FarPtr.NodeOffset) / EntriesPerBlockUniform));
 
         return SvoInputBuffer.Nodes[ChildBlkStart + FarPtr.NodeOffset + ChildOffset];
     }
@@ -158,6 +163,8 @@ ray_intersection ComputeRayBoxIntersection(in ray R, in vec3 vMin, in vec3 vMax)
 
 bool IsAdvanceValid(in uint NewOct, in uint OldOct, in vec3 RayDir)
 {
+    // TODO(Liam): Can move Sgn into parameter to use precalculated
+    // sgn from Raycast()
     ivec3 Sgn = ivec3(sign(RayDir));
     uvec3 OctBits = uvec3(1, 2, 4);
     
