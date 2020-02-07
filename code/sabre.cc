@@ -298,7 +298,6 @@ UploadOctreeBlockData(const svo* const Svo)
 extern int
 main(int ArgCount, const char** const Args)
 {
-
     if (GLFW_FALSE == glfwInit())
     {
         fprintf(stderr, "Failed to initialise GLFW\n");
