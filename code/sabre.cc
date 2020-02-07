@@ -476,10 +476,10 @@ main(int ArgCount, const char** const Args)
 
         if (glfwGetKey(Window, GLFW_KEY_Y))
         {
-            printf("Right: (%f, %f, %f)\n", Cam.Right.X, Cam.Right.Y, Cam.Right.Z);
-            printf("Up: (%f, %f, %f)\n", Cam.Up.X, Cam.Up.Y, Cam.Up.Z);
-            printf("Forward: (%f, %f, %f)\n", Cam.Forward.X, Cam.Forward.Y, Cam.Forward.Z);
-            printf("Position: (%f, %f, %f)\n", Cam.Position.X, Cam.Position.Y, Cam.Position.Z);
+            printf("Right: "); DEBUGPrintVec3(Cam.Right); printf("\n");
+            printf("Up: "); DEBUGPrintVec3(Cam.Up); printf("\n");
+            printf("Forward: "); DEBUGPrintVec3(Cam.Forward); printf("\n");
+            printf("Position: "); DEBUGPrintVec3(Cam.Position); printf("\n");
         }
 
         { // NOTE: Mouse look

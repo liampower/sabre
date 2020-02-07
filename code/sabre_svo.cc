@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <intrin.h>
 #include <queue>
+#include <deque>
 #include <iostream>
 #include <memory>
 #include <stack>
@@ -330,14 +331,19 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
 
         q_ctx RootCtx = { RootNode, OCT_C000, 0, RootScale, RootCentre, ParentBlkIndex, RootBlk };
 
-        std::queue<q_ctx> Queue;
-        Queue.push(RootCtx);
-        int N;
-        
+        std::deque<q_ctx> Queue;
+        Queue.push_front(RootCtx);
+        int N = 0;
+
         while (false == Queue.empty() || N > 100)
         {
             ++N;
+
+            // Retrieve the next node to process from
+            // the front of the queue
             q_ctx CurrentCtx = Queue.front();
+            Queue.pop_front();
+
             u32 NextScale = CurrentCtx.Scale >> 1;
 
             // Process each octant of this node
@@ -360,7 +366,8 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
                         // Allocate a new child node for this octant.
                         // First, attempt to allocate within the same block
                         svo_node* Child = AllocateNode(CurrentBlk);
-                        //printf("%d %d\n", CurrentCtx.Depth, Oct);
+                        printf("%d %d\n", CurrentCtx.Depth, Oct);
+                        DEBUGPrintVec3(OctCentre); printf("\n");
 
                         if (nullptr == Child)
                         {
@@ -410,7 +417,7 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
                         if (Child)
                         {
                             q_ctx ChildCtx = { Child, (svo_oct)Oct, CurrentCtx.Depth + 1, NextScale, OctCentre, CurrentBlkIndex, CurrentBlk };
-                            Queue.push(ChildCtx);
+                            Queue.push_front(ChildCtx);
                         }
                     }
                     else
@@ -420,7 +427,7 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
                 }
             }
 
-            Queue.pop();
+            //Queue.pop();
         }
 
         return Tree;

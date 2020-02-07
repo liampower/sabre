@@ -96,4 +96,10 @@ CreateSparseVoxelOctree(u32 ScaleExponent,
                         u32 MaxDepth,
                         intersector_fn Surface);
 
+static inline void
+DEBUGPrintVec3(vec3 V)
+{
+    printf("(%f, %f, %f)", (f64)V.X, (f64)V.Y, (f64)V.Z);
+}
+
 #endif
