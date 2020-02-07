@@ -83,7 +83,7 @@ uniform uint MaxDepthUniform;
 uniform uint BlockCountUniform;
 uniform uint ScaleExponentUniform;
 uniform uint EntriesPerBlockUniform;
-uniform uint FarPtrsPerBlockuniform;
+uniform uint FarPtrsPerBlockUniform;
 
 uniform vec3 ViewPosUniform;
 uniform mat3 ViewMatrixUniform;
@@ -120,7 +120,7 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout int BlkIndex)
 
     if (! bool(ParentNode & SVO_FAR_PTR_BIT_MASK))
     {
-        BlkIndex = int(ChildPtr + ChildOffset) / int(EntriesPerBlockUniform);
+        BlkIndex += int(ChildPtr + ChildOffset) / int(EntriesPerBlockUniform);
 
         return SvoInputBuffer.Nodes[ChildPtr + ChildOffset];
     }
@@ -130,10 +130,11 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout int BlkIndex)
         // the byte offset for this block, then index into that block's far ptr
         // list for this node.
         uint FarPtrIndex = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
-        far_ptr FarPtr = SvoFarPtrBuffer.FarPtrs[BlkIndex*FarPtrsPerBlockuniform + FarPtrIndex];
+        uint FarPtrBlkStart = BlkIndex*FarPtrsPerBlockUniform;
+        far_ptr FarPtr = SvoFarPtrBuffer.FarPtrs[FarPtrBlkStart + FarPtrIndex];
 
-        BlkIndex += FarPtr.BlkOffset;
-        uint ChildBlkStart = BlkIndex * EntriesPerBlockUniform;
+        uint ChildBlkStart = (BlkIndex + FarPtr.BlkOffset) * EntriesPerBlockUniform;
+        BlkIndex += (FarPtr.BlkOffset + int((FarPtr.NodeOffset + ChildOffset) / EntriesPerBlockUniform));
 
         return SvoInputBuffer.Nodes[ChildBlkStart + FarPtr.NodeOffset + ChildOffset];
     }
@@ -342,6 +343,7 @@ vec3 Raycast(in ray R)
                         // Voxel has children --- execute push
                         // NOTE(Liam): BlkIndex (potentially) updated here
                         ParentNode = GetNodeChild(ParentNode, CurrentOct, BlkIndex);
+                        if (ParentNode == 0) return vec3(1, 0, 0);
                         CurrentOct = GetOctant(RayP, NodeCentre);
                         ParentCentre = NodeCentre;
                         Scale >>= 1;

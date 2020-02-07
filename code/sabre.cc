@@ -269,12 +269,12 @@ UploadOctreeBlockData(const svo* const Svo)
         while (CurrentBlk)
         {
             assert(NextSvoDataOffset + (CurrentBlk->NextFreeSlot*sizeof(svo_node)) <= MaxSvoDataSize);
-            // Copy far ptrs block
+
             memcpy(GPUSvoBuffer + NextSvoDataOffset, CurrentBlk->Entries, CurrentBlk->NextFreeSlot * sizeof(svo_node));
             NextSvoDataOffset += CurrentBlk->NextFreeSlot;
 
-            memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, CurrentBlk->NextFarPtrSlot * sizeof(far_ptr)); 
-            NextFarPtrDataOffset += CurrentBlk->NextFarPtrSlot;
+            memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SVO_FAR_PTRS_PER_BLOCK * sizeof(far_ptr)); 
+            NextFarPtrDataOffset += SVO_FAR_PTRS_PER_BLOCK;//CurrentBlk->NextFarPtrSlot;
 
             CurrentBlk = CurrentBlk->Next;
         }
@@ -391,7 +391,7 @@ main(int ArgCount, const char** const Args)
     glUniform1ui(glGetUniformLocation(ComputeShader, "ScaleExponentUniform"), WorldSvo->ScaleExponent);
     glUniform1ui(glGetUniformLocation(ComputeShader, "BlockCountUniform"), WorldSvo->UsedBlockCount);
     glUniform1ui(glGetUniformLocation(ComputeShader, "EntriesPerBlockUniform"), SVO_ENTRIES_PER_BLOCK);
-    glUniform1ui(glGetUniformLocation(ComputeShader, "FarPtrsPerBlockuniform"), SVO_FAR_PTRS_PER_BLOCK);
+    glUniform1ui(glGetUniformLocation(ComputeShader, "FarPtrsPerBlockUniform"), SVO_FAR_PTRS_PER_BLOCK);
 
     gl_int ViewMatrixUniformLocation = glGetUniformLocation(ComputeShader, "ViewMatrixUniform");
 

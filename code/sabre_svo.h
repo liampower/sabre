@@ -1,8 +1,8 @@
 #ifndef SABRE_SVO_H
 #define SABRE_SVO_H
 
-constexpr u32 SVO_ENTRIES_PER_BLOCK = 4096;
-constexpr u32 SVO_FAR_PTRS_PER_BLOCK = 64;
+constexpr u32 SVO_ENTRIES_PER_BLOCK = 1;
+constexpr u32 SVO_FAR_PTRS_PER_BLOCK = 1;
 constexpr u32 SVO_FAR_PTR_BIT_MASK   = 0x8000;
 
 typedef bool (*intersector_fn)(vec3, vec3);
@@ -58,16 +58,6 @@ struct svo_block
     svo_node   Entries[SVO_ENTRIES_PER_BLOCK];
     far_ptr    FarPtrs[SVO_FAR_PTRS_PER_BLOCK];
 };
-
-#if 0
-struct svo_edit
-{
-};
-
-void UpdateSvo(svo_edit* Cmds, usize CmdCount);
-#endif
-
-
 
 struct svo
 {

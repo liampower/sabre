@@ -116,6 +116,7 @@ struct far_ptr_input
 static far_ptr_input SvoFarPtrBuffer = {
     {
     // {{{ 
+#if 0
 {1,0},
 {8,0},
 {9,0},
@@ -125,6 +126,24 @@ static far_ptr_input SvoFarPtrBuffer = {
 {13,0},
 {14,0},
 {15,0},
+#endif
+{1,0},
+{8,0},
+{9,0},
+{10,0},
+{11,0},
+{12,0},
+{13,0},
+{14,0},
+{15,0},
+{15,0},
+{23,0},
+{31,0},
+{39,0},
+{47,0},
+{55,0},
+{63,0},
+{71,0},
     }
     // }}}
 };
@@ -133,6 +152,7 @@ static svo* DEBUGSvo;
 
 // BLKSZ 4096
 static svo_input SvoInputBuffer4096 = {
+    // {{{
 130816,
 622592,
 671744,
@@ -142,19 +162,84 @@ static svo_input SvoInputBuffer4096 = {
 918528,
 983552,
 1048832,
+1179392,
+1703680,
+2227968,
+2752256,
+3276544,
+3800832,
+4325120,
+4849408,
+32896,
+64764,
+64250,
+65535,
+61166,
 65535,
 65535,
 65535,
+64764,
+16448,
+65535,
+62965,
+65535,
+56797,
+65535,
+65535,
+64250,
+65535,
+8224,
+62451,
+65535,
+65535,
+48059,
+65535,
+65535,
+62965,
+62451,
+4112,
 65535,
 65535,
 65535,
+30583,
+61166,
 65535,
 65535,
+65535,
+2056,
+53199,
+44975,
+65535,
+65535,
+56797,
+65535,
+65535,
+53199,
+1028,
+65535,
+24415,
+65535,
+65535,
+48059,
+65535,
+44975,
+65535,
+514,
+16191,
+65535,
+65535,
+65535,
+30583,
+65535,
+24415,
+16191,
+257,
+// }}}
 };
 
 // BLKSZ 1
 static svo_input SvoInputBuffer = {
-    
+    // {{{
 2147548928,
 2147516416,
 2147500032,
@@ -164,16 +249,79 @@ static svo_input SvoInputBuffer = {
 2147484672,
 2147484160,
 2147483904,
+2147548928,
+2147548928,
+2147548928,
+2147548928,
+2147548928,
+2147548928,
+2147548928,
+2147548928,
+32896,
+64764,
+64250,
+65535,
+61166,
 65535,
 65535,
 65535,
+64764,
+16448,
+65535,
+62965,
+65535,
+56797,
+65535,
+65535,
+64250,
+65535,
+8224,
+62451,
+65535,
+65535,
+48059,
+65535,
+65535,
+62965,
+62451,
+4112,
 65535,
 65535,
 65535,
+30583,
+61166,
 65535,
 65535,
-/*
-*/
+65535,
+2056,
+53199,
+44975,
+65535,
+65535,
+56797,
+65535,
+65535,
+53199,
+1028,
+65535,
+24415,
+65535,
+65535,
+48059,
+65535,
+44975,
+65535,
+514,
+16191,
+65535,
+65535,
+65535,
+30583,
+65535,
+24415,
+16191,
+257,
+// }}}
 };
 
 static uint PrevOct;
@@ -214,7 +362,10 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout int& BlkIndex)
 
     if (! bool(ParentNode & SVO_FAR_PTR_BIT_MASK))
     {
-        BlkIndex = int(ChildPtr + ChildOffset) / SVO_ENTRIES_PER_BLOCK;
+        // Since children are always stored in succession, we are safe to assume that the 
+        // BlkIndex always increments if the child pointer points to within the same
+        // block.
+        BlkIndex += int(ChildPtr + ChildOffset) / SVO_ENTRIES_PER_BLOCK;
 
         return SvoInputBuffer.Nodes[ChildPtr + ChildOffset];
     }
@@ -226,8 +377,8 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout int& BlkIndex)
         uint FarPtrIndex = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
         far_ptr FarPtr = SvoFarPtrBuffer.FarPtrs[BlkIndex*SVO_FAR_PTRS_PER_BLOCK + FarPtrIndex];
 
-        BlkIndex += FarPtr.BlkOffset;
-        uint ChildBlkStart = BlkIndex * SVO_ENTRIES_PER_BLOCK;
+        uint ChildBlkStart = (BlkIndex + FarPtr.BlkOffset) * SVO_ENTRIES_PER_BLOCK;
+        BlkIndex += (FarPtr.BlkOffset + int(ChildOffset / SVO_ENTRIES_PER_BLOCK));
 
         return SvoInputBuffer.Nodes[ChildBlkStart + FarPtr.NodeOffset + ChildOffset];
     }
@@ -368,6 +519,7 @@ vec3 Raycast(in ray R)
     int Scale = 1 << (ScaleExponentUniform);
 
     int BlkIndex = 0;
+    int Junk = 0;
     
     vec3 RootMin = vec3(0);
     vec3 RootMax = vec3(Scale);
@@ -525,15 +677,14 @@ int main()
         { -Forward.X, -Forward.Y, -Forward.Z },
     }};
 
-#if 0
     const uint Nmsk = ~(0xFFFF << 16);
-    for (int I = 0; I < ArrayCount(A2); ++I)
+    for (int I = 0; I < (83); ++I)
     {
         uint N = SvoInputBuffer.Nodes[I] & Nmsk;
-        uint N2 = A2[I] & Nmsk;
+        uint N2 = SvoInputBuffer4096.Nodes[I] & Nmsk;
+        printf("Chk\n");
         assert(N == N2);
     }
-#endif
 
     // Ray XY coordinates of the screen pixels; goes from 0-512
     // in each dimension.
