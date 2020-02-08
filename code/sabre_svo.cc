@@ -11,6 +11,8 @@
 #include "sabre_math.h"
 #include "sabre_svo.h"
 
+#define SVO_NODE_CHILD_PTR_MSK 0x7FFFU
+
 enum svo_voxel_type
 {
     VOXEL_PARENT = 0U,
@@ -65,6 +67,12 @@ SetOctantOccupied(svo_oct SubOctant, svo_voxel_type Type, svo_node* OutEntry)
 
        OutEntry->LeafMask |= LeafBit;
    }
+}
+
+static inline u16
+GetChildPtrOffset(svo_node Parent)
+{
+    return Parent.ChildPtr & SVO_NODE_CHILD_PTR_MSK;
 }
 
 
@@ -392,7 +400,7 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
                                 ptrdiff_t ChildOffset = Child - CurrentBlk->Entries;
 
                                 // Extract first 15 bits
-                                u16 ChildPtrBits = (u16)(ChildOffset) & 0x7FFFU;
+                                u16 ChildPtrBits = (u16)(ChildOffset) & SVO_NODE_CHILD_PTR_MSK;
                                 CurrentCtx.Node->ChildPtr = ChildPtrBits;
                             }
                             else // Need a far ptr
@@ -400,7 +408,7 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
                                 // Compute offset using the new block
                                 ptrdiff_t ChildOffset = Child - CurrentBlk->Entries;
                                 // Extract first 15 bits
-                                u16 ChildPtrBits = (u16)(ChildOffset) & 0x7FFF;
+                                u16 ChildPtrBits = (u16)(ChildOffset) & SVO_NODE_CHILD_PTR_MSK;
 
                                 // TODO(Liam): Handle failure case
                                 far_ptr* FarPtr = AllocateFarPtr(CurrentCtx.ParentBlk);
