@@ -53,6 +53,7 @@ struct svo_block
 {
     usize      NextFreeSlot;
     usize      NextFarPtrSlot;
+    u32        Index;
     svo_block* Prev;
     svo_block* Next;
     svo_node   Entries[SVO_ENTRIES_PER_BLOCK];

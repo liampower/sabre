@@ -169,22 +169,8 @@ SetNodeChildPointer(u16 ChildPtr, bool InNewBlock, svo* Tree, svo_node* OutParen
 }
 
 
-// TODO(Liam): Need a *way* more clear API here!
 static inline vec3
-GetNodeCentrePosition(svo_oct Octant, u32 Scale, vec3 ParentCentreP)
-{
-    u32 Rad = Scale >> 1;
-    u32 Oct = (u32) Octant;
-
-    f32 X = (Oct & 1U) ? 1.0f : -1.0f;
-    f32 Y = (Oct & 2U) ? 1.0f : -1.0f;
-    f32 Z = (Oct & 4U) ? 1.0f : -1.0f;
-
-    return ParentCentreP + (vec3(X, Y, Z) * Rad);
-}
-
-static inline vec3
-GetOctCentreP(svo_oct Octant, u32 Scale, vec3 ParentCentreP)
+GetOctantCentre(svo_oct Octant, u32 Scale, vec3 ParentCentreP)
 {
     u32 Rad = Scale >> 1;
     u32 Oct = (u32) Octant;
@@ -227,6 +213,8 @@ AllocateAndLinkNewBlock(svo_block* const OldBlk, svo* const Tree)
 
     NewBlk->Prev = OldBlk;
     OldBlk->Next = NewBlk;
+
+    NewBlk->Index = OldBlk->Index + 1;
 
     ++Tree->UsedBlockCount;
 
@@ -297,6 +285,68 @@ PushNode(svo* const Tree, svo_node Node)
 }
 
 
+static svo_node*
+AllocateChildNode(svo_node* Parent, svo_block* ParentBlk, u32 ParentBlkIndex, svo* Tree)
+{
+    svo_node* CurrentBlk = ParentBlk;
+    u32 CurrentBlkIndex = ParentBlk->Index;
+
+    // Allocate a new child node for this octant.
+    // First, attempt to allocate within the same block
+    svo_node* Child = AllocateNode(CurrentBlk);
+
+    if (nullptr == Child)
+    {
+        svo_block* NewBlk = AllocateAndLinkNewBlock(CurrentBlk, Tree);
+        Child = AllocateNode(NewBlk);
+        CurrentBlk = NewBlk;
+        ++CurrentBlkIndex;
+    }
+
+    if (Parent->ChildPtr == 0x0000)
+    {
+        // Didn't move to  new block, no need to 
+        // allocate far ptrs
+        if (CurrentBlk == CurrentCtx.ParentBlk)
+        {
+            // Same block; okay to compute offset using the current block
+            ptrdiff_t ChildOffset = Child - CurrentBlk->Entries;
+
+            // Extract first 15 bits
+            u16 ChildPtrBits = (u16)(ChildOffset) & SVO_NODE_CHILD_PTR_MSK;
+            CurrentCtx.Node->ChildPtr = ChildPtrBits;
+        }
+        else // Need a far ptr
+        {
+            // Compute offset using the new block
+            ptrdiff_t ChildOffset = Child - CurrentBlk->Entries;
+            // Extract first 15 bits
+            u16 ChildPtrBits = (u16)(ChildOffset) & SVO_NODE_CHILD_PTR_MSK;
+
+            // TODO(Liam): Handle failure case
+            far_ptr* FarPtr = AllocateFarPtr(ParentBlk);
+            FarPtr->BlkOffset = (i32)(CurrentBlkIndex - CurrentCtx.ParentBlkIndex);
+            FarPtr->NodeOffset = ChildPtrBits;
+
+            // Set the child ptr value to the far bit with the remaining 15 bits
+            // set as the index into the far ptrs storage block.
+            Parent->ChildPtr = SVO_FAR_PTR_BIT_MASK | (ParentBlk->NextFarPtrSlot - 1);
+        }
+    }
+}
+
+struct q_ctx
+{
+    svo_node* Node;
+    svo_oct   Oct;
+    u32       Depth;
+    u32       Scale;
+    vec3      Centre;
+    i32       ParentBlkIndex;
+    svo_block* ParentBlk;
+};
+
+
 extern "C" svo*
 CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceFn)
 {
@@ -308,46 +358,30 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
         Tree->ScaleExponent = ScaleExponent;
 
         // TODO(Liam): Check failure
-        svo_block* RootBlk = (svo_block*)calloc(1, sizeof(svo_block));
-        Tree->RootBlock = RootBlk;
+        // No need to initialise indices, nodes, etc. to zero
+        // here because blocks are designed to be fully initialised
+        // and working with zeroed elements.
+        Tree->RootBlock = (svo_block*)calloc(1, sizeof(svo_block));
         Tree->UsedBlockCount = 1;
 
         // Allocate the root node
         svo_node* RootNode = &RootBlk->Entries[RootBlk->NextFreeSlot];
         ++RootBlk->NextFreeSlot;
 
-        svo_block* CurrentBlk = RootBlk;
+        svo_block* CurrentBlk = Tree->RootBlock;
         
         // Begin building tree
-        u32 RootScale = 1 << ScaleExponent;
+        u32  RootScale = 1 << ScaleExponent;
         vec3 RootCentre = vec3(RootScale >> 1);
 
-        struct q_ctx
-        {
-            svo_node* Node;
-            svo_oct   Oct;
-            u32       Depth;
-            u32       Scale;
-            vec3      Centre;
-            i32       ParentBlkIndex;
-            svo_block* ParentBlk;
-        };
-
-        // Index of the block holding the node which is the
-        // parent of the current level we're examining.
-        i32 ParentBlkIndex = 0;
-
-        q_ctx RootCtx = { RootNode, OCT_C000, 0, RootScale, RootCentre, ParentBlkIndex, RootBlk };
+        q_ctx RootCtx = { RootNode, OCT_C000, 0, RootScale, RootCentre, 0, Tree->RootBlock };
 
         std::deque<q_ctx> Queue;
         Queue.push_front(RootCtx);
-        int N = 0;
 
-        i32 CurrentBlkIndex = ParentBlkIndex;
-        while (false == Queue.empty() || N > 100)
+        i32 CurrentBlkIndex = 0;
+        while (false == Queue.empty())
         {
-            ++N;
-
             // Retrieve the next node to process from
             // the front of the queue
             q_ctx CurrentCtx = Queue.front();
@@ -355,81 +389,83 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
 
             u32 NextScale = CurrentCtx.Scale >> 1;
 
-            // Process each octant of this node
-            for (u32 Oct = 0; Oct < 8; ++Oct)
             {
-                vec3 Rad = vec3(NextScale >> 1);
-                vec3 OctCentre = GetOctCentreP((svo_oct)Oct, NextScale, CurrentCtx.Centre);
-                vec3 OctMin = OctCentre - Rad;
-                vec3 OctMax = OctCentre + Rad;
-
-                if (SurfaceFn(OctMin, OctMax))
+                // Process each octant of this node
+                for (u32 Oct = 0; Oct < 8; ++Oct)
                 {
-                    // Node is intersected by the surface
-                    if (CurrentCtx.Depth < MaxDepth - 1)
+                    vec3 Rad = vec3(NextScale >> 1);
+                    vec3 OctCentre = GetOctantCentre((svo_oct)Oct, NextScale, CurrentCtx.Centre);
+                    vec3 OctMin = OctCentre - Rad;
+                    vec3 OctMax = OctCentre + Rad;
+
+                    if (SurfaceFn(OctMin, OctMax))
                     {
-                        // Need to subdivide
-                        SetOctantOccupied((svo_oct)Oct, VOXEL_PARENT, CurrentCtx.Node);
-
-                        // Allocate a new child node for this octant.
-                        // First, attempt to allocate within the same block
-                        svo_node* Child = AllocateNode(CurrentBlk);
-                        printf("%d %d\n", CurrentCtx.Depth, Oct);
-                        DEBUGPrintVec3(OctCentre); printf("\n");
-
-                        if (nullptr == Child)
+                        // Node is intersected by the surface
+                        if (CurrentCtx.Depth < MaxDepth - 1)
                         {
-                            svo_block* NewBlk = AllocateAndLinkNewBlock(CurrentBlk, Tree);
-                            Child = AllocateNode(NewBlk);
-                            CurrentBlk = NewBlk;
-                            ++CurrentBlkIndex;
-                        }
+                            // Need to subdivide
+                            SetOctantOccupied((svo_oct)Oct, VOXEL_PARENT, CurrentCtx.Node);
 
-                        assert(Child);
-                        assert(CurrentBlk);
-                        assert(CurrentCtx.ParentBlk);
-                        assert(CurrentCtx.Node);
+                            // Allocate a new child node for this octant.
+                            // First, attempt to allocate within the same block
+                            svo_node* Child = AllocateNode(CurrentBlk);
+                            //printf("%d %d\n", CurrentCtx.Depth, Oct);
+                            //DEBUGPrintVec3(OctCentre); printf("\n");
 
-                        if (CurrentCtx.Node->ChildPtr == 0x0000)
-                        {
-                            // Didn't move to  new block, no need to 
-                            // allocate far ptrs
-                            if (CurrentBlk == CurrentCtx.ParentBlk)
+                            if (nullptr == Child)
                             {
-                                // Same block; okay to compute offset using the current block
-                                ptrdiff_t ChildOffset = Child - CurrentBlk->Entries;
-
-                                // Extract first 15 bits
-                                u16 ChildPtrBits = (u16)(ChildOffset) & SVO_NODE_CHILD_PTR_MSK;
-                                CurrentCtx.Node->ChildPtr = ChildPtrBits;
+                                svo_block* NewBlk = AllocateAndLinkNewBlock(CurrentBlk, Tree);
+                                Child = AllocateNode(NewBlk);
+                                CurrentBlk = NewBlk;
+                                ++CurrentBlkIndex;
                             }
-                            else // Need a far ptr
+
+                            assert(Child);
+                            assert(CurrentBlk);
+                            assert(CurrentCtx.ParentBlk);
+                            assert(CurrentCtx.Node);
+
+                            if (CurrentCtx.Node->ChildPtr == 0x0000)
                             {
-                                // Compute offset using the new block
-                                ptrdiff_t ChildOffset = Child - CurrentBlk->Entries;
-                                // Extract first 15 bits
-                                u16 ChildPtrBits = (u16)(ChildOffset) & SVO_NODE_CHILD_PTR_MSK;
+                                // Didn't move to  new block, no need to 
+                                // allocate far ptrs
+                                if (CurrentBlk == CurrentCtx.ParentBlk)
+                                {
+                                    // Same block; okay to compute offset using the current block
+                                    ptrdiff_t ChildOffset = Child - CurrentBlk->Entries;
 
-                                // TODO(Liam): Handle failure case
-                                far_ptr* FarPtr = AllocateFarPtr(CurrentCtx.ParentBlk);
-                                FarPtr->BlkOffset = (i32)(CurrentBlkIndex - CurrentCtx.ParentBlkIndex);
-                                FarPtr->NodeOffset = ChildPtrBits;
+                                    // Extract first 15 bits
+                                    u16 ChildPtrBits = (u16)(ChildOffset) & SVO_NODE_CHILD_PTR_MSK;
+                                    CurrentCtx.Node->ChildPtr = ChildPtrBits;
+                                }
+                                else // Need a far ptr
+                                {
+                                    // Compute offset using the new block
+                                    ptrdiff_t ChildOffset = Child - CurrentBlk->Entries;
+                                    // Extract first 15 bits
+                                    u16 ChildPtrBits = (u16)(ChildOffset) & SVO_NODE_CHILD_PTR_MSK;
 
-                                // Set the child ptr value to the far bit with the remaining 15 bits
-                                // set as the index into the far ptrs storage block.
-                                CurrentCtx.Node->ChildPtr = SVO_FAR_PTR_BIT_MASK | (CurrentCtx.ParentBlk->NextFarPtrSlot - 1);
+                                    // TODO(Liam): Handle failure case
+                                    far_ptr* FarPtr = AllocateFarPtr(CurrentCtx.ParentBlk);
+                                    FarPtr->BlkOffset = (i32)(CurrentBlkIndex - CurrentCtx.ParentBlkIndex);
+                                    FarPtr->NodeOffset = ChildPtrBits;
+
+                                    // Set the child ptr value to the far bit with the remaining 15 bits
+                                    // set as the index into the far ptrs storage block.
+                                    CurrentCtx.Node->ChildPtr = SVO_FAR_PTR_BIT_MASK | (CurrentCtx.ParentBlk->NextFarPtrSlot - 1);
+                                }
+                            }
+
+                            if (Child)
+                            {
+                                q_ctx ChildCtx = { Child, (svo_oct)Oct, CurrentCtx.Depth + 1, NextScale, OctCentre, CurrentBlkIndex, CurrentBlk };
+                                Queue.push_front(ChildCtx);
                             }
                         }
-
-                        if (Child)
+                        else
                         {
-                            q_ctx ChildCtx = { Child, (svo_oct)Oct, CurrentCtx.Depth + 1, NextScale, OctCentre, CurrentBlkIndex, CurrentBlk };
-                            Queue.push_front(ChildCtx);
+                            SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, CurrentCtx.Node);
                         }
-                    }
-                    else
-                    {
-                        SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, CurrentCtx.Node);
                     }
                 }
             }
@@ -477,7 +513,7 @@ InsertVoxel(svo* Svo, vec3 P, u32 VoxelScale)
             else // This node is a parent
             {
                 // Descend further into tree.
-                ParentCentreP = GetNodeCentrePosition((svo_oct)CurrentOct, Scale >> 1, ParentCentreP);
+                ParentCentreP = GetOctantCentre((svo_oct)CurrentOct, Scale >> 1, ParentCentreP);
                 CurrentOct = GetOctantForPosition(P, ParentCentreP);
 
                 ParentNode = GetNodeChild(ParentNode, Svo, (svo_oct)CurrentOct);
