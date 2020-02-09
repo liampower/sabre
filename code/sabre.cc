@@ -261,7 +261,6 @@ UploadOctreeBlockData(const svo* const Svo)
 
 
         // TODO(Liam): Don't send all the blocks to the renderer! Use only a subset.
-        // TODO(Liam): How on earth to handle far ptrs in renderer?
         svo_block* CurrentBlk = Svo->RootBlock;
         usize NextSvoDataOffset = 0;
         usize NextFarPtrDataOffset = 0;
@@ -294,6 +293,20 @@ UploadOctreeBlockData(const svo* const Svo)
     return SvoBuffer;
 }
 
+static int
+NCount(svo* Tree)
+{
+	int N = 0;
+	svo_block* Blk = Tree->RootBlock;
+	while (Blk)
+	{
+		++N;
+
+		Blk = Blk->Next;
+	}
+
+	return N;
+}
 
 extern int
 main(int ArgCount, const char** const Args)
@@ -358,11 +371,12 @@ main(int ArgCount, const char** const Args)
     }
 
     svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);//BuildSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
-
+	int N = NCount(WorldSvo);
+	assert(N == WorldSvo->UsedBlockCount);
     //InsertVoxel(WorldSvo, vec3(32, 0, 32), 4);
     //InsertVoxel(WorldSvo, vec3(48, 48, 48), 32);
 
-    gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
+	gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
 
     if (0 == SvoShaderBuffer)
     {
