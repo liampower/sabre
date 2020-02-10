@@ -11,7 +11,7 @@
 #include "sabre_math.h"
 #include "sabre_svo.h"
 
-#define SVO_NODE_CHILD_PTR_MSK 0x7FFFU
+constexpr u16 SVO_NODE_CHILD_PTR_MSK = 0x7FFFU;
 
 enum svo_voxel_type
 {
@@ -135,10 +135,10 @@ static void
 SetNodeChildPointer(svo_node* Child, svo_block* ChildBlk, svo_block* ParentBlk, svo_node* Parent)
 {
     // Compute the child offset from the start of the block
-    ptrdiff_t ChildOffset = Child - ChildBlk->Entries;
+    u16 ChildOffset = (u16)ChildBlk->NextFreeSlot - 1;
 
     // Extract first 15 bits
-    u16 ChildPtrBits = (u16)(ChildOffset) & SVO_NODE_CHILD_PTR_MSK;
+    u16 ChildPtrBits = ChildOffset & SVO_NODE_CHILD_PTR_MSK;
 
     // If the child node is in the same block as the parent node, all we need to do
     // is set the parent's child ptr to the child offset from the beginning of
@@ -155,7 +155,7 @@ SetNodeChildPointer(svo_node* Child, svo_block* ChildBlk, svo_block* ParentBlk, 
 
         // Set the child ptr value to the far bit with the remaining 15 bits
         // set as the index into the far ptrs storage block.
-        Parent->ChildPtr = SVO_FAR_PTR_BIT_MASK | (ParentBlk->NextFarPtrSlot - 1);
+        Parent->ChildPtr = SVO_FAR_PTR_BIT_MASK | u16(ParentBlk->NextFarPtrSlot - 1);
     }
 }
 
@@ -183,21 +183,6 @@ GetOctantForPosition(vec3 P, vec3 ParentCentreP)
     return (svo_oct) (G.X + G.Y*2 + G.Z*4);
 }
 
-#if 0
-static void
-AllocateNewBlock(svo* const Tree)
-{
-    svo_block* OldBlock = Tree->CurrentBlock;
-    svo_block* NewBlock = (svo_block*) calloc(1, sizeof(svo_block));
- 
-    // Link blocks together
-    NewBlock->Prev = OldBlock;
-    OldBlock->Next = NewBlock;
-
-    Tree->CurrentBlock = NewBlock;
-    ++Tree->UsedBlockCount;
-}
-#endif
 
 static svo_block*
 AllocateAndLinkNewBlock(svo_block* const OldBlk, svo* const Tree)
@@ -217,22 +202,16 @@ AllocateAndLinkNewBlock(svo_block* const OldBlk, svo* const Tree)
 }
 
 
-static inline bool
-NeedMoreBlocks(svo* const Tree)
+static inline int
+GetAvailableBlockSlots(svo_block* const Blk)
 {
-    return SVO_ENTRIES_PER_BLOCK <= Tree->CurrentBlock->NextFreeSlot;
-}
-
-static inline bool
-BlockHasSlotsAvailable(svo_block* const Blk)
-{
-    return SVO_ENTRIES_PER_BLOCK > Blk->NextFreeSlot;
+    return (int)SVO_ENTRIES_PER_BLOCK - (int)Blk->NextFreeSlot;
 }
 
 static svo_node*
 AllocateNode(svo_block* const Blk)
 {
-    if (BlockHasSlotsAvailable(Blk))
+    if (GetAvailableBlockSlots(Blk) > 0)
     {
         svo_node* Child = &Blk->Entries[Blk->NextFreeSlot];
         ++Blk->NextFreeSlot;
@@ -244,29 +223,6 @@ AllocateNode(svo_block* const Blk)
         return nullptr;
     }
 }
-
-
-// TODO(Liam): SLATED FOR REMOVAL
-#if 0
-static svo_node*
-AllocateNode(svo* const Tree, bool* NewBlockOut)
-{
-    if (NeedMoreBlocks(Tree))
-    {
-        AllocateNewBlock(Tree);
-        *NewBlockOut = true;
-    }
-    else
-    {
-        *NewBlockOut = false;
-    }
-
-    svo_node* Child = &Tree->CurrentBlock->Entries[Tree->CurrentBlock->NextFreeSlot];
-    ++Tree->CurrentBlock->NextFreeSlot;
-
-    return Child;
-}
-#endif
 
 
 #if 0
@@ -341,7 +297,6 @@ struct q_ctx
     u32       Depth;
     u32       Scale;
     vec3      Centre;
-    i32       ParentBlkIndex;
     svo_block* ParentBlk;
 };
 
@@ -361,6 +316,7 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
         // here because blocks are designed to be fully initialised
         // and working with zeroed elements.
         svo_block* RootBlk = (svo_block*)calloc(1, sizeof(svo_block));
+        assert(RootBlk);
         Tree->RootBlock = RootBlk;
         Tree->UsedBlockCount = 1;
 
@@ -374,12 +330,11 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
         u32  RootScale = 1 << ScaleExponent;
         vec3 RootCentre = vec3(RootScale >> 1);
 
-        q_ctx RootCtx = { RootNode, OCT_C000, 0, RootScale, RootCentre, 0, Tree->RootBlock };
+        q_ctx RootCtx = { RootNode, OCT_C000, 0, RootScale, RootCentre, Tree->RootBlock };
 
         std::deque<q_ctx> Queue;
         Queue.push_front(RootCtx);
 
-        i32 CurrentBlkIndex = 0;
         while (false == Queue.empty())
         {
             // Retrieve the next node to process from
@@ -409,15 +364,12 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
                             // Allocate a new child node for this octant.
                             // First, attempt to allocate within the same block
                             svo_node* Child = AllocateNode(CurrentBlk);
-                            //printf("%d %d\n", CurrentCtx.Depth, Oct);
-                            //DEBUGPrintVec3(OctCentre); printf("\n");
 
                             if (nullptr == Child)
                             {
                                 svo_block* NewBlk = AllocateAndLinkNewBlock(CurrentBlk, Tree);
                                 Child = AllocateNode(NewBlk);
                                 CurrentBlk = NewBlk;
-                                ++CurrentBlkIndex;
                             }
 
                             assert(Child);
@@ -432,7 +384,7 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
 
                             if (Child)
                             {
-                                q_ctx ChildCtx = { Child, (svo_oct)Oct, CurrentCtx.Depth + 1, NextScale, OctCentre, CurrentBlkIndex, CurrentBlk };
+                                q_ctx ChildCtx = { Child, (svo_oct)Oct, CurrentCtx.Depth + 1, NextScale, OctCentre, CurrentBlk };
                                 Queue.push_front(ChildCtx);
                             }
                         }
