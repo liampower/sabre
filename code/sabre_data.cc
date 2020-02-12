@@ -128,7 +128,7 @@ uint GetNodeChild(in uint ParentNode, in uint Scale, in uint Oct, inout int BlkI
         {
             if (Scale == 4 && ChildOffset == 0 && Child == 64764) BlkIndex = 1001;
         }
-        //return SvoInputBuffer.Nodes[ChildPtr + ChildOffset];
+
         return Child;
     }
     else
