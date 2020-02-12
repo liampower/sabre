@@ -15,6 +15,7 @@
       <Expand>
           <Item Name="[Has Leaf Children]">LeafMask != 0</Item>
           <Item Name="[Occupied]">OccupiedMask != 0</Item>
+          <Item Name="[Is Far Ptr]">(ChildPtr &amp; SVO_FAR_PTR_BIT_MASK) != 0</Item>
           <Item Name="[Child Ptr]">ChildPtr,x</Item>
           <Item Name="[Occupied Octants]">OccupiedMask,b</Item>
           <Item Name="[Leaf Octants]">LeafMask,b</Item>

@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <assert.h>
+#include <deque>
+#include <stack>
 
 #include <glad/glad.h>
 #include <glfw/glfw3.h>
@@ -11,7 +13,7 @@
 #include "sabre_svo.h"
 #include "sabre_data.h"
 
-#define SABRE_MAX_TREE_DEPTH 3
+#define SABRE_MAX_TREE_DEPTH 4
 #define SABRE_SCALE_EXPONENT 5
 #define SABRE_WORK_SIZE_X 512
 #define SABRE_WORK_SIZE_Y 512
@@ -25,11 +27,13 @@ static constexpr u32 DisplayHeight = 512;
 static constexpr const char* const DisplayTitle = "Sabre";
 
 
-// NOTE: Forces use of nVidia GPU on hybrid graphics systems.
+// NOTE(Liam): Forces use of nVidia GPU on hybrid graphics systems.
 extern "C" {
     _declspec(dllexport) int NvOptimusEnablement = 0x00000001;
 }
 
+// NOTE(Liam): Vertices of a full-screen quad
+// which we render to using a compute shader.
 static const f32 ScreenQuadVerts[12] = {
     -1.0f, -1.0f,
     -1.0f,  1.0f,
@@ -84,8 +88,8 @@ OutputGraphicsDeviceInfo(void)
 static inline bool
 CubeSphereIntersection(vec3 Min, vec3 Max)
 {
-    const vec3 S = vec3(16, 16, 16);
-    const f32 R = 16.0f;
+    const vec3 S = vec3(16);
+    const f32 R = 8.0f;
 
     f32 DistanceSqToCube = R * R;
 
@@ -103,8 +107,8 @@ CubeSphereIntersection(vec3 Min, vec3 Max)
 
     if (DistanceSqToCube > 0)
     {
-        printf("MIN (%f, %f, %f), MAX (%f, %f, %f)", Min.X, Min.Y, Min.Z, Max.X, Max.Y, Max.Z);
-        printf("        TRUE\n");
+        //printf("MIN (%f, %f, %f), MAX (%f, %f, %f)", Min.X, Min.Y, Min.Z, Max.X, Max.Y, Max.Z);
+        //printf("        TRUE\n");
         return true;
     }
     else
@@ -224,55 +228,91 @@ PackSvoNodeToGLUint(svo_node* Node)
 static gl_uint
 UploadOctreeBlockData(const svo* const Svo)
 {
-    gl_uint SvoBuffer;
+    printf("BLKCOUNT: %d\n", Svo->UsedBlockCount);
+    gl_uint SvoBuffer, FarPtrBuffer;
+
+    // TODO(Liam): Look into combining these allocations
     glGenBuffers(1, &SvoBuffer);
+    glGenBuffers(1, &FarPtrBuffer);
 
     // FIXME(Liam): BIG cleanup here needed - may need to bite the bullet
     // and just have the nodes be typedef'd into U32s anyway.
-    static_assert(sizeof(svo_node) == sizeof(u32), "svo_node needs to be 32 bits!");
+    static_assert(sizeof(svo_node) == sizeof(GLuint), "Node size must == GLuint size!");
 
-    if (SvoBuffer)
+    if (SvoBuffer && FarPtrBuffer)
     {
-        usize BlockDataSize = sizeof(svo_node) * SVO_ENTRIES_PER_BLOCK;
-        usize TotalDataSize = BlockDataSize * Svo->UsedBlockCount;
+        usize SvoBlockDataSize = sizeof(svo_node) * SVO_ENTRIES_PER_BLOCK;
+        // TODO(Liam): Waste here on the last block
+        usize MaxSvoDataSize = SvoBlockDataSize * Svo->UsedBlockCount;
 
+        usize FarPtrBlockDataSize = sizeof(far_ptr) * SVO_FAR_PTRS_PER_BLOCK;
+        usize MaxFarPtrDataSize = FarPtrBlockDataSize * Svo->UsedBlockCount;
+
+        // Allocate space for the far ptr buffer
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, FarPtrBuffer);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, MaxFarPtrDataSize, nullptr, GL_DYNAMIC_COPY);
+        far_ptr* GPUFarPtrBuffer = (far_ptr*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+
+        // Allocate space for the node data buffer
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoBuffer);
-        glBufferData(GL_SHADER_STORAGE_BUFFER, TotalDataSize, nullptr, GL_DYNAMIC_COPY);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, MaxSvoDataSize, nullptr, GL_DYNAMIC_COPY);
+        GLuint* GPUSvoBuffer = (GLuint*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
 
-        static_assert(sizeof(svo_node) == sizeof(GLuint), "Node size must == GLuint size!");
+        // Reset SSBO buffer binding
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
-        gl_uint* GPUTreeBuffer = (GLuint*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
 
-        svo_block* CurrentBlock = Svo->CurrentBlock;
-        usize BlockOffset = 0;
+        // TODO(Liam): Don't send all the blocks to the renderer! Use only a subset.
+        svo_block* CurrentBlk = Svo->RootBlock;
+        usize NextSvoDataOffset = 0;
+        usize NextFarPtrDataOffset = 0;
 
-        for (u32 BlockIndex = 0; BlockIndex < Svo->UsedBlockCount; ++BlockIndex)
+        while (CurrentBlk)
         {
-            //memcpy(GPUTreeBuffer + BlockOffset, CurrentBlock->Entries, BlockDataSize);
+            assert(NextSvoDataOffset + (CurrentBlk->NextFreeSlot*sizeof(svo_node)) <= MaxSvoDataSize);
 
-            // FIXME(Liam): Slow as balls
-            for (u32 NodeIndex = 0; NodeIndex < CurrentBlock->NextFreeSlot; ++NodeIndex)
-            {
-                GPUTreeBuffer[BlockOffset + NodeIndex] = PackSvoNodeToGLUint(&CurrentBlock->Entries[NodeIndex]);
-            }
+            memcpy(GPUSvoBuffer + NextSvoDataOffset, CurrentBlk->Entries, CurrentBlk->NextFreeSlot * sizeof(svo_node));
+            NextSvoDataOffset += CurrentBlk->NextFreeSlot;
 
-            BlockOffset += CurrentBlock->NextFreeSlot; // (in nodes)
-            CurrentBlock = CurrentBlock->Prev;
+            memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SVO_FAR_PTRS_PER_BLOCK * sizeof(far_ptr)); 
+            NextFarPtrDataOffset += SVO_FAR_PTRS_PER_BLOCK;//CurrentBlk->NextFarPtrSlot;
+
+            CurrentBlk = CurrentBlk->Next;
         }
 
+        // Unmap both buffers
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, FarPtrBuffer);
+        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoBuffer);
         glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
         
+        // Associate buffers with shader slots
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, SvoBuffer);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, FarPtrBuffer);
     }
 
     return SvoBuffer;
 }
 
+static int
+NCount(svo* Tree)
+{
+	int N = 0;
+	svo_block* Blk = Tree->RootBlock;
+	while (Blk)
+	{
+		++N;
+
+		Blk = Blk->Next;
+	}
+
+	return N;
+}
 
 extern int
 main(int ArgCount, const char** const Args)
 {
-
     if (GLFW_FALSE == glfwInit())
     {
         fprintf(stderr, "Failed to initialise GLFW\n");
@@ -332,8 +372,13 @@ main(int ArgCount, const char** const Args)
         return EXIT_FAILURE;
     }
 
-    svo* WorldSvo = BuildSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
-    gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
+    svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);//BuildSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
+	int N = NCount(WorldSvo);
+	assert(N == WorldSvo->UsedBlockCount);
+    //InsertVoxel(WorldSvo, vec3(32, 0, 32), 4);
+    //InsertVoxel(WorldSvo, vec3(48, 48, 48), 32);
+
+	gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
 
     if (0 == SvoShaderBuffer)
     {
@@ -360,6 +405,8 @@ main(int ArgCount, const char** const Args)
     glUniform1ui(glGetUniformLocation(ComputeShader, "MaxDepthUniform"), WorldSvo->MaxDepth);
     glUniform1ui(glGetUniformLocation(ComputeShader, "ScaleExponentUniform"), WorldSvo->ScaleExponent);
     glUniform1ui(glGetUniformLocation(ComputeShader, "BlockCountUniform"), WorldSvo->UsedBlockCount);
+    glUniform1ui(glGetUniformLocation(ComputeShader, "EntriesPerBlockUniform"), SVO_ENTRIES_PER_BLOCK);
+    glUniform1ui(glGetUniformLocation(ComputeShader, "FarPtrsPerBlockUniform"), SVO_FAR_PTRS_PER_BLOCK);
 
     gl_int ViewMatrixUniformLocation = glGetUniformLocation(ComputeShader, "ViewMatrixUniform");
 
@@ -444,10 +491,10 @@ main(int ArgCount, const char** const Args)
 
         if (glfwGetKey(Window, GLFW_KEY_Y))
         {
-            printf("Right: (%f, %f, %f)\n", Cam.Right.X, Cam.Right.Y, Cam.Right.Z);
-            printf("Up: (%f, %f, %f)\n", Cam.Up.X, Cam.Up.Y, Cam.Up.Z);
-            printf("Forward: (%f, %f, %f)\n", Cam.Forward.X, Cam.Forward.Y, Cam.Forward.Z);
-            printf("Position: (%f, %f, %f)\n", Cam.Position.X, Cam.Position.Y, Cam.Position.Z);
+            printf("Right: "); DEBUGPrintVec3(Cam.Right); printf("\n");
+            printf("Up: "); DEBUGPrintVec3(Cam.Up); printf("\n");
+            printf("Forward: "); DEBUGPrintVec3(Cam.Forward); printf("\n");
+            printf("Position: "); DEBUGPrintVec3(Cam.Position); printf("\n");
         }
 
         { // NOTE: Mouse look

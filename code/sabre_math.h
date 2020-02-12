@@ -69,6 +69,14 @@ struct vec3
     }
 
     inline explicit
+    vec3(u32 Uniform)
+    {
+        X = (float) Uniform;
+        Y = (float) Uniform;
+        Z = (float) Uniform;
+    }
+
+    inline explicit
     vec3(float Uniform)
     {
         X = Uniform;
@@ -150,6 +158,70 @@ struct uvec3
     }
 };
 
+struct ivec3
+{
+    i32 X;
+    i32 Y;
+    i32 Z;
+
+    inline explicit
+    ivec3(i32 InX, i32 InY, i32 InZ)
+    {
+        X = InX;
+        Y = InY;
+        Z = InZ;
+    }
+
+    inline explicit
+    ivec3(i32 Uniform)
+    {
+        X = Uniform;
+        Y = Uniform;
+        Z = Uniform;
+    }
+
+    inline explicit
+    ivec3(bvec3 B)
+    {
+        X = (i32)B.X;
+        Y = (i32)B.Y;
+        Z = (i32)B.Z;
+    }
+
+    inline explicit
+    ivec3(vec3 B)
+    {
+        X = (i32)B.X;
+        Y = (i32)B.Y;
+        Z = (i32)B.Z;
+    }
+
+    inline
+    operator bvec3()
+    {
+        bvec3 Result;
+        
+        Result.X = (X != 0);
+        Result.Y = (Y != 0);
+        Result.Z = (Z != 0);
+
+        return Result;
+    }
+};
+
+
+inline ivec3
+operator-(ivec3 L, ivec3 R)
+{
+    ivec3 Result = ivec3(0);
+
+    Result.X = L.X - R.X;
+    Result.Y = L.Y - R.Y;
+    Result.Z = L.Z - R.Z;
+
+    return Result;
+}
+
 
 static inline u32
 Dot(uvec3 A, uvec3 B)
@@ -170,6 +242,23 @@ Invert(vec3 V)
     return Out;
 }
 
+
+static inline uvec3
+Clamp(uvec3 Val, u32 Min, u32 Max)
+{
+    uvec3 Out = Val;
+
+    if (Out.X > Max) Out.X = Max;
+    if (Out.X < Min) Out.X = Min;
+
+    if (Out.Y > Max) Out.Y = Max;
+    if (Out.Y < Min) Out.Y = Min;
+
+    if (Out.Z > Max) Out.Z = Max;
+    if (Out.Z < Min) Out.Z = Min;
+
+    return Out;
+}
 
 static inline float
 Min(float A, float B)
@@ -206,6 +295,18 @@ Max(vec3 A, vec3 B)
     Out.Z = Max(A.Z, B.Z);
 
     return Out;
+}
+
+static inline bool
+Any(bvec3 V)
+{
+    return (V.X || V.Y || V.Z);
+}
+
+static inline bool
+All(bvec3 V)
+{
+    return (V.X && V.Y && V.Z);
 }
 
 static inline bvec3
@@ -257,13 +358,13 @@ LessThan(vec3 A, vec3 B)
 }
 
 static inline bvec3
-Equals(vec3 A, vec3 B)
+Equals(vec3 A, vec3 B, float Tolerance)
 {
     bvec3 Out;
 
-    Out.X = A.X == B.X;
-    Out.Y = A.Y == B.Y;
-    Out.Z = A.Z == B.Z;
+    Out.X = fabsf(B.X - A.X) <= Tolerance;
+    Out.Y = fabsf(B.Y - A.Y) <= Tolerance;
+    Out.Z = fabsf(B.Z - A.Z) <= Tolerance;
 
     return Out;
 }

@@ -37,11 +37,10 @@ extern const char* const RaycasterComputeKernel = R"GLSL(
 
 #define SVO_NODE_OCCUPIED_MASK  0x0000FF00U
 #define SVO_NODE_LEAF_MASK      0x000000FFU
-// TODO(Liam): Need to fix this up to support
-// far pointers!
-#define SVO_NODE_CHILD_PTR_MASK 0xFFFF0000U
+#define SVO_NODE_CHILD_PTR_MASK 0x7FFF0000U
+#define SVO_FAR_PTR_BIT_MASK    0x80000000U
 
-#define MAX_STEPS 32
+#define MAX_STEPS 16
 #define SCREEN_DIM 512
 
 #define ASSERT(Expr) if (! (Expr)) { return vec3(1); }
@@ -70,13 +69,21 @@ struct ray_intersection
     vec3  tMinV;
 };
 
-layout (local_size_x = 2, local_size_y = 2) in;
+struct far_ptr
+{
+    int  BlkOffset;
+    uint NodeOffset;
+};
+
+layout (local_size_x = 8, local_size_y = 8) in;
 
 layout (rgba32f, binding = 0) uniform image2D OutputImgUniform;
 
 uniform uint MaxDepthUniform;
 uniform uint BlockCountUniform;
 uniform uint ScaleExponentUniform;
+uniform uint EntriesPerBlockUniform;
+uniform uint FarPtrsPerBlockUniform;
 
 uniform vec3 ViewPosUniform;
 uniform mat3 ViewMatrixUniform;
@@ -86,17 +93,10 @@ layout (std430, binding = 3) readonly buffer svo_input
     uint Nodes[];
 } SvoInputBuffer;
 
-
-vec3 VSelect(vec3 V1, vec3 V0, bvec3 Msk)
+layout (std430, binding = 4) readonly buffer svo_far_ptr_index
 {
-    vec3 Out;
-
-    Out.x = Msk.x ? V1.x : V0.x;
-    Out.y = Msk.y ? V1.y : V0.y;
-    Out.z = Msk.z ? V1.z : V0.z;
-
-    return Out;
-}
+    far_ptr FarPtrs[];
+} SvoFarPtrBuffer;
 
 float MaxComponent(vec3 V)
 {
@@ -108,12 +108,55 @@ float MinComponent(vec3 V)
     return min(min(V.x, V.y), V.z);
 }
 
-uint GetNodeChild(in uint ParentNode, in uint Oct)
+uint GetNodeChild(in uint ParentNode, in uint Scale, in uint Oct, inout int BlkIndex, inout bool Track)
 {
+    int InBlkIndex = BlkIndex;
     uint ChildPtr = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
-    
-    // TODO(Liam): Broken?
-    return SvoInputBuffer.Nodes[ChildPtr + Oct];
+    uint OccBits = (ParentNode & SVO_NODE_OCCUPIED_MASK) >> 8; 
+    uint LeafBits = (ParentNode & SVO_NODE_LEAF_MASK);
+    uint OccupiedNonLeafOcts = OccBits & (~LeafBits);
+    uint SetBitsBehindOctIdx = (1 << Oct) - 1;
+
+    uint ChildOffset = bitCount(OccupiedNonLeafOcts & SetBitsBehindOctIdx); 
+
+    if (! bool(ParentNode & SVO_FAR_PTR_BIT_MASK))
+    {
+        uint Child = SvoInputBuffer.Nodes[BlkIndex*EntriesPerBlockUniform + ChildPtr + ChildOffset];
+        BlkIndex += int(ChildPtr + ChildOffset) / int(EntriesPerBlockUniform);
+
+        if (Track)
+        {
+            if (Scale == 4 && ChildOffset == 0 && Child == 64764) BlkIndex = 1001;
+        }
+
+        return Child;
+    }
+    else
+    {
+        // Find the far ptr associated with this node. To do this, we need to compute
+        // the byte offset for this block, then index into that block's far ptr
+        // list for this node.
+        uint FarPtrIndex = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
+        uint FarPtrBlkStart = BlkIndex*FarPtrsPerBlockUniform;
+        far_ptr FarPtr = SvoFarPtrBuffer.FarPtrs[FarPtrBlkStart + FarPtrIndex];
+
+
+        // Skip to the block containing the first child
+        BlkIndex += FarPtr.BlkOffset;
+        uint ChildBlkStart = BlkIndex * EntriesPerBlockUniform;
+
+        // Skip any blocks required to get to the actual child node
+        BlkIndex += int(FarPtr.NodeOffset + ChildOffset) / int(EntriesPerBlockUniform);
+
+        uint Child = SvoInputBuffer.Nodes[ChildBlkStart + FarPtr.NodeOffset + ChildOffset];
+        
+
+        //if (BlkIndex == 9 && Child == 130816 && ParentNode == 2147500032 && FarPtr.BlkOffset == 8 && FarPtr.NodeOffset == 0 && Scale == 8) BlkIndex = 1001;
+        //if (ParentNode == 130816) BlkIndex = 1001;
+
+        return Child;
+
+    }
 }
 
 ray_intersection ComputeRayBoxIntersection(in ray R, in vec3 vMin, in vec3 vMax)
@@ -142,9 +185,9 @@ bool IsAdvanceValid(in uint NewOct, in uint OldOct, in vec3 RayDir)
 
     ivec3 OctSgn = NewOctBits - OldOctBits;
 
-    if (Sgn.x <= 0 && OctSgn.x > 0) return false;
-    if (Sgn.y <= 0 && OctSgn.y > 0) return false;
-    if (Sgn.z <= 0 && OctSgn.z > 0) return false;
+    if (Sgn.x < 0 && OctSgn.x > 0) return false;
+    if (Sgn.y < 0 && OctSgn.y > 0) return false;
+    if (Sgn.z < 0 && OctSgn.z > 0) return false;
 
     if (Sgn.x > 0 && OctSgn.x < 0) return false;
     if (Sgn.y > 0 && OctSgn.y < 0) return false;
@@ -158,17 +201,17 @@ uint GetNextOctant(in float tMax, in vec3 tValues, in uint CurrentOct)
 {
     uint NextOct = CurrentOct;
 
-    if (tMax == tValues.x)
+    if (tMax >= tValues.x)
     {
         NextOct ^= 1;//|= CurrentOct ^ 1;
     }
 
-    if (tMax == tValues.y)
+    if (tMax >= tValues.y)
     {
         NextOct ^= 2;//CurrentOct ^ 2;
     }
 
-    if (tMax == tValues.z)
+    if (tMax >= tValues.z)
     {
         NextOct ^= 4;//|= CurrentOct ^ 4;
     }
@@ -178,7 +221,6 @@ uint GetNextOctant(in float tMax, in vec3 tValues, in uint CurrentOct)
 
 uint GetOctant(in vec3 P, in vec3 ParentCentreP)
 {
-    const uvec3 OctBits = uvec3(1, 2, 4);
     uvec3 G = uvec3(greaterThan(P, ParentCentreP));
 
     // TODO(Liam): Can use a DP here 
@@ -196,7 +238,7 @@ bool IsOctantLeaf(in uint Node, in uint Oct)
     return (Node & (1 << Oct)) != 0;
 }
 
-vec3 GetNodeCentreP(in uint Oct, in uint Radius, in vec3 ParentP)
+vec3 GetNodeCentreP(in uint Oct, in uint Scale, in vec3 ParentP)
 {
     // TODO(Liam): We can actually use a bitwise AND op on uvec3s
     // so we don't have to work on scalars.
@@ -215,36 +257,14 @@ vec3 GetNodeCentreP(in uint Oct, in uint Radius, in vec3 ParentP)
     if (0 == (Oct & 2)) Y = -1.0;
     if (0 == (Oct & 4)) Z = -1.0;
 
-    return ParentP + (vec3(X, Y, Z) * float(Radius));
+    uint Radius = Scale >> 1;
+
+    return ParentP + (vec3(X, Y, Z) * Radius);
 }
 
 vec3 Oct2Cr(in uint Oct)
 {
     return vec3( bvec3(uvec3(Oct) & uvec3(1, 2, 4))).bgr;
-}
-
-
-void GetNodeBounds(in uint Oct, in uint Scale, in vec3 ParentCentre, out vec3 Min, out vec3 Max)
-{
-    vec3 Dir;
-    vec3 Rad = vec3(Scale);
-    bvec3 Msk = bvec3(uvec3(Oct) & uvec3(1, 2, 4));;
-
-    Dir.x = Msk.x ? 1.0 : -1.0;
-    Dir.y = Msk.y ? 1.0 : -1.0;
-    Dir.z = Msk.z ? 1.0 : -1.0;
-
-    if (bool(Oct & 2))
-    {
-        Min = ParentCentre; 
-        Max = ParentCentre + (Dir * Rad);
-    }
-    else
-    {
-        Max = ParentCentre; 
-        Min = ParentCentre + (Dir * Rad);
-    }
-
 }
 
 
@@ -258,24 +278,24 @@ uvec3 HDB(uvec3 A, uvec3 B)
     return HighestSetBits;
 }
 
-bvec3 IsBitSet(uvec3 A, uint Msk)
-{
-    return notEqual(A & Msk, uvec3(0));
-}
-
 struct st_frame
 {
     uint Node;
-    int Depth;
+    uint Depth;
     int Scale;
     float tMin;
     vec3 ParentCentre;
+    int BlkIndex;
 };
 
 vec3 Raycast(in ray R)
 {
+    bool Track = false;
+    int DbgTrack = 0;
     // Extant of the root cube
     int Scale = 1 << (ScaleExponentUniform);
+
+    int BlkIndex = 0;
     
     vec3 RootMin = vec3(0);
     vec3 RootMax = vec3(Scale);
@@ -302,33 +322,35 @@ vec3 Raycast(in ray R)
         // Current octant the ray is in (confirmed good)
         uint CurrentOct = GetOctant(RayP, ParentCentre);
         
-        // Initialise stack pointer to top of tree
-        uint Sp = 0;
-
         // Initialise depth to 1
-        int CurrentDepth = 1;
+        uint CurrentDepth = 1;
 
         // Stack of previous voxels
-        st_frame Stack[64];
-        Scale >>= 1;
-        Stack[Scale] = st_frame(ParentNode, CurrentDepth, Scale, CurrentIntersection.tMin, ParentCentre);
+        st_frame Stack[MAX_STEPS + 1];
 
-        // Descend once into tree
         Scale >>= 1;
+
+        Stack[CurrentDepth] = st_frame(ParentNode, 
+                                       CurrentDepth,
+                                       Scale,
+                                       CurrentIntersection.tMin,
+                                       ParentCentre,
+                                       BlkIndex );
+        bool T = false;
 
         // Begin stepping along the ray
         for (Step = 0; Step < MAX_STEPS; ++Step)
         {
-            if (CurrentDepth > MaxDepthUniform) return vec3(1, 0, 1);
-
             // Go down 1 level
             vec3 NodeCentre = GetNodeCentreP(CurrentOct, Scale, ParentCentre);
-            vec3 NodeMin = NodeCentre - vec3(Scale);
-            vec3 NodeMax = NodeCentre + vec3(Scale);
-            //GetNodeBounds(CurrentOct, Scale << 1, ParentCentre, NodeMin, NodeMax);
+            vec3 NodeMin = NodeCentre - vec3(Scale >> 1);
+            vec3 NodeMax = NodeCentre + vec3(Scale >> 1);
 
             CurrentIntersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
 
+            /// INSIDE CUBE?...YES
+            /// IS OCCUPIED?...YES
+            /// IS PARENT?.....YES
             if (CurrentIntersection.tMin <= CurrentIntersection.tMax && CurrentIntersection.tMax > 0)
             {
                 // Ray hit this voxel
@@ -339,78 +361,88 @@ vec3 Raycast(in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
-                        // Done - return leaf colour
                         return vec3(1, 0, 0);
+                        // Done - return leaf colour
+                        float O = float(Step) / MAX_STEPS;
+                        return O * vec3(0.4, 0, 0.3);
                     }
                     else
                     {
                         // Voxel has children --- execute push
-                        ParentNode = GetNodeChild(ParentNode, CurrentOct);
+                        // NOTE(Liam): BlkIndex (potentially) updated here
+                        int OldBlkIndex = BlkIndex;
+                        ParentNode = GetNodeChild(ParentNode, Scale, CurrentOct, BlkIndex, T);
+
+                        // Hit the problem node
+                        if (BlkIndex == 1001) return vec3(0, 1, 1);
+                        if (ParentNode == 130816 && Scale == 8) T = true;
+
                         CurrentOct = GetOctant(RayP, NodeCentre);
                         ParentCentre = NodeCentre;
                         Scale >>= 1;
                         ++CurrentDepth;
 
-                        ++Sp;
-                        Stack[Scale] = st_frame(ParentNode, CurrentDepth, Scale, CurrentIntersection.tMin, ParentCentre);
+                        /// WARNING BLKINDEX UPDATED HERE
+                        Stack[CurrentDepth] = st_frame(ParentNode, 
+                                                       CurrentDepth, 
+                                                       Scale, 
+                                                       CurrentIntersection.tMin, 
+                                                       ParentCentre,
+                                                       BlkIndex);
 
                         continue;
                     }
                 }
 
                 // Octant not occupied, need to handle advance/pop
-                bvec3 Msk = greaterThan(Sgn, vec3(0.0));
+                uint NextOct = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
 
-                // The test t-value should be the min if ray dir is < 0, max if >= 0
-                vec3 tTest = CurrentIntersection.tMaxV;//VSelect(CurrentIntersection.tMinV, CurrentIntersection.tMaxV, Msk);
-
-                uint NextOct = GetNextOctant(CurrentIntersection.tMax, tTest, CurrentOct);
-
-                if (NextOct == CurrentOct) return vec3(0.5, 0.5, 0);
-
-                RayP = R.Origin + (CurrentIntersection.tMax + 0.5) * R.Dir;
+                RayP = R.Origin + (CurrentIntersection.tMax + 1) * R.Dir;
 
                 if (IsAdvanceValid(NextOct, CurrentOct, R.Dir))
                 {
                     CurrentOct = NextOct;
-                    //return Oct2Cr(CurrentOct);
                 }
                 else
                 {
-                    //return vec3(0.5, 0, 0.5);
+                    // Determined that NodeCentre is never < 0
                     uvec3 NodeCentreBits = uvec3(NodeCentre);
                     uvec3 RayPBits = uvec3(RayP);
 
+                    // NOTE(Liam): It is **okay** to have negative values here
+                    // because the HDB will end up being equal to ScaleExponentUniform.
                     uvec3 HighestDiffBits = HDB(NodeCentreBits, RayPBits);
-                    int NextScale = 1 << int(MaxComponent(HighestDiffBits));
 
-                    if (NextScale == Scale) return vec3(0, 1, 0);
+                    uint M = uint(MaxComponent(HighestDiffBits));
 
-                    if (NextScale > (1 << ScaleExponentUniform)) return vec3(0, 1, 1);
+                    M = 0;
+                    if (HighestDiffBits.x > M && HighestDiffBits.x < ScaleExponentUniform) M = HighestDiffBits.x;
+                    if (HighestDiffBits.y > M && HighestDiffBits.y < ScaleExponentUniform) M = HighestDiffBits.y;
+                    if (HighestDiffBits.z > M && HighestDiffBits.z < ScaleExponentUniform) M = HighestDiffBits.z;
 
-                    if (NextScale >= MAX_STEPS) return vec3(0);
-                    if (NextScale <= 0) return vec3(0.4);
+                    uint NextDepth = (ScaleExponentUniform - M);
 
-                    if (NextScale > 0 && NextScale < MAX_STEPS)
+                    if (NextDepth >= 0 && NextDepth <= MAX_STEPS)
                     {
-                        Sp = NextScale;
-                        CurrentDepth = Stack[Sp].Depth;
-                        Scale = Stack[Sp].Scale >> 1;
-                        ParentCentre = Stack[Sp].ParentCentre;
-                        ParentNode = Stack[Sp].Node;
+                        CurrentDepth = NextDepth;
+                        Scale = Stack[CurrentDepth].Scale;
+                        ParentCentre = Stack[CurrentDepth].ParentCentre;
+                        ParentNode = Stack[CurrentDepth].Node;
+                        BlkIndex = Stack[CurrentDepth].BlkIndex;
 
                         CurrentOct = GetOctant(RayP, ParentCentre);
                     }
                     else
                     {
-                        return vec3(1, 0, 1);
+                        return vec3(1, 1, 0);
                     }
-                    
                 }
             }
             else
             {
-                return vec3(1);
+                return vec3(0.16);
+                float O = float(Step) / MAX_STEPS;
+                return O * vec3(0.5, 0.2, 0.6);
             }
         }
     }
@@ -425,9 +457,6 @@ vec3 Raycast(in ray R)
 
 bool Trace2(in ray R)
 {
-    vec3 P = R.Origin + R.Dir;
-    float D = 0.0;
-
     vec3 Min = vec3(-4);
     vec3 Max = vec3(4);
 
