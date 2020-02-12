@@ -108,8 +108,9 @@ float MinComponent(vec3 V)
     return min(min(V.x, V.y), V.z);
 }
 
-uint GetNodeChild(in uint ParentNode, in uint Oct, inout int BlkIndex)
+uint GetNodeChild(in uint ParentNode, in uint Scale, in uint Oct, inout int BlkIndex, inout bool Track)
 {
+    int InBlkIndex = BlkIndex;
     uint ChildPtr = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
     uint OccBits = (ParentNode & SVO_NODE_OCCUPIED_MASK) >> 8; 
     uint LeafBits = (ParentNode & SVO_NODE_LEAF_MASK);
@@ -120,9 +121,15 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout int BlkIndex)
 
     if (! bool(ParentNode & SVO_FAR_PTR_BIT_MASK))
     {
+        uint Child = SvoInputBuffer.Nodes[BlkIndex*EntriesPerBlockUniform + ChildPtr + ChildOffset];
         BlkIndex += int(ChildPtr + ChildOffset) / int(EntriesPerBlockUniform);
 
-        return SvoInputBuffer.Nodes[ChildPtr + ChildOffset];
+        if (Track)
+        {
+            if (Scale == 4 && ChildOffset == 0 && Child == 64764) BlkIndex = 1001;
+        }
+        //return SvoInputBuffer.Nodes[ChildPtr + ChildOffset];
+        return Child;
     }
     else
     {
@@ -133,15 +140,22 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout int BlkIndex)
         uint FarPtrBlkStart = BlkIndex*FarPtrsPerBlockUniform;
         far_ptr FarPtr = SvoFarPtrBuffer.FarPtrs[FarPtrBlkStart + FarPtrIndex];
 
+
         // Skip to the block containing the first child
         BlkIndex += FarPtr.BlkOffset;
         uint ChildBlkStart = BlkIndex * EntriesPerBlockUniform;
 
         // Skip any blocks required to get to the actual child node
         BlkIndex += int(FarPtr.NodeOffset + ChildOffset) / int(EntriesPerBlockUniform);
-        //BlkIndex += (FarPtr.BlkOffset + int((ChildOffset + FarPtr.NodeOffset) / EntriesPerBlockUniform));
 
-        return SvoInputBuffer.Nodes[ChildBlkStart + FarPtr.NodeOffset + ChildOffset];
+        uint Child = SvoInputBuffer.Nodes[ChildBlkStart + FarPtr.NodeOffset + ChildOffset];
+        
+
+        //if (BlkIndex == 9 && Child == 130816 && ParentNode == 2147500032 && FarPtr.BlkOffset == 8 && FarPtr.NodeOffset == 0 && Scale == 8) BlkIndex = 1001;
+        //if (ParentNode == 130816) BlkIndex = 1001;
+
+        return Child;
+
     }
 }
 
@@ -163,8 +177,6 @@ ray_intersection ComputeRayBoxIntersection(in ray R, in vec3 vMin, in vec3 vMax)
 
 bool IsAdvanceValid(in uint NewOct, in uint OldOct, in vec3 RayDir)
 {
-    // TODO(Liam): Can move Sgn into parameter to use precalculated
-    // sgn from Raycast()
     ivec3 Sgn = ivec3(sign(RayDir));
     uvec3 OctBits = uvec3(1, 2, 4);
     
@@ -278,6 +290,8 @@ struct st_frame
 
 vec3 Raycast(in ray R)
 {
+    bool Track = false;
+    int DbgTrack = 0;
     // Extant of the root cube
     int Scale = 1 << (ScaleExponentUniform);
 
@@ -313,13 +327,16 @@ vec3 Raycast(in ray R)
 
         // Stack of previous voxels
         st_frame Stack[MAX_STEPS + 1];
+
         Scale >>= 1;
+
         Stack[CurrentDepth] = st_frame(ParentNode, 
-                                       CurrentDepth, 
-                                       Scale, 
-                                       CurrentIntersection.tMin, 
+                                       CurrentDepth,
+                                       Scale,
+                                       CurrentIntersection.tMin,
                                        ParentCentre,
-                                       BlkIndex);
+                                       BlkIndex );
+        bool T = false;
 
         // Begin stepping along the ray
         for (Step = 0; Step < MAX_STEPS; ++Step)
@@ -331,6 +348,9 @@ vec3 Raycast(in ray R)
 
             CurrentIntersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
 
+            /// INSIDE CUBE?...YES
+            /// IS OCCUPIED?...YES
+            /// IS PARENT?.....YES
             if (CurrentIntersection.tMin <= CurrentIntersection.tMax && CurrentIntersection.tMax > 0)
             {
                 // Ray hit this voxel
@@ -341,6 +361,7 @@ vec3 Raycast(in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
+                        return vec3(1, 0, 0);
                         // Done - return leaf colour
                         float O = float(Step) / MAX_STEPS;
                         return O * vec3(0.4, 0, 0.3);
@@ -349,13 +370,19 @@ vec3 Raycast(in ray R)
                     {
                         // Voxel has children --- execute push
                         // NOTE(Liam): BlkIndex (potentially) updated here
-                        ParentNode = GetNodeChild(ParentNode, CurrentOct, BlkIndex);
-                        if (ParentNode == 0) return vec3(1, 0, 0);
+                        int OldBlkIndex = BlkIndex;
+                        ParentNode = GetNodeChild(ParentNode, Scale, CurrentOct, BlkIndex, T);
+
+                        // Hit the problem node
+                        if (BlkIndex == 1001) return vec3(0, 1, 1);
+                        if (ParentNode == 130816 && Scale == 8) T = true;
+
                         CurrentOct = GetOctant(RayP, NodeCentre);
                         ParentCentre = NodeCentre;
                         Scale >>= 1;
                         ++CurrentDepth;
 
+                        /// WARNING BLKINDEX UPDATED HERE
                         Stack[CurrentDepth] = st_frame(ParentNode, 
                                                        CurrentDepth, 
                                                        Scale, 
@@ -413,6 +440,7 @@ vec3 Raycast(in ray R)
             }
             else
             {
+                return vec3(0.16);
                 float O = float(Step) / MAX_STEPS;
                 return O * vec3(0.5, 0.2, 0.6);
             }

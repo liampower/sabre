@@ -1,9 +1,12 @@
 #ifndef SABRE_SVO_H
 #define SABRE_SVO_H
 
-constexpr u32 SVO_ENTRIES_PER_BLOCK  = 1;
-constexpr u32 SVO_FAR_PTRS_PER_BLOCK = 64;
+constexpr u32 SVO_ENTRIES_PER_BLOCK  = 2;
+constexpr u32 SVO_FAR_PTRS_PER_BLOCK = 4;
 constexpr u32 SVO_FAR_PTR_BIT_MASK   = 0x8000;
+
+
+static_assert(SVO_FAR_PTRS_PER_BLOCK >= SVO_ENTRIES_PER_BLOCK, "Far Ptrs Per Blk must be >= Entries per Blk");
 
 typedef bool (*intersector_fn)(vec3, vec3);
 
@@ -71,7 +74,14 @@ struct svo
     // Extant of the octree in world space.
     u32 ScaleExponent;
 
-    svo_block* CurrentBlock;
+    // Last block of nodes in this tree
+    // NOTE(Liam): Warning! This field is volatile and unsafe
+    // to use; it is frequently modified by the implementation
+    // and probably not a good way to achieve much of anything
+    // besides tree construction!
+    svo_block* LastBlock;
+
+    // First block of nodes in this tree
     svo_block* RootBlock;
 };
 

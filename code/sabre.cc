@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <assert.h>
+#include <deque>
+#include <stack>
 
 #include <glad/glad.h>
 #include <glfw/glfw3.h>

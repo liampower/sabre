@@ -6,6 +6,7 @@
 #include <iostream>
 #include <memory>
 #include <stack>
+#include <vector>
 
 #include "sabre.h"
 #include "sabre_math.h"
@@ -89,7 +90,7 @@ GetNodeChild(svo_node* Parent, svo* Tree, svo_oct ChildOct)
     // Check if the node references a child outside this block.
     if (Parent->ChildPtr & SVO_FAR_PTR_BIT_MASK)
     {
-        svo_block* OldBlk = Tree->CurrentBlock->Prev;
+        svo_block* OldBlk = Tree->LastBlock->Prev;
 
         // Extract the far ptr from this block
         far_ptr FarPtr = OldBlk->FarPtrs[ChildPtrBase];
@@ -117,7 +118,7 @@ GetNodeChild(svo_node* Parent, svo* Tree, svo_oct ChildOct)
     else
     {
 
-        return &Tree->CurrentBlock->Entries[ChildPtrBase + ChildOffset];
+        return &Tree->LastBlock->Entries[ChildPtrBase + ChildOffset];
     }
 }
 
@@ -127,6 +128,9 @@ AllocateFarPtr(svo_block* const ContainingBlk)
     usize NextFarPtrSlot = ContainingBlk->NextFarPtrSlot;
     far_ptr* Ptr = &ContainingBlk->FarPtrs[NextFarPtrSlot];
     ++ContainingBlk->NextFarPtrSlot;
+
+    assert(Ptr->NodeOffset == 0);
+    assert(Ptr->BlkOffset == 0);
 
     return Ptr;
 }
@@ -145,6 +149,7 @@ SetNodeChildPointer(svo_node* Child, svo_block* ChildBlk, svo_block* ParentBlk, 
     // their shared block.
     if (ChildBlk == ParentBlk)
     {
+        printf("    Set local child pointer to %d\n", ChildPtrBits);
         Parent->ChildPtr = ChildPtrBits;
     }
     else // Otherwise, we need to allocate a far pointer
@@ -152,6 +157,7 @@ SetNodeChildPointer(svo_node* Child, svo_block* ChildBlk, svo_block* ParentBlk, 
         far_ptr* FarPtr = AllocateFarPtr(ParentBlk);
         FarPtr->BlkOffset = ChildBlk->Index - ParentBlk->Index;
         FarPtr->NodeOffset = ChildPtrBits;
+        printf("    Set far ptr child to (%d blkindex, %d nodeoffset)\n", FarPtr->BlkOffset, FarPtr->NodeOffset);
 
         // Set the child ptr value to the far bit with the remaining 15 bits
         // set as the index into the far ptrs storage block.
@@ -184,12 +190,16 @@ GetOctantForPosition(vec3 P, vec3 ParentCentreP)
 }
 
 
+// TODO(Liam): Do we *really* need the dependency on `svo` here?
+// Seems like we could just remove UsedBlockCount altogether and
+// rely on relative positioning for blocks.
 static svo_block*
 AllocateAndLinkNewBlock(svo_block* const OldBlk, svo* const Tree)
 {
     // TODO(Liam): Handle failure case
     svo_block* NewBlk = (svo_block*)calloc(1, sizeof(svo_block));
     assert(NewBlk);
+    assert(OldBlk->Next == nullptr);
 
     NewBlk->Prev = OldBlk;
     OldBlk->Next = NewBlk;
@@ -197,13 +207,14 @@ AllocateAndLinkNewBlock(svo_block* const OldBlk, svo* const Tree)
     NewBlk->Index = OldBlk->Index + 1;
 
     ++Tree->UsedBlockCount;
+    Tree->LastBlock = NewBlk;
 
     return NewBlk;
 }
 
 
 static inline int
-GetAvailableBlockSlots(svo_block* const Blk)
+GetFreeSlotCount(svo_block* const Blk)
 {
     return (int)SVO_ENTRIES_PER_BLOCK - (int)Blk->NextFreeSlot;
 }
@@ -211,7 +222,7 @@ GetAvailableBlockSlots(svo_block* const Blk)
 static svo_node*
 AllocateNode(svo_block* const Blk)
 {
-    if (GetAvailableBlockSlots(Blk) > 0)
+    if (GetFreeSlotCount(Blk) > 0)
     {
         svo_node* Child = &Blk->Entries[Blk->NextFreeSlot];
         ++Blk->NextFreeSlot;
@@ -301,6 +312,88 @@ struct q_ctx
 };
 
 
+static void
+BuildSubOctree(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth, u32 Scale, svo_block* ParentBlk, vec3 Centre, intersector_fn SurfaceFn)
+{
+    printf("\n\nBegin with ParentBlk %d, Oct %d, Scale %d\n", ParentBlk->Index, RootOct, Scale);
+
+    struct node_child
+    {
+        svo_oct Oct;
+        vec3    Centre;
+        svo_node* Node;
+        svo_block* Blk;
+    };
+
+    u32 NextScale = Scale >> 1;
+    svo_block* CurrentBlk = Tree->LastBlock;
+
+    node_child Children[8];
+    u32 LastChildIndex = 0;
+
+    vec3 Radius = vec3(NextScale >> 1);
+    for (u32 Oct = 0; Oct < 8; ++Oct)
+    {
+        vec3 OctCentre = GetOctantCentre((svo_oct)Oct, NextScale, Centre);
+        vec3 OctMin = OctCentre - Radius;
+        vec3 OctMax = OctCentre + Radius;
+
+        if (SurfaceFn(OctMin, OctMax))
+        {
+            if (Depth < Tree->MaxDepth - 1)
+            {
+                // Need to subdivide
+                SetOctantOccupied((svo_oct)Oct, VOXEL_PARENT, Parent);
+
+                // Allocate a new child node for this octant.
+                // First, attempt to allocate within the same block
+                svo_node* Child = AllocateNode(Tree->LastBlock);
+                printf("Try allocate oct %d node from blk %d\n", Oct, Tree->LastBlock->Index);
+
+                if (nullptr == Child)
+                {
+                    svo_block* NewBlk = AllocateAndLinkNewBlock(Tree->LastBlock, Tree);
+                    printf("LastBlk out of space; Allocate new block %d\n", NewBlk->Index);
+                    Child = AllocateNode(NewBlk);
+                    CurrentBlk = NewBlk;
+                }
+
+                if (0x0000 == Parent->ChildPtr)
+                {
+                    printf("Linking blocks %d (child) and %d (parent)\n", Tree->LastBlock->Index, ParentBlk->Index);
+                    SetNodeChildPointer(Child, Tree->LastBlock, ParentBlk, Parent);
+                }
+
+                if (Child)
+                {
+                    Children[LastChildIndex] = { (svo_oct)Oct, OctCentre, Child, Tree->LastBlock };
+                    ++LastChildIndex;
+                }
+            }
+            else
+            {
+                SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, Parent);
+            }
+        }
+    }
+
+    printf("Child count: %d\n", LastChildIndex);
+    for (u32 ChildIndex = 0; ChildIndex < LastChildIndex; ++ChildIndex)
+    {
+        node_child Child = Children[ChildIndex];
+
+        printf("Build subtree with block %d\n", Child.Blk->Index);
+        BuildSubOctree(Child.Node,
+                       Tree,
+                       Child.Oct,
+                       Depth + 1,
+                       NextScale,
+                       Child.Blk,
+                       Child.Centre,
+                       SurfaceFn);
+    }
+}
+
 extern "C" svo*
 CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceFn)
 {
@@ -318,6 +411,7 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
         svo_block* RootBlk = (svo_block*)calloc(1, sizeof(svo_block));
         assert(RootBlk);
         Tree->RootBlock = RootBlk;
+        Tree->LastBlock = RootBlk;
         Tree->UsedBlockCount = 1;
 
         // Allocate the root node
@@ -334,6 +428,18 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
 
         std::deque<q_ctx> Queue;
         Queue.push_front(RootCtx);
+        std::vector<q_ctx> Children;
+
+#if 1
+        BuildSubOctree(RootNode,
+                       Tree,
+                       OCT_C000,
+                       0,
+                       RootScale,
+                       RootBlk,
+                       RootCentre,
+                       SurfaceFn);
+#else
 
         while (false == Queue.empty())
         {
@@ -346,7 +452,7 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
 
             {
                 // Process each octant of this node
-                for (u32 Oct = 0; Oct < 8; ++Oct)
+                for (i32 Oct = 0; Oct < 8; ++Oct)
                 {
                     vec3 Rad = vec3(NextScale >> 1);
                     vec3 OctCentre = GetOctantCentre((svo_oct)Oct, NextScale, CurrentCtx.Centre);
@@ -396,6 +502,8 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
                 }
             }
         }
+#endif
+
 
         return Tree;
     }

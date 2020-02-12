@@ -11,13 +11,13 @@
 #define SVO_NODE_CHILD_PTR_MASK 0x7FFF0000U
 #define SVO_FAR_PTR_BIT_MASK    0x80000000U
 
-#define SVO_FAR_PTRS_PER_BLOCK  1
+#define SVO_FAR_PTRS_PER_BLOCK  2
 //#define SVO_ENTRIES_PER_BLOCK   1
 
 #define MAX_STEPS 16
 #define SCREEN_DIM 512
 
-#define SABRE_MAX_TREE_DEPTH 3
+#define SABRE_MAX_TREE_DEPTH 4
 #define SABRE_SCALE_EXPONENT 5
 
 #define ASSERT(Expr) if (! (Expr)) { return vec3(1); }
@@ -98,6 +98,8 @@ struct ray_intersection
 static uint MaxDepthUniform = 2;
 static uint BlockCountUniform = 1;
 static uint ScaleExponentUniform = 5;
+static uint EntriesPerBlockUniform = SVO_ENTRIES_PER_BLOCK;
+static uint FarPtrsPerBlockUniform = SVO_FAR_PTRS_PER_BLOCK;
 
 static vec3 ViewPosUniform = vec3(-5, -5, -512);
 static mat3 ViewMatrixUniform;
@@ -115,37 +117,91 @@ struct far_ptr_input
 
 static far_ptr_input SvoFarPtrBuffer = {
     {
-    // {{{ 
-#if 0
-{1,0},
-{8,0},
-{9,0},
-{10,0},
-{11,0},
-{12,0},
-{13,0},
-{14,0},
-{15,0},
-#endif
-{1,0},
-{8,0},
-{9,0},
-{10,0},
-{11,0},
-{12,0},
-{13,0},
-{14,0},
-{15,0},
-{15,0},
-{23,0},
-{31,0},
-{39,0},
-{47,0},
-{55,0},
-{63,0},
-{71,0},
+    // {{{
+{ 4,1 },
+{ 0,0 },
+{ 8,0 },
+{ 12,1 },
+{ 16,0 },
+{ 20,1 },
+{ 24,0 },
+{ 28,1 },
+{ 1,0,},
+{ 32,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 1,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 1,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 1,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+{ 0,0 },
+//}}}
     }
-    // }}}
 };
 
 static svo* DEBUGSvo;
@@ -237,91 +293,92 @@ static svo_input SvoInputBuffer4096 = {
 // }}}
 };
 
-// BLKSZ 1
+// BLKSZ 2
 static svo_input SvoInputBuffer = {
     // {{{
-2147548928,
-2147516416,
-2147500032,
-2147491840,
-2147487744,
-2147485696,
-2147484672,
-2147484160,
-2147483904,
-2147548928,
-2147548928,
-2147548928,
-2147548928,
-2147548928,
-2147548928,
-2147548928,
-2147548928,
-32896,
-64764,
-64250,
-65535,
-61166,
-65535,
-65535,
-65535,
-64764,
-16448,
-65535,
-62965,
-65535,
-56797,
-65535,
-65535,
-64250,
-65535,
-8224,
-62451,
-65535,
-65535,
-48059,
-65535,
-65535,
-62965,
-62451,
-4112,
-65535,
-65535,
-65535,
-30583,
-61166,
-65535,
-65535,
-65535,
-2056,
-53199,
-44975,
-65535,
-65535,
-56797,
-65535,
-65535,
-53199,
-1028,
-65535,
-24415,
-65535,
-65535,
-48059,
-65535,
-44975,
-65535,
-514,
-16191,
-65535,
-65535,
-65535,
-30583,
-65535,
-24415,
-16191,
-257,
-// }}}
+    130816,
+    2147516416,
+    2147500032,
+    2147557376,
+    2147487744,
+    2147551232,
+    2147484672,
+    2147549696,
+    2147549440,
+    2147548928,
+    32896,
+    64764,
+    64250,
+    65535,
+    61166,
+    65535,
+    65535,
+    65535,
+    130816,
+    64764,
+    16448,
+    65535,
+    62965,
+    65535,
+    56797,
+    65535,
+    65535,
+    2147548928,
+    64250,
+    65535,
+    8224,
+    62451,
+    65535,
+    65535,
+    48059,
+    65535,
+    130816,
+    65535,
+    62965,
+    62451,
+    4112,
+    65535,
+    65535,
+    65535,
+    30583,
+    2147548928,
+    61166,
+    65535,
+    65535,
+    65535,
+    2056,
+    53199,
+    44975,
+    65535,
+    130816,
+    65535,
+    56797,
+    65535,
+    65535,
+    53199,
+    1028,
+    65535,
+    24415,
+    2147548928,
+    65535,
+    65535,
+    48059,
+    65535,
+    44975,
+    65535,
+    514,
+    16191,
+    130816,
+    65535,
+    65535,
+    65535,
+    30583,
+    65535,
+    24415,
+    16191,
+    257,
+    0,
+    // }}}
 };
 
 static uint PrevOct;
@@ -362,10 +419,7 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout int& BlkIndex)
 
     if (! bool(ParentNode & SVO_FAR_PTR_BIT_MASK))
     {
-        // Since children are always stored in succession, we are safe to assume that the 
-        // BlkIndex always increments if the child pointer points to within the same
-        // block.
-        BlkIndex += int(ChildPtr + ChildOffset) / SVO_ENTRIES_PER_BLOCK;
+        BlkIndex += int(ChildPtr + ChildOffset) / int(EntriesPerBlockUniform);
 
         return SvoInputBuffer.Nodes[ChildPtr + ChildOffset];
     }
@@ -375,10 +429,16 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout int& BlkIndex)
         // the byte offset for this block, then index into that block's far ptr
         // list for this node.
         uint FarPtrIndex = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
-        far_ptr FarPtr = SvoFarPtrBuffer.FarPtrs[BlkIndex*SVO_FAR_PTRS_PER_BLOCK + FarPtrIndex];
+        uint FarPtrBlkStart = BlkIndex*FarPtrsPerBlockUniform;
+        far_ptr FarPtr = SvoFarPtrBuffer.FarPtrs[FarPtrBlkStart + FarPtrIndex];
 
-        uint ChildBlkStart = (BlkIndex + FarPtr.BlkOffset) * SVO_ENTRIES_PER_BLOCK;
-        BlkIndex += (FarPtr.BlkOffset + int(ChildOffset / SVO_ENTRIES_PER_BLOCK));
+        // Skip to the block containing the first child
+        BlkIndex += FarPtr.BlkOffset;
+        uint ChildBlkStart = BlkIndex * EntriesPerBlockUniform;
+
+        // Skip any blocks required to get to the actual child node
+        BlkIndex += int(FarPtr.NodeOffset + ChildOffset) / int(EntriesPerBlockUniform);
+        //BlkIndex += (FarPtr.BlkOffset + int((ChildOffset + FarPtr.NodeOffset) / EntriesPerBlockUniform));
 
         return SvoInputBuffer.Nodes[ChildBlkStart + FarPtr.NodeOffset + ChildOffset];
     }
@@ -515,11 +575,11 @@ struct st_frame
 
 vec3 Raycast(in ray R)
 {
+    svo_node DEBUGNode;
     // Extant of the root cube
     int Scale = 1 << (ScaleExponentUniform);
 
     int BlkIndex = 0;
-    int Junk = 0;
     
     vec3 RootMin = vec3(0);
     vec3 RootMax = vec3(Scale);
@@ -537,6 +597,7 @@ vec3 Raycast(in ray R)
 
         // Initialise parent to root node
         uint ParentNode = SvoInputBuffer.Nodes[0];
+        DEBUGNode.Packed = ParentNode;
 
         // Current position along the ray
         vec3 RayP = R.Origin + CurrentIntersection.tMin * R.Dir;
@@ -552,7 +613,12 @@ vec3 Raycast(in ray R)
         // Stack of previous voxels
         st_frame Stack[MAX_STEPS + 1] = { 0 };
         Scale >>= 1;
-        Stack[CurrentDepth] = { ParentNode, CurrentDepth, Scale, CurrentIntersection.tMin, ParentCentre, BlkIndex };
+        Stack[CurrentDepth] = { ParentNode, 
+                                CurrentDepth,
+                                Scale,
+                                CurrentIntersection.tMin,
+                                ParentCentre,
+                                BlkIndex };
 
         // Begin stepping along the ray
         for (Step = 0; Step < MAX_STEPS; ++Step)
@@ -581,7 +647,10 @@ vec3 Raycast(in ray R)
                     else
                     {
                         // Voxel has children --- execute push
+                        // NOTE(Liam): BlkIndex (potentially) updated here
                         ParentNode = GetNodeChild(ParentNode, CurrentOct, BlkIndex);
+                        DEBUGNode.Packed = ParentNode;
+                        if (ParentNode == 0) return vec3(1, 0, 0);
                         CurrentOct = GetOctant(RayP, NodeCentre);
                         ParentCentre = NodeCentre;
                         Scale >>= 1;
@@ -627,6 +696,7 @@ vec3 Raycast(in ray R)
                         Scale = Stack[CurrentDepth].Scale;
                         ParentCentre = Stack[CurrentDepth].ParentCentre;
                         ParentNode = Stack[CurrentDepth].Node;
+                        DEBUGNode.Packed = ParentNode;
                         BlkIndex = Stack[CurrentDepth].BlkIndex;
 
                         CurrentOct = GetOctant(RayP, ParentCentre);
@@ -639,7 +709,8 @@ vec3 Raycast(in ray R)
             }
             else
             {
-                return vec3(0.5, 0.2, 0.6);
+                float O = float(Step) / MAX_STEPS;
+                return O * vec3(0.5, 0.2, 0.6);
             }
         }
     }
@@ -666,10 +737,11 @@ bool Trace2(in ray R)
 int main()
 {
     DEBUGSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
-    vec3 Right =  vec3(0.821647, -0.000000, 0.569997);
-    vec3 Up = vec3(-0.095058, 0.985996, 0.137025);
-    vec3 Forward = vec3(0.562015, 0.166769, -0.810140);
-    vec3 Position = vec3(4.459143, 10.918401, 28.265924);
+
+    vec3 Right = vec3(0.105397, 0.000000, -0.994430);
+    vec3 Up = vec3(-0.110848, 0.993768, -0.011748);
+    vec3 Forward = vec3(-0.988233, -0.111469, -0.104740);
+    vec3 Position = vec3(73.017464, 11.058921, 15.149199);
 
     mat3 View = {{
         { Right.X, Right.Y, Right.Z },
@@ -683,7 +755,7 @@ int main()
         uint N = SvoInputBuffer.Nodes[I] & Nmsk;
         uint N2 = SvoInputBuffer4096.Nodes[I] & Nmsk;
         printf("Chk\n");
-        assert(N == N2);
+        //assert(N == N2);
     }
 
     // Ray XY coordinates of the screen pixels; goes from 0-512
