@@ -1,12 +1,7 @@
 #include <assert.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <intrin.h>
-#include <queue>
-#include <deque>
-#include <iostream>
-#include <memory>
-#include <stack>
-#include <vector>
 
 #include "sabre.h"
 #include "sabre_math.h"
@@ -232,16 +227,6 @@ AllocateNode(svo_block* const Blk)
         return nullptr;
     }
 }
-
-struct q_ctx
-{
-    svo_node* Node;
-    svo_oct   Oct;
-    u32       Depth;
-    u32       Scale;
-    vec3      Centre;
-    svo_block* ParentBlk;
-};
 
 
 static void
