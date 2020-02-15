@@ -419,9 +419,10 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout int& BlkIndex)
 
     if (! bool(ParentNode & SVO_FAR_PTR_BIT_MASK))
     {
+        uint Child = SvoInputBuffer.Nodes[BlkIndex*EntriesPerBlockUniform + ChildPtr + ChildOffset];
         BlkIndex += int(ChildPtr + ChildOffset) / int(EntriesPerBlockUniform);
 
-        return SvoInputBuffer.Nodes[ChildPtr + ChildOffset];
+        return Child;
     }
     else
     {
@@ -438,9 +439,10 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout int& BlkIndex)
 
         // Skip any blocks required to get to the actual child node
         BlkIndex += int(FarPtr.NodeOffset + ChildOffset) / int(EntriesPerBlockUniform);
-        //BlkIndex += (FarPtr.BlkOffset + int((ChildOffset + FarPtr.NodeOffset) / EntriesPerBlockUniform));
 
-        return SvoInputBuffer.Nodes[ChildBlkStart + FarPtr.NodeOffset + ChildOffset];
+        uint Child = SvoInputBuffer.Nodes[ChildBlkStart + FarPtr.NodeOffset + ChildOffset];
+
+        return Child;
     }
 }
 
@@ -575,7 +577,6 @@ struct st_frame
 
 vec3 Raycast(in ray R)
 {
-    svo_node DEBUGNode;
     // Extant of the root cube
     int Scale = 1 << (ScaleExponentUniform);
 
@@ -597,7 +598,6 @@ vec3 Raycast(in ray R)
 
         // Initialise parent to root node
         uint ParentNode = SvoInputBuffer.Nodes[0];
-        DEBUGNode.Packed = ParentNode;
 
         // Current position along the ray
         vec3 RayP = R.Origin + CurrentIntersection.tMin * R.Dir;
@@ -640,6 +640,7 @@ vec3 Raycast(in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
+                        return vec3(1, 0, 0);
                         // Done - return leaf colour
                         float O = float(Step) / MAX_STEPS;
                         return O * vec3(0.4, 0, 0.3);
@@ -649,8 +650,7 @@ vec3 Raycast(in ray R)
                         // Voxel has children --- execute push
                         // NOTE(Liam): BlkIndex (potentially) updated here
                         ParentNode = GetNodeChild(ParentNode, CurrentOct, BlkIndex);
-                        DEBUGNode.Packed = ParentNode;
-                        if (ParentNode == 0) return vec3(1, 0, 0);
+
                         CurrentOct = GetOctant(RayP, NodeCentre);
                         ParentCentre = NodeCentre;
                         Scale >>= 1;
@@ -696,7 +696,6 @@ vec3 Raycast(in ray R)
                         Scale = Stack[CurrentDepth].Scale;
                         ParentCentre = Stack[CurrentDepth].ParentCentre;
                         ParentNode = Stack[CurrentDepth].Node;
-                        DEBUGNode.Packed = ParentNode;
                         BlkIndex = Stack[CurrentDepth].BlkIndex;
 
                         CurrentOct = GetOctant(RayP, ParentCentre);
@@ -709,6 +708,7 @@ vec3 Raycast(in ray R)
             }
             else
             {
+                return vec3(0.16);
                 float O = float(Step) / MAX_STEPS;
                 return O * vec3(0.5, 0.2, 0.6);
             }

@@ -98,6 +98,7 @@ layout (std430, binding = 4) readonly buffer svo_far_ptr_index
     far_ptr FarPtrs[];
 } SvoFarPtrBuffer;
 
+
 float MaxComponent(vec3 V)
 {
     return max(max(V.x, V.y), V.z);
@@ -108,9 +109,8 @@ float MinComponent(vec3 V)
     return min(min(V.x, V.y), V.z);
 }
 
-uint GetNodeChild(in uint ParentNode, in uint Scale, in uint Oct, inout int BlkIndex, inout bool Track)
+uint GetNodeChild(in uint ParentNode, in uint Oct, inout int BlkIndex)
 {
-    int InBlkIndex = BlkIndex;
     uint ChildPtr = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
     uint OccBits = (ParentNode & SVO_NODE_OCCUPIED_MASK) >> 8; 
     uint LeafBits = (ParentNode & SVO_NODE_LEAF_MASK);
@@ -119,15 +119,12 @@ uint GetNodeChild(in uint ParentNode, in uint Scale, in uint Oct, inout int BlkI
 
     uint ChildOffset = bitCount(OccupiedNonLeafOcts & SetBitsBehindOctIdx); 
 
-    if (! bool(ParentNode & SVO_FAR_PTR_BIT_MASK))
+    if (! bool(ParentNode & SVO_FAR_PTR_BIT_MASK) || true)
     {
+        BlkIndex = 0;
         uint Child = SvoInputBuffer.Nodes[BlkIndex*EntriesPerBlockUniform + ChildPtr + ChildOffset];
-        BlkIndex += int(ChildPtr + ChildOffset) / int(EntriesPerBlockUniform);
-
-        if (Track)
-        {
-            if (Scale == 4 && ChildOffset == 0 && Child == 64764) BlkIndex = 1001;
-        }
+        // FIXME(Liam): BRING ME BACK!!!
+        //BlkIndex += int(ChildPtr + ChildOffset) / int(EntriesPerBlockUniform);
 
         return Child;
     }
@@ -140,7 +137,6 @@ uint GetNodeChild(in uint ParentNode, in uint Scale, in uint Oct, inout int BlkI
         uint FarPtrBlkStart = BlkIndex*FarPtrsPerBlockUniform;
         far_ptr FarPtr = SvoFarPtrBuffer.FarPtrs[FarPtrBlkStart + FarPtrIndex];
 
-
         // Skip to the block containing the first child
         BlkIndex += FarPtr.BlkOffset;
         uint ChildBlkStart = BlkIndex * EntriesPerBlockUniform;
@@ -149,13 +145,8 @@ uint GetNodeChild(in uint ParentNode, in uint Scale, in uint Oct, inout int BlkI
         BlkIndex += int(FarPtr.NodeOffset + ChildOffset) / int(EntriesPerBlockUniform);
 
         uint Child = SvoInputBuffer.Nodes[ChildBlkStart + FarPtr.NodeOffset + ChildOffset];
-        
-
-        //if (BlkIndex == 9 && Child == 130816 && ParentNode == 2147500032 && FarPtr.BlkOffset == 8 && FarPtr.NodeOffset == 0 && Scale == 8) BlkIndex = 1001;
-        //if (ParentNode == 130816) BlkIndex = 1001;
 
         return Child;
-
     }
 }
 
@@ -290,8 +281,6 @@ struct st_frame
 
 vec3 Raycast(in ray R)
 {
-    bool Track = false;
-    int DbgTrack = 0;
     // Extant of the root cube
     int Scale = 1 << (ScaleExponentUniform);
 
@@ -336,7 +325,6 @@ vec3 Raycast(in ray R)
                                        CurrentIntersection.tMin,
                                        ParentCentre,
                                        BlkIndex );
-        bool T = false;
 
         // Begin stepping along the ray
         for (Step = 0; Step < MAX_STEPS; ++Step)
@@ -348,9 +336,6 @@ vec3 Raycast(in ray R)
 
             CurrentIntersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
 
-            /// INSIDE CUBE?...YES
-            /// IS OCCUPIED?...YES
-            /// IS PARENT?.....YES
             if (CurrentIntersection.tMin <= CurrentIntersection.tMax && CurrentIntersection.tMax > 0)
             {
                 // Ray hit this voxel
@@ -370,19 +355,13 @@ vec3 Raycast(in ray R)
                     {
                         // Voxel has children --- execute push
                         // NOTE(Liam): BlkIndex (potentially) updated here
-                        int OldBlkIndex = BlkIndex;
-                        ParentNode = GetNodeChild(ParentNode, Scale, CurrentOct, BlkIndex, T);
-
-                        // Hit the problem node
-                        if (BlkIndex == 1001) return vec3(0, 1, 1);
-                        if (ParentNode == 130816 && Scale == 8) T = true;
+                        ParentNode = GetNodeChild(ParentNode, CurrentOct, BlkIndex);
 
                         CurrentOct = GetOctant(RayP, NodeCentre);
                         ParentCentre = NodeCentre;
                         Scale >>= 1;
                         ++CurrentDepth;
 
-                        /// WARNING BLKINDEX UPDATED HERE
                         Stack[CurrentDepth] = st_frame(ParentNode, 
                                                        CurrentDepth, 
                                                        Scale, 

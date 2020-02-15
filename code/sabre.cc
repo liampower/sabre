@@ -372,9 +372,9 @@ main(int ArgCount, const char** const Args)
         return EXIT_FAILURE;
     }
 
-    svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);//BuildSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
-    InsertVoxel(WorldSvo, vec3(32, 0, 32), 4);
-    //InsertVoxel(WorldSvo, vec3(48, 48, 48), 32);
+    svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
+    InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
+
 
 	gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
 

@@ -38,6 +38,25 @@ FindHighestSetBit(u32 Msk)
 #endif
 }
 
+static inline u32
+FindLowestSetBit(u32 Msk)
+{
+#if defined(_MSC_VER)
+    unsigned long LSB;
+    _BitScanForward(&LSB, Msk);
+
+    return (u32)LSB;
+#else
+    return __builtin_clz(Msk);
+#endif
+}
+
+static inline u32
+GetChildCount(svo_node* Parent)
+{
+    return CountSetBits(Parent->OccupiedMask & (~Parent->LeafMask));
+}
+
 static inline int
 GetFreeSlotCount(svo_block* const Blk)
 {
@@ -78,19 +97,20 @@ SetOctantOccupied(svo_oct SubOctant, svo_voxel_type Type, svo_node* OutEntry)
 }
 
 
-static inline bool
+static inline svo_node*
 PushNode(svo_block* Blk, svo_node Node)
 {
     if (GetFreeSlotCount(Blk) > 0)
     {
-        Blk->Entries[Blk->NextFreeSlot] = Node;
+        svo_node* NewNode = &Blk->Entries[Blk->NextFreeSlot];
+        *NewNode = Node;
         ++Blk->NextFreeSlot;
 
-        return true;
+        return NewNode;
     }
     else
     {
-        return false;
+        return nullptr;
     }
 }
 
@@ -234,7 +254,7 @@ static void
 SetNodeChildPointer(svo_node* Child, svo_block* ChildBlk, svo_block* ParentBlk, svo_node* Parent)
 {
     // Compute the child offset from the start of the block
-    u16 ChildOffset = (u16)ChildBlk->NextFreeSlot - 1;
+    u16 ChildOffset = (u16)(Child - ChildBlk->Entries);
 
     // Extract first 15 bits
     u16 ChildPtrBits = ChildOffset & SVO_NODE_CHILD_PTR_MSK;
@@ -304,7 +324,6 @@ AllocateAndLinkNewBlock(svo_block* const OldBlk, svo* const Tree)
 
     return NewBlk;
 }
-
 
 
 static svo_node*
@@ -436,8 +455,6 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
                                 RootBlk,
                                 RootCentre,
                                 SurfaceFn);
-
-        svo_node* Child = GetNodeChild(RootNode, RootBlk, OCT_C111);
 
         return Tree;
     }
@@ -571,9 +588,98 @@ InsertVoxel(svo* Svo, vec3 P, u32 VoxelScale)
 #endif
 // }}}
 
+static svo_node*
+InsertChild(svo_node* Parent, svo_oct ChildOct, svo_block* ParentBlk, svo* Tree, svo_voxel_type Type)
+{
+    svo_node PCopy = *Parent;
+    SetOctantOccupied(ChildOct, Type, &PCopy);
+    
+    // Gather siblings of the newborn child
+    u32 NonLeafChildMsk = PCopy.OccupiedMask & (~PCopy.LeafMask);
+    u32 ChildCount = CountSetBits(NonLeafChildMsk);
+
+    svo_block* CurrentBlk = ParentBlk;
+    svo_node* CreatedParent = nullptr;
+    svo_node* FirstChild = nullptr;
+    svo_block* FirstChildBlk = nullptr;
+
+    // Process each child (max 8) of the parent node, including the one
+    // we just inserted.
+    for (u32 ChildIndex = 0; ChildIndex < ChildCount; ++ChildIndex)
+    {
+        // Octant of the child we are processing
+        svo_oct Oct = (svo_oct)FindLowestSetBit(NonLeafChildMsk);
+
+        // If the current octant we're processing is the one we're inserting, 
+        // we need to allocate a child svo_node for this octant.
+        if (ChildOct == Oct && Type == VOXEL_PARENT)
+        {
+            svo_node* NewParent = AllocateNode(CurrentBlk);
+            if (nullptr == NewParent)
+            {
+                CurrentBlk = AllocateAndLinkNewBlock(CurrentBlk, Tree);
+                NewParent = AllocateNode(CurrentBlk);
+            }
+
+            CreatedParent = NewParent;
+
+            if (nullptr == FirstChild)
+            {
+                FirstChild = CreatedParent;
+                FirstChildBlk = CurrentBlk;
+            }
+        }
+        else
+        {
+            svo_node* Child = GetNodeChild(Parent, ParentBlk, Oct);
+            svo_node* RelocatedChild = PushNode(CurrentBlk, *Child);
+
+            if (nullptr == RelocatedChild)
+            {
+                CurrentBlk = AllocateAndLinkNewBlock(CurrentBlk, Tree);
+                RelocatedChild = PushNode(CurrentBlk, *Child);
+            }
+
+            if (nullptr == FirstChild)
+            {
+                FirstChild = RelocatedChild;
+                FirstChildBlk = CurrentBlk;
+            }
+        }
+
+        // Clear the processed oct from the mask
+        NonLeafChildMsk &= ~(1U << Oct);
+
+    }
+
+    assert(FirstChild);
+
+    *Parent = PCopy;
+    SetNodeChildPointer(FirstChild, FirstChildBlk, ParentBlk, Parent);
+
+    return CreatedParent;
+}
+
 extern "C" void
 InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
 {
+    svo_node* Root = &Tree->RootBlock->Entries[0];
+    svo_node* C0 = GetNodeChild(Root, Tree->RootBlock, OCT_C001);
+    svo_node* C1 = GetNodeChild(C0, Tree->RootBlock, OCT_C001);
+    svo_node* C2 = GetNodeChild(C1, Tree->RootBlock, OCT_C001);
+    //SetOctantOccupied(OCT_C000, VOXEL_LEAF, &Tree->RootBlock->Entries[0]);
+    InsertChild(&Tree->RootBlock->Entries[0], OCT_C000, Tree->RootBlock, Tree, VOXEL_LEAF);
+
+    svo_node* D0 = GetNodeChild(Root, Tree->RootBlock, OCT_C001);
+    svo_node* D1 = GetNodeChild(D0, Tree->RootBlock, OCT_C001);
+    svo_node* D2 = GetNodeChild(D1, Tree->RootBlock, OCT_C001);
+
+    assert(C0->Packed == D0->Packed);
+    assert(C1->Packed == D1->Packed);
+    assert(C2->Packed == D2->Packed);
+
+    return;
+#if 0
     u32 RootScale = 1 << (Tree->ScaleExponent - 1);
 
     vec3 ParentCentreP = vec3(RootScale);
@@ -626,7 +732,12 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
             // node
             if (AllocatedParent)
             {
-
+                ParentNode = AllocateNode(Tree->LastBlock); 
+                if (nullptr == ParentNode)
+                {
+                    svo_block* NewBlk = AllocateAndLinkNewBlock(Tree->LastBlock, Tree);
+                    ParentNode = AllocateNode(NewBlk);
+                }
             }
             else
             {
@@ -694,6 +805,7 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
 
 
     }
+#endif
 }
 
 extern "C" void
