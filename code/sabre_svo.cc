@@ -114,56 +114,6 @@ PushNode(svo_block* Blk, svo_node Node)
     }
 }
 
-// TODO(Liam) Running into a *lot* of problems with passing the blocks around.
-// May need to reconsider design where we split the world up into uniform octree
-// blocks, each with a separate SVO index.
-#if 0
-static inline svo_node*
-GetNodeChild(svo_node* Parent, svo* Tree, svo_oct ChildOct)
-{
-    u32 NonLeafChildren = Parent->OccupiedMask & (~Parent->LeafMask);
-    u32 SetBitsBehindOctIdx = (1U << (u32)ChildOct) - 1;
-    u32 ChildOffset = CountSetBits(NonLeafChildren & SetBitsBehindOctIdx); 
-
-    // Extract the actual offset bits from the child pointer (the topmost
-    // bit is reserved for the far flag).
-    u32 ChildPtrBase = Parent->ChildPtr & 0x7FFF;
-
-    // Check if the node references a child outside this block.
-    if (Parent->ChildPtr & SVO_FAR_PTR_BIT_MASK)
-    {
-        svo_block* OldBlk = Tree->LastBlock->Prev;
-
-        // Extract the far ptr from this block
-        far_ptr FarPtr = OldBlk->FarPtrs[ChildPtrBase];
-
-        svo_block* NextBlk = OldBlk;
-
-        i32 BlksJumped = 0;
-
-        do
-        {
-            if (FarPtr.BlkOffset < 0)
-            {
-                NextBlk = NextBlk->Prev;
-                --BlksJumped;
-            }
-            else
-            {
-                NextBlk = NextBlk->Next;
-                ++BlksJumped;
-            }
-        } while (BlksJumped < FarPtr.BlkOffset);
-
-        return &NextBlk->Entries[ChildPtrBase + ChildOffset];
-    }
-    else
-    {
-
-        return &Tree->LastBlock->Entries[ChildPtrBase + ChildOffset];
-    }
-}
-#endif
 
 static inline u32
 GetNodeChildOffset(svo_node* Parent, svo_oct ChildOct)
@@ -190,7 +140,7 @@ GetNodeChild(svo_node* Parent, svo_block* ParentBlk, svo_oct ChildOct)
 
         i32 BlksJumped = 0;
         // TODO(Liam): Clean up signed/unsigned mismatches here
-        i32 BlksToJump = ParentFarPtr->BlkOffset + (i32)((ChildOffset + ParentFarPtr->NodeOffset) / SVO_ENTRIES_PER_BLOCK);
+        i32 BlksToJump = (i32)(ParentFarPtr->BlkIndex - ParentBlk->Index) + (i32)((ChildOffset + ParentFarPtr->NodeOffset) / SVO_ENTRIES_PER_BLOCK);
 
         // Skip to the first child's block.
         while (BlksJumped != BlksToJump)
@@ -245,7 +195,7 @@ AllocateFarPtr(svo_block* const ContainingBlk)
     ++ContainingBlk->NextFarPtrSlot;
 
     assert(Ptr->NodeOffset == 0);
-    assert(Ptr->BlkOffset == 0);
+    assert(Ptr->BlkIndex == 0);
 
     return Ptr;
 }
@@ -269,7 +219,7 @@ SetNodeChildPointer(svo_node* Child, svo_block* ChildBlk, svo_block* ParentBlk, 
     else // Otherwise, we need to allocate a far pointer
     {
         far_ptr* FarPtr = AllocateFarPtr(ParentBlk);
-        FarPtr->BlkOffset = ChildBlk->Index - ParentBlk->Index;
+        FarPtr->BlkIndex = (u32)ChildBlk->Index;
         FarPtr->NodeOffset = ChildPtrBits;
 
         // Set the child ptr value to the far bit with the remaining 15 bits

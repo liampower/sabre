@@ -71,7 +71,7 @@ struct ray_intersection
 
 struct far_ptr
 {
-    int  BlkOffset;
+    uint BlkIndex;
     uint NodeOffset;
 };
 
@@ -109,7 +109,7 @@ float MinComponent(vec3 V)
     return min(min(V.x, V.y), V.z);
 }
 
-uint GetNodeChild(in uint ParentNode, in uint Oct, inout int BlkIndex)
+uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
 {
     uint ChildPtr = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
     uint OccBits = (ParentNode & SVO_NODE_OCCUPIED_MASK) >> 8; 
@@ -119,12 +119,10 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout int BlkIndex)
 
     uint ChildOffset = bitCount(OccupiedNonLeafOcts & SetBitsBehindOctIdx); 
 
-    if (! bool(ParentNode & SVO_FAR_PTR_BIT_MASK) || true)
+    if (! bool(ParentNode & SVO_FAR_PTR_BIT_MASK))
     {
-        BlkIndex = 0;
-        uint Child = SvoInputBuffer.Nodes[BlkIndex*EntriesPerBlockUniform + ChildPtr + ChildOffset];
-        // FIXME(Liam): BRING ME BACK!!!
-        //BlkIndex += int(ChildPtr + ChildOffset) / int(EntriesPerBlockUniform);
+        uint Child = SvoInputBuffer.Nodes[ParentBlkIndex*EntriesPerBlockUniform + ChildPtr + ChildOffset];
+        ParentBlkIndex += (ChildPtr + ChildOffset) / (EntriesPerBlockUniform);
 
         return Child;
     }
@@ -134,15 +132,15 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout int BlkIndex)
         // the byte offset for this block, then index into that block's far ptr
         // list for this node.
         uint FarPtrIndex = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
-        uint FarPtrBlkStart = BlkIndex*FarPtrsPerBlockUniform;
+        uint FarPtrBlkStart = ParentBlkIndex*FarPtrsPerBlockUniform;
         far_ptr FarPtr = SvoFarPtrBuffer.FarPtrs[FarPtrBlkStart + FarPtrIndex];
 
         // Skip to the block containing the first child
-        BlkIndex += FarPtr.BlkOffset;
-        uint ChildBlkStart = BlkIndex * EntriesPerBlockUniform;
+        ParentBlkIndex = FarPtr.BlkIndex;
+        uint ChildBlkStart = ParentBlkIndex * EntriesPerBlockUniform;
 
         // Skip any blocks required to get to the actual child node
-        BlkIndex += int(FarPtr.NodeOffset + ChildOffset) / int(EntriesPerBlockUniform);
+        ParentBlkIndex += (FarPtr.NodeOffset + ChildOffset) / EntriesPerBlockUniform;
 
         uint Child = SvoInputBuffer.Nodes[ChildBlkStart + FarPtr.NodeOffset + ChildOffset];
 
@@ -276,7 +274,7 @@ struct st_frame
     int Scale;
     float tMin;
     vec3 ParentCentre;
-    int BlkIndex;
+    uint BlkIndex;
 };
 
 vec3 Raycast(in ray R)
@@ -284,7 +282,7 @@ vec3 Raycast(in ray R)
     // Extant of the root cube
     int Scale = 1 << (ScaleExponentUniform);
 
-    int BlkIndex = 0;
+    uint BlkIndex = 0;
     
     vec3 RootMin = vec3(0);
     vec3 RootMax = vec3(Scale);
