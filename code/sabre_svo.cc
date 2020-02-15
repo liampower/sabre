@@ -663,6 +663,7 @@ InsertChild(svo_node* Parent, svo_oct ChildOct, svo_block* ParentBlk, svo* Tree,
 extern "C" void
 InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
 {
+#if 0
     svo_node* Root = &Tree->RootBlock->Entries[0];
     svo_node* C0 = GetNodeChild(Root, Tree->RootBlock, OCT_C001);
     svo_node* C1 = GetNodeChild(C0, Tree->RootBlock, OCT_C001);
@@ -679,7 +680,7 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
     assert(C2->Packed == D2->Packed);
 
     return;
-#if 0
+#endif
     u32 RootScale = 1 << (Tree->ScaleExponent - 1);
 
     vec3 ParentCentreP = vec3(RootScale);
@@ -698,7 +699,15 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
         // the current octant as a leaf and break out.
         if (Scale <= VoxelScale)
         {
-            SetOctantOccupied(CurrentOct, VOXEL_LEAF, ParentNode);
+            if (AllocatedParent)
+            {
+                SetOctantOccupied(CurrentOct, VOXEL_LEAF, ParentNode);
+            }
+            else
+            {
+                InsertChild(ParentNode, CurrentOct, Tree->RootBlock, Tree, VOXEL_LEAF);
+            }
+
             return; // TODO(Liam): Check if it's safe to early return here
         }
 
@@ -726,86 +735,10 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
             // containing our inserted voxel.
 
             // First, mark this octant as a subdivision container
-            SetOctantOccupied(CurrentOct, VOXEL_PARENT, ParentNode);
-
-            // Check if we have previously copied out the parent nodes for this 
-            // node
-            if (AllocatedParent)
-            {
-                ParentNode = AllocateNode(Tree->LastBlock); 
-                if (nullptr == ParentNode)
-                {
-                    svo_block* NewBlk = AllocateAndLinkNewBlock(Tree->LastBlock, Tree);
-                    ParentNode = AllocateNode(NewBlk);
-                }
-            }
-            else
-            {
-                u32 NonLeafChildMsk = ParentNode->OccupiedMask & (~ParentNode->LeafMask);
-                svo_node* NewParent = nullptr;
-                svo_node* FirstChild = nullptr;
-                svo_block* CurrentBlk = Tree->LastBlock;
-
-                u32 ChildCount = CountSetBits(NonLeafChildMsk);
-
-                // Copy all of the children (including the new one) onto the end
-                // of the tree
-                for (u32 ChildIndex = 0; ChildIndex < ChildCount; ++ChildIndex)
-                {
-                    u32 ChildOct = FindHighestSetBit(NonLeafChildMsk);
-
-                    if (ChildOct == CurrentOct)
-                    {
-                        NewParent = AllocateNode(CurrentBlk);
-                        if (nullptr == NewParent)
-                        {
-                            svo_block* NewBlk = AllocateAndLinkNewBlock(CurrentBlk, Tree);
-                            NewParent = AllocateNode(NewBlk);
-                            CurrentBlk = NewBlk;
-
-                        }
-
-                        if (nullptr == FirstChild) FirstChild = NewParent;
-                    }
-                    else
-                    {
-                        u32 SetBitsBehindOctIdx = (1 << ChildOct) - 1;
-                        u32 ChildOffset = CountSetBits(NonLeafChildMsk & SetBitsBehindOctIdx);
-
-
-                        svo_node* SiblingNode = GetNodeChild(ParentNode, Tree->RootBlock, (svo_oct)ChildOct);
-                        // Copy the old node to a new memory region
-                        if (false == PushNode(Tree->RootBlock, *SiblingNode))
-                        {
-                            // TODO(Liam): Handle block allocation!!
-                        }
-
-                        if (! FirstChild) FirstChild = SiblingNode;
-                    }
-
-                    // Clear this oct from the mask
-                    NonLeafChildMsk &= ~(1U << ChildOct);
-                }
-
-                if (FirstChild)
-                {
-                   u16 ChildPtr = (u16)(FirstChild - ParentNode); 
-                   SetNodeChildPointer(FirstChild, Tree->RootBlock, Tree->RootBlock, ParentNode);
-                }
-
-                if (NewParent)
-                {
-                    ParentNode = NewParent;
-                }
-
-                AllocatedParent = true;
-            }
-
+            ParentNode = InsertChild(ParentNode, CurrentOct, Tree->RootBlock, Tree, VOXEL_PARENT);
+            AllocatedParent = true;
         }
-
-
     }
-#endif
 }
 
 extern "C" void
