@@ -2,7 +2,7 @@
 #define SABRE_SVO_H
 
 constexpr u32 SVO_ENTRIES_PER_BLOCK  = 2;
-constexpr u32 SVO_FAR_PTRS_PER_BLOCK = 2;
+constexpr u32 SVO_FAR_PTRS_PER_BLOCK = 8;
 constexpr u32 SVO_FAR_PTR_BIT_MASK   = 0x8000;
 
 
@@ -55,7 +55,7 @@ struct svo_block
 {
     usize      NextFreeSlot;
     usize      NextFarPtrSlot;
-    i32        Index;
+    u32        Index;
     svo_block* Prev;
     svo_block* Next;
     svo_node   Entries[SVO_ENTRIES_PER_BLOCK];
