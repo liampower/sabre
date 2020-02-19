@@ -216,7 +216,6 @@ uint GetOctant(in vec3 P, in vec3 ParentCentreP)
     return G.x + G.y*2 + G.z*4;
 }
 
-
 bool IsOctantOccupied(in uint Node, in uint Oct)
 {
     return (Node & (1 << (8 + Oct))) != 0;
@@ -256,15 +255,17 @@ vec3 Oct2Cr(in uint Oct)
     return vec3( bvec3(uvec3(Oct) & uvec3(1, 2, 4))).bgr;
 }
 
-
 uvec3 HDB(uvec3 A, uvec3 B)
 {
-    uvec3 DB = (A ^ B);
-
-    // Find highest set bits
-    uvec3 HighestSetBits = findMSB(DB);
-
-    return HighestSetBits;
+    // Find the highest differing bit
+    // between A and B.
+    //
+    // First, A and B are XORed to produce
+    // a mask of the differing bits between
+    // them. The highest bit in this mask
+    // can be found with the GLSL intrinsic
+    // function findMSB.
+    return findMSB(A ^ B);
 }
 
 struct st_frame
@@ -280,12 +281,19 @@ struct st_frame
 vec3 Raycast(in ray R)
 {
     // Extant of the root cube
-    int Scale = 1 << (ScaleExponentUniform);
+    //int Scale = 1 << (ScaleExponentUniform);
+
+    /*if (MaxDepthUniform > ScaleExponentUniform)
+    {
+        Scale <<= (MaxDepthUniform - ScaleExponentUniform);
+    }*/
+
+    int Scale = (1 << ScaleExponentUniform) << 2;
 
     uint BlkIndex = 0;
     
     vec3 RootMin = vec3(0);
-    vec3 RootMax = vec3(Scale);
+    vec3 RootMax = vec3(Scale) * 0.25;
     vec3 Sgn = sign(R.Dir);
 
     // Intersection of the ray with the root cube (i.e. entire tree)
@@ -329,8 +337,8 @@ vec3 Raycast(in ray R)
         {
             // Go down 1 level
             vec3 NodeCentre = GetNodeCentreP(CurrentOct, Scale, ParentCentre);
-            vec3 NodeMin = NodeCentre - vec3(Scale >> 1);
-            vec3 NodeMax = NodeCentre + vec3(Scale >> 1);
+            vec3 NodeMin = (NodeCentre - vec3(Scale >> 1)) * 0.5;
+            vec3 NodeMax = (NodeCentre + vec3(Scale >> 1)) * 0.5;
 
             CurrentIntersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
 
@@ -374,7 +382,7 @@ vec3 Raycast(in ray R)
                 // Octant not occupied, need to handle advance/pop
                 uint NextOct = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
 
-                RayP = R.Origin + (CurrentIntersection.tMax + 1) * R.Dir;
+                RayP = R.Origin + (CurrentIntersection.tMax + 0.1) * R.Dir;
 
                 if (IsAdvanceValid(NextOct, CurrentOct, R.Dir))
                 {
@@ -384,7 +392,9 @@ vec3 Raycast(in ray R)
                 {
                     // Determined that NodeCentre is never < 0
                     uvec3 NodeCentreBits = uvec3(NodeCentre);
+                    if (any(lessThan(NodeCentreBits, vec3(0)))) return vec3(0, 1, 0);
                     uvec3 RayPBits = uvec3(RayP);
+                    if (any(lessThan(RayPBits, vec3(0)))) return vec3(0, 1, 0);
 
                     // NOTE(Liam): It is **okay** to have negative values here
                     // because the HDB will end up being equal to ScaleExponentUniform.
@@ -417,7 +427,7 @@ vec3 Raycast(in ray R)
             }
             else
             {
-                return vec3(0.16);
+                return (float(Step) / MAX_STEPS) * vec3(0.16);
                 float O = float(Step) / MAX_STEPS;
                 return O * vec3(0.5, 0.2, 0.6);
             }
@@ -430,17 +440,6 @@ vec3 Raycast(in ray R)
     }
 
     return vec3(0, 0, 1);
-}
-
-bool Trace2(in ray R)
-{
-    vec3 Min = vec3(-4);
-    vec3 Max = vec3(4);
-
-    ray_intersection I = ComputeRayBoxIntersection(R, Min, Max);
-
-
-    return I.tMin <= I.tMax;
 }
 
 void main()

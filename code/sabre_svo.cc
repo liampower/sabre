@@ -334,9 +334,10 @@ SetNodeChildPointer(svo_node* Child, svo_block* ChildBlk, svo_block* ParentBlk, 
 static inline vec3
 GetOctantCentre(svo_oct Octant, u32 Scale, vec3 ParentCentreP)
 {
-    u32 Rad = Scale >> 1;
+    assert(Scale > 0);
     u32 Oct = (u32) Octant;
 
+    u32 Rad = (Scale >> 1);
     f32 X = (Oct & 1U) ? 1.0f : -1.0f;
     f32 Y = (Oct & 2U) ? 1.0f : -1.0f;
     f32 Z = (Oct & 4U) ? 1.0f : -1.0f;
@@ -405,22 +406,31 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
         svo_block* Blk;
     };
 
+    u32 Bias = (Tree->MaxDepth > Tree->ScaleExponent) ? 0 : (Tree->MaxDepth - Tree->ScaleExponent);
+
     u32 NextScale = Scale >> 1;
+    u32 NextDepth = Depth + 1;
     svo_block* CurrentBlk = Tree->LastBlock;
 
     node_child Children[8];
     u32 LastChildIndex = 0;
 
+    //i32 Bias = (Tree->MaxDepth > Tree->ScaleExponent) ? 1.0 : (f32)(1U << (Tree->MaxDepth - Tree->ScaleExponent));
+
+    // TODO(Liam): Multiply by bias here for sub-zero scale values. This lets us keep
+    // the scale in a u32.
     vec3 Radius = vec3(NextScale >> 1);
     for (u32 Oct = 0; Oct < 8; ++Oct)
     {
         vec3 OctCentre = GetOctantCentre((svo_oct)Oct, NextScale, Centre);
-        vec3 OctMin = OctCentre - Radius;
-        vec3 OctMax = OctCentre + Radius;
+        vec3 OctMin = (OctCentre - Radius) * 0.25f;
+        vec3 OctMax = (OctCentre + Radius) * 0.25f;
 
         if (SurfaceFn(OctMin, OctMax))
         {
-            if (Depth < Tree->MaxDepth - 1)
+            // Check if the NEXT depth is less than the tree max
+            // depth.
+            if (NextDepth < Tree->MaxDepth)
             {
                 // Need to subdivide
                 SetOctantOccupied((svo_oct)Oct, VOXEL_PARENT, Parent);
@@ -461,7 +471,7 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
         BuildSubOctreeRecursive(Child.Node,
                                 Tree,
                                 Child.Oct,
-                                Depth + 1,
+                                NextDepth,
                                 NextScale,
                                 Child.Blk,
                                 Child.Centre,
@@ -494,7 +504,12 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
         ++RootBlk->NextFreeSlot;
         
         // Begin building tree
-        u32  RootScale = 1 << ScaleExponent;
+        u32  RootScale = (1 << ScaleExponent);
+        u32 Bias = (MaxDepth > ScaleExponent) ? (MaxDepth - ScaleExponent) : 0;
+        RootScale <<= (Bias + 1);
+
+        printf("%u\n", RootScale);
+
         vec3 RootCentre = vec3(RootScale >> 1);
 
         // Initiate the recursive construction process
@@ -612,25 +627,6 @@ InsertChild(svo_node* Parent, svo_oct ChildOct, svo_block* ParentBlk, svo* Tree,
             node_ref ChildRef = GetNodeChildWithBlock(Parent, ParentBlk, Oct);
             CurrentChildBlk = ChildRef.Blk;
             svo_node* Child = ChildRef.Node;
-#if 0
-            svo_node* RelocatedChild = PushNode(CurrentBlk, *Child);
-
-            if (nullptr == RelocatedChild)
-            {
-                CurrentBlk = AllocateAndLinkNewBlock(CurrentBlk, Tree);
-                RelocatedChild = PushNode(CurrentBlk, *Child);
-            }
-
-            // Need to copy far pointers of the children too
-            if (HasFarChildren(Child))
-            {
-                // Get this node's far ptr
-                far_ptr* FarPtr = GetFarPointer(Child, ParentBlk);
-
-                // Copy the far ptr into the new block
-                far_ptr* NewPtr = PushFarPtr(*FarPtr, CurrentBlk);
-            }
-#endif
             node_ref MovedChild = ReAllocateNode(Child, CurrentChildBlk, Tree);
 
             if (nullptr == FirstChild)
@@ -642,7 +638,6 @@ InsertChild(svo_node* Parent, svo_oct ChildOct, svo_block* ParentBlk, svo* Tree,
 
         // Clear the processed oct from the mask
         NonLeafChildMsk &= ~(1U << Oct);
-
     }
 
     assert(FirstChild);
@@ -687,7 +682,7 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
                 InsertChild(ParentNode, CurrentOct, ParentBlk, Tree, VOXEL_LEAF);
             }
 
-            return; // TODO(Liam): Check if it's safe to early return here
+            return;
         }
 
         // If the current octant is occupied, we can either

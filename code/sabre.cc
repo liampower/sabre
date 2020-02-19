@@ -13,8 +13,8 @@
 #include "sabre_svo.h"
 #include "sabre_data.h"
 
-#define SABRE_MAX_TREE_DEPTH 4
-#define SABRE_SCALE_EXPONENT 5
+#define SABRE_MAX_TREE_DEPTH 1
+#define SABRE_SCALE_EXPONENT 0
 #define SABRE_WORK_SIZE_X 512
 #define SABRE_WORK_SIZE_Y 512
 
@@ -88,12 +88,12 @@ OutputGraphicsDeviceInfo(void)
 static inline bool
 CubeSphereIntersection(vec3 Min, vec3 Max)
 {
-    const vec3 S = vec3(16);
-    const f32 R = 8.0f;
+    const vec3 S = vec3(0.5f);
+    const f32 R = 0.25f;
 
     f32 DistanceSqToCube = R * R;
 
-    //printf("MIN (%f, %f, %f), MAX (%f, %f, %f)", Min.X, Min.Y, Min.Z, Max.X, Max.Y, Max.Z);
+    printf("MIN (%f, %f, %f), MAX (%f, %f, %f)", Min.X, Min.Y, Min.Z, Max.X, Max.Y, Max.Z);
 
     // STACKOVER
     if (S.X < Min.X) DistanceSqToCube -= Squared(S.X - Min.X);
@@ -108,12 +108,12 @@ CubeSphereIntersection(vec3 Min, vec3 Max)
     if (DistanceSqToCube > 0)
     {
         //printf("MIN (%f, %f, %f), MAX (%f, %f, %f)", Min.X, Min.Y, Min.Z, Max.X, Max.Y, Max.Z);
-        //printf("        TRUE\n");
+        printf("        TRUE\n");
         return true;
     }
     else
     {
-        //printf("        FALSE\n");
+        printf("        FALSE\n");
         return false;
     }
 }
@@ -295,21 +295,6 @@ UploadOctreeBlockData(const svo* const Svo)
     return SvoBuffer;
 }
 
-static int
-NCount(svo* Tree)
-{
-	int N = 0;
-	svo_block* Blk = Tree->RootBlock;
-	while (Blk)
-	{
-		++N;
-
-		Blk = Blk->Next;
-	}
-
-	return N;
-}
-
 extern int
 main(int ArgCount, const char** const Args)
 {
@@ -373,7 +358,7 @@ main(int ArgCount, const char** const Args)
     }
 
     svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
-    InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
+    //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
 
 	gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
 
@@ -436,7 +421,7 @@ main(int ArgCount, const char** const Args)
     Cam.Right = vec3(1, 0, 0);
     Cam.Up = vec3(0, 1, 0);
     Cam.Position = vec3(4, 4, 96);
-    Cam.Velocity = 2.4f;
+    Cam.Velocity = 1.4f;
 
     const vec3 WorldYAxis = vec3(0, 1, 0);
 
@@ -514,6 +499,12 @@ main(int ArgCount, const char** const Args)
             quat PitchRotation = RotationQuaternion(Pitch, Cam.Right);
 
             Cam.Forward = Normalize(Rotate((YawRotation * PitchRotation), Cam.Forward));
+        }
+
+        f32 ScaleValue = 1.0;
+        if (SABRE_MAX_TREE_DEPTH > SABRE_SCALE_EXPONENT)
+        {
+            ScaleValue = 1.0 / (1 << (SABRE_MAX_TREE_DEPTH - SABRE_SCALE_EXPONENT));
         }
 
         f32 CameraMatrix[3][3] = {
