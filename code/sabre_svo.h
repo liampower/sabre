@@ -73,11 +73,25 @@ struct svo
     // Extant of the octree in world space.
     u32 ScaleExponent;
 
+    // Required to maintain subtree-scale values as
+    // integers. 
+    //
+    // In the case that MaxDepth >= ScaleExponent, the
+    // scale values of the subtrees will become fractional
+    // values. This scale factor must first be applied to
+    // the entire tree scale so that the smallest extant
+    // of any child region is 1. Remember to divide by this
+    // value when doing any space-operations!
+    u32 Bias;
+
+    f32 InvBias;
+
     // Last block of nodes in this tree
     // NOTE(Liam): Warning! This field is volatile and unsafe
     // to use; it is frequently modified by the implementation
     // and probably not a good way to achieve much of anything
     // besides tree construction!
+    // TODO(Liam): Can we entirely replace this with node_refs?
     svo_block* LastBlock;
 
     // First block of nodes in this tree

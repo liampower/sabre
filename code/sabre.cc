@@ -13,7 +13,7 @@
 #include "sabre_svo.h"
 #include "sabre_data.h"
 
-#define SABRE_MAX_TREE_DEPTH 1
+#define SABRE_MAX_TREE_DEPTH 2
 #define SABRE_SCALE_EXPONENT 0
 #define SABRE_WORK_SIZE_X 512
 #define SABRE_WORK_SIZE_Y 512
@@ -89,7 +89,7 @@ static inline bool
 CubeSphereIntersection(vec3 Min, vec3 Max)
 {
     const vec3 S = vec3(0.5f);
-    const f32 R = 0.25f;
+    const f32 R = 0.25;
 
     f32 DistanceSqToCube = R * R;
 
@@ -389,6 +389,8 @@ main(int ArgCount, const char** const Args)
     glUniform1ui(glGetUniformLocation(ComputeShader, "BlockCountUniform"), WorldSvo->UsedBlockCount);
     glUniform1ui(glGetUniformLocation(ComputeShader, "EntriesPerBlockUniform"), SVO_ENTRIES_PER_BLOCK);
     glUniform1ui(glGetUniformLocation(ComputeShader, "FarPtrsPerBlockUniform"), SVO_FAR_PTRS_PER_BLOCK);
+    glUniform1ui(glGetUniformLocation(ComputeShader, "BiasUniform"), WorldSvo->Bias);
+    glUniform1f(glGetUniformLocation(ComputeShader, "InvBiasUniform"), WorldSvo->InvBias);
 
     gl_int ViewMatrixUniformLocation = glGetUniformLocation(ComputeShader, "ViewMatrixUniform");
 

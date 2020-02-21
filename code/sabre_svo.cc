@@ -337,7 +337,7 @@ GetOctantCentre(svo_oct Octant, u32 Scale, vec3 ParentCentreP)
     assert(Scale > 0);
     u32 Oct = (u32) Octant;
 
-    u32 Rad = (Scale >> 1);
+    f32 Rad = (f32)(Scale >> 1U);
     f32 X = (Oct & 1U) ? 1.0f : -1.0f;
     f32 Y = (Oct & 2U) ? 1.0f : -1.0f;
     f32 Z = (Oct & 4U) ? 1.0f : -1.0f;
@@ -398,6 +398,7 @@ AllocateNode(svo_block* const Blk)
 static void
 BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth, u32 Scale, svo_block* ParentBlk, vec3 Centre, intersector_fn SurfaceFn)
 {
+    printf("BEGIN LEVEL %d OCT %d\n", Depth, (u32)RootOct);
     struct node_child
     {
         svo_oct Oct;
@@ -406,31 +407,32 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
         svo_block* Blk;
     };
 
-    u32 Bias = (Tree->MaxDepth > Tree->ScaleExponent) ? 0 : (Tree->MaxDepth - Tree->ScaleExponent);
-
     u32 NextScale = Scale >> 1;
     u32 NextDepth = Depth + 1;
+
     svo_block* CurrentBlk = Tree->LastBlock;
 
     node_child Children[8];
     u32 LastChildIndex = 0;
 
-    //i32 Bias = (Tree->MaxDepth > Tree->ScaleExponent) ? 1.0 : (f32)(1U << (Tree->MaxDepth - Tree->ScaleExponent));
-
-    // TODO(Liam): Multiply by bias here for sub-zero scale values. This lets us keep
-    // the scale in a u32.
-    vec3 Radius = vec3(NextScale >> 1);
+    // TODO(Liam): Try to eliminate the need for a +1 bias; we would like to *not* have
+    // the bias lie about what the actual difference in levels is!
+    vec3 Radius = vec3(Scale >> 1);
+    
     for (u32 Oct = 0; Oct < 8; ++Oct)
     {
-        vec3 OctCentre = GetOctantCentre((svo_oct)Oct, NextScale, Centre);
-        vec3 OctMin = (OctCentre - Radius) * 0.25f;
-        vec3 OctMax = (OctCentre + Radius) * 0.25f;
+        // NOTE(Liam): Multiplying by the InvBias here transforms the octant cubes back 
+        // into "real" space from the scaled space we operate in when constructing the
+        // tree.
+        vec3 OctCentre = GetOctantCentre((svo_oct)Oct, Scale, Centre);
+        vec3 OctMin = (OctCentre - Radius) * Tree->InvBias;
+        vec3 OctMax = (OctCentre + Radius) * Tree->InvBias;
 
         if (SurfaceFn(OctMin, OctMax))
         {
             // Check if the NEXT depth is less than the tree max
             // depth.
-            if (NextDepth < Tree->MaxDepth)
+            if (Depth < Tree->MaxDepth)
             {
                 // Need to subdivide
                 SetOctantOccupied((svo_oct)Oct, VOXEL_PARENT, Parent);
@@ -504,20 +506,36 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
         ++RootBlk->NextFreeSlot;
         
         // Begin building tree
-        u32  RootScale = (1 << ScaleExponent);
-        u32 Bias = (MaxDepth > ScaleExponent) ? (MaxDepth - ScaleExponent) : 0;
-        RootScale <<= (Bias + 1);
+        u32 RootScale = (1U << ScaleExponent);
+        
+        if (MaxDepth > ScaleExponent)
+        {
+            Tree->Bias = (MaxDepth - ScaleExponent) + 1;
+            Tree->InvBias = (1.0f / (f32)(1U << Tree->Bias));
+        }
+        else
+        {
+            Tree->Bias = 0;
+            Tree->InvBias = 1.0f;
+        }
 
-        printf("%u\n", RootScale);
+        // Scale up by the bias
+        RootScale <<= Tree->Bias;
 
         vec3 RootCentre = vec3(RootScale >> 1);
 
+        printf("BIAS :%f\n", Tree->InvBias);
         // Initiate the recursive construction process
+        // The root depth is initialised to 1 because we are
+        // technically beginning at the *second* tree level
+        // when constructing the tree. The first level exists
+        // implicitly in the allocated root node, the root
+        // "parent".
         BuildSubOctreeRecursive(RootNode,
                                 Tree,
                                 OCT_C000,
-                                0,
-                                RootScale,
+                                1,
+                                RootScale >> 1,
                                 RootBlk,
                                 RootCentre,
                                 SurfaceFn);

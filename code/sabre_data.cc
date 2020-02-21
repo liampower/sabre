@@ -84,6 +84,8 @@ uniform uint BlockCountUniform;
 uniform uint ScaleExponentUniform;
 uniform uint EntriesPerBlockUniform;
 uniform uint FarPtrsPerBlockUniform;
+uniform uint BiasUniform;
+uniform float InvBiasUniform;
 
 uniform vec3 ViewPosUniform;
 uniform mat3 ViewMatrixUniform;
@@ -192,17 +194,17 @@ uint GetNextOctant(in float tMax, in vec3 tValues, in uint CurrentOct)
 
     if (tMax >= tValues.x)
     {
-        NextOct ^= 1;//|= CurrentOct ^ 1;
+        NextOct ^= 1;
     }
 
     if (tMax >= tValues.y)
     {
-        NextOct ^= 2;//CurrentOct ^ 2;
+        NextOct ^= 2;
     }
 
     if (tMax >= tValues.z)
     {
-        NextOct ^= 4;//|= CurrentOct ^ 4;
+        NextOct ^= 4;
     }
 
     return NextOct;
@@ -288,12 +290,17 @@ vec3 Raycast(in ray R)
         Scale <<= (MaxDepthUniform - ScaleExponentUniform);
     }*/
 
-    int Scale = (1 << ScaleExponentUniform) << 2;
+    //uint Bias = (MaxDepthUniform > ScaleExponentUniform) ? ((MaxDepthUniform + 1) - ScaleExponentUniform) : 0;
+
+    //if (BiasS1 == 0.5 && BiasS == 0.25) return vec3(1, 1, 1);
+
+    // Scale up by the tree bias
+    int Scale = (1 << ScaleExponentUniform) << BiasUniform;
 
     uint BlkIndex = 0;
     
     vec3 RootMin = vec3(0);
-    vec3 RootMax = vec3(Scale) * 0.25;
+    vec3 RootMax = vec3(Scale) * InvBiasUniform;
     vec3 Sgn = sign(R.Dir);
 
     // Intersection of the ray with the root cube (i.e. entire tree)
@@ -315,7 +322,7 @@ vec3 Raycast(in ray R)
         vec3 ParentCentre = vec3(Scale >> 1);
 
         // Current octant the ray is in (confirmed good)
-        uint CurrentOct = GetOctant(RayP, ParentCentre);
+        uint CurrentOct = GetOctant(RayP, ParentCentre*InvBiasUniform);
         
         // Initialise depth to 1
         uint CurrentDepth = 1;
@@ -337,9 +344,9 @@ vec3 Raycast(in ray R)
         {
             // Go down 1 level
             vec3 NodeCentre = GetNodeCentreP(CurrentOct, Scale, ParentCentre);
-            vec3 NodeMin = (NodeCentre - vec3(Scale >> 1)) * 0.5;
-            vec3 NodeMax = (NodeCentre + vec3(Scale >> 1)) * 0.5;
-
+            vec3 NodeMin = (NodeCentre - vec3(Scale >> 1)) * InvBiasUniform;
+            vec3 NodeMax = (NodeCentre + vec3(Scale >> 1)) * InvBiasUniform;
+            
             CurrentIntersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
 
             if (CurrentIntersection.tMin <= CurrentIntersection.tMax && CurrentIntersection.tMax > 0)
@@ -363,7 +370,7 @@ vec3 Raycast(in ray R)
                         // NOTE(Liam): BlkIndex (potentially) updated here
                         ParentNode = GetNodeChild(ParentNode, CurrentOct, BlkIndex);
 
-                        CurrentOct = GetOctant(RayP, NodeCentre);
+                        CurrentOct = GetOctant(RayP, NodeCentre*InvBiasUniform);
                         ParentCentre = NodeCentre;
                         Scale >>= 1;
                         ++CurrentDepth;
@@ -417,7 +424,7 @@ vec3 Raycast(in ray R)
                         ParentNode = Stack[CurrentDepth].Node;
                         BlkIndex = Stack[CurrentDepth].BlkIndex;
 
-                        CurrentOct = GetOctant(RayP, ParentCentre);
+                        CurrentOct = GetOctant(RayP, ParentCentre*InvBiasUniform);
                     }
                     else
                     {
