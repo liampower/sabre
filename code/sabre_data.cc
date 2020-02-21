@@ -410,11 +410,11 @@ vec3 Raycast(in ray R)
                     uint M = uint(MaxComponent(HighestDiffBits));
 
                     M = 0;
-                    if (HighestDiffBits.x > M && HighestDiffBits.x < ScaleExponentUniform) M = HighestDiffBits.x;
-                    if (HighestDiffBits.y > M && HighestDiffBits.y < ScaleExponentUniform) M = HighestDiffBits.y;
-                    if (HighestDiffBits.z > M && HighestDiffBits.z < ScaleExponentUniform) M = HighestDiffBits.z;
+                    if (HighestDiffBits.x > M && HighestDiffBits.x < ScaleExponentUniform + BiasUniform) M = HighestDiffBits.x;
+                    if (HighestDiffBits.y > M && HighestDiffBits.y < ScaleExponentUniform + BiasUniform) M = HighestDiffBits.y;
+                    if (HighestDiffBits.z > M && HighestDiffBits.z < ScaleExponentUniform + BiasUniform) M = HighestDiffBits.z;
 
-                    uint NextDepth = (ScaleExponentUniform - M);
+                    uint NextDepth = ((ScaleExponentUniform + BiasUniform) - M);
 
                     if (NextDepth >= 0 && NextDepth <= MAX_STEPS)
                     {
