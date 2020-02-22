@@ -13,8 +13,8 @@
 #include "sabre_svo.h"
 #include "sabre_data.h"
 
-#define SABRE_MAX_TREE_DEPTH 2
-#define SABRE_SCALE_EXPONENT 0
+#define SABRE_MAX_TREE_DEPTH 4
+#define SABRE_SCALE_EXPONENT 5
 #define SABRE_WORK_SIZE_X 512
 #define SABRE_WORK_SIZE_Y 512
 
@@ -88,12 +88,12 @@ OutputGraphicsDeviceInfo(void)
 static inline bool
 CubeSphereIntersection(vec3 Min, vec3 Max)
 {
-    const vec3 S = vec3(0.5f);
-    const f32 R = 0.25;
+    const vec3 S = vec3(16);
+    const f32 R = 4;
 
     f32 DistanceSqToCube = R * R;
 
-    printf("MIN (%f, %f, %f), MAX (%f, %f, %f)", Min.X, Min.Y, Min.Z, Max.X, Max.Y, Max.Z);
+    //printf("MIN (%f, %f, %f), MAX (%f, %f, %f)", Min.X, Min.Y, Min.Z, Max.X, Max.Y, Max.Z);
 
     // STACKOVER
     if (S.X < Min.X) DistanceSqToCube -= Squared(S.X - Min.X);
@@ -108,12 +108,12 @@ CubeSphereIntersection(vec3 Min, vec3 Max)
     if (DistanceSqToCube > 0)
     {
         //printf("MIN (%f, %f, %f), MAX (%f, %f, %f)", Min.X, Min.Y, Min.Z, Max.X, Max.Y, Max.Z);
-        printf("        TRUE\n");
+        //printf("        TRUE\n");
         return true;
     }
     else
     {
-        printf("        FALSE\n");
+        //printf("        FALSE\n");
         return false;
     }
 }

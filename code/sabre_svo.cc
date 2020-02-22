@@ -398,7 +398,7 @@ AllocateNode(svo_block* const Blk)
 static void
 BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth, u32 Scale, svo_block* ParentBlk, vec3 Centre, intersector_fn SurfaceFn)
 {
-    printf("BEGIN LEVEL %d OCT %d\n", Depth, (u32)RootOct);
+    //printf("BEGIN LEVEL %d OCT %d\n", Depth, (u32)RootOct);
     struct node_child
     {
         svo_oct Oct;

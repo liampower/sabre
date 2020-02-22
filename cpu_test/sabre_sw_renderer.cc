@@ -95,7 +95,7 @@ struct ray_intersection
     vec3  tMinV;
 };
 
-static uint MaxDepthUniform = 2;
+static uint MaxDepthUniform = 4;
 static uint ScaleExponentUniform = 5;
 static uint BiasUniform = (MaxDepthUniform > ScaleExponentUniform) ? (MaxDepthUniform - ScaleExponentUniform) : 0;
 static float InvBiasUniform = BiasUniform > 0 ? 1.0f / float(BiasUniform) : 1.0f;
@@ -117,6 +117,7 @@ struct far_ptr_input
 };
 
 static far_ptr_input SvoFarPtrBuffer = {
+#if 0
     {
     // {{{
 { 4,1 },
@@ -203,182 +204,43 @@ static far_ptr_input SvoFarPtrBuffer = {
 { 0,0 },
 //}}}
     }
+#endif
+    { 
+        {0,0},
+    }
 };
 
 static svo* DEBUGSvo;
 
-// BLKSZ 4096
-static svo_input SvoInputBuffer4096 = {
-    // {{{
-130816,
-622592,
-671744,
-729088,
-790528,
-854016,
-918528,
-983552,
-1048832,
-1179392,
-1703680,
-2227968,
-2752256,
-3276544,
-3800832,
-4325120,
-4849408,
-32896,
-64764,
-64250,
-65535,
-61166,
-65535,
-65535,
-65535,
-64764,
-16448,
-65535,
-62965,
-65535,
-56797,
-65535,
-65535,
-64250,
-65535,
-8224,
-62451,
-65535,
-65535,
-48059,
-65535,
-65535,
-62965,
-62451,
-4112,
-65535,
-65535,
-65535,
-30583,
-61166,
-65535,
-65535,
-65535,
-2056,
-53199,
-44975,
-65535,
-65535,
-56797,
-65535,
-65535,
-53199,
-1028,
-65535,
-24415,
-65535,
-65535,
-48059,
-65535,
-44975,
-65535,
-514,
-16191,
-65535,
-65535,
-65535,
-30583,
-65535,
-24415,
-16191,
-257,
-// }}}
-};
 
 // BLKSZ 2
 static svo_input SvoInputBuffer = {
     // {{{
-    130816,
-    2147516416,
-    2147500032,
-    2147557376,
-    2147487744,
-    2147551232,
-    2147484672,
-    2147549696,
-    2147549440,
-    2147548928,
-    32896,
-    64764,
-    64250,
-    65535,
-    61166,
-    65535,
-    65535,
-    65535,
-    130816,
-    64764,
-    16448,
-    65535,
-    62965,
-    65535,
-    56797,
-    65535,
-    65535,
-    2147548928,
-    64250,
-    65535,
-    8224,
-    62451,
-    65535,
-    65535,
-    48059,
-    65535,
-    130816,
-    65535,
-    62965,
-    62451,
-    4112,
-    65535,
-    65535,
-    65535,
-    30583,
-    2147548928,
-    61166,
-    65535,
-    65535,
-    65535,
-    2056,
-    53199,
-    44975,
-    65535,
-    130816,
-    65535,
-    56797,
-    65535,
-    65535,
-    53199,
-    1028,
-    65535,
-    24415,
-    2147548928,
-    65535,
-    65535,
-    48059,
-    65535,
-    44975,
-    65535,
-    514,
-    16191,
-    130816,
-    65535,
-    65535,
-    65535,
-    30583,
-    65535,
-    24415,
-    16191,
-    257,
-    0,
+130816,
+622592,
+737280,
+860160,
+987136,
+1116160,
+1246208,
+1376768,
+1507584,
+688128,
+65535,
+802816,
+65535,
+925696,
+65535,
+1052672,
+65535,
+1181696,
+65535,
+1311744,
+65535,
+1442304,
+65535,
+1573120,
+65535,
     // }}}
 };
 
@@ -550,7 +412,7 @@ vec3 GetNodeCentreP(in uint Oct, in uint Scale, in vec3 ParentP)
 
     uint Radius = Scale >> 1;
 
-    return ParentP + (vec3(X, Y, Z) * Radius);
+    return ParentP + (vec3(X, Y, Z) * float(Radius));
 }
 
 vec3 Oct2Cr(in uint Oct)
@@ -625,8 +487,12 @@ vec3 Raycast(in ray R)
             vec3 NodeMax = NodeCentre + vec3(Scale >> 1);
 
             CurrentIntersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
+            if (CurrentDepth == 4)
+            {
+                printf("a");
+            }
 
-            if (CurrentIntersection.tMin <= CurrentIntersection.tMax && CurrentIntersection.tMax > 0)
+            if (CurrentIntersection.tMin < CurrentIntersection.tMax && CurrentIntersection.tMax > 0)
             {
                 // Ray hit this voxel
                 
@@ -705,7 +571,7 @@ vec3 Raycast(in ray R)
             }
             else
             {
-                return vec3(0.16);
+                return vec3(0.16f);
             }
         }
     }
@@ -731,7 +597,7 @@ bool Trace2(in ray R)
 
 int main()
 {
-    DEBUGSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
+    //DEBUGSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
 
     vec3 Right = vec3(0.105397, 0.000000, -0.994430);
     vec3 Up = vec3(-0.110848, 0.993768, -0.011748);
@@ -743,15 +609,6 @@ int main()
         { Up.X, Up.Y, Up.Z },
         { -Forward.X, -Forward.Y, -Forward.Z },
     }};
-
-    const uint Nmsk = ~(0xFFFF << 16);
-    for (int I = 0; I < (83); ++I)
-    {
-        uint N = SvoInputBuffer.Nodes[I] & Nmsk;
-        uint N2 = SvoInputBuffer4096.Nodes[I] & Nmsk;
-        printf("Chk\n");
-        //assert(N == N2);
-    }
 
     // Ray XY coordinates of the screen pixels; goes from 0-512
     // in each dimension.
@@ -777,7 +634,7 @@ int main()
         }
     }
 
-    DeleteSparseVoxelOctree(DEBUGSvo);
+    //DeleteSparseVoxelOctree(DEBUGSvo);
 
     return 0;
 }
