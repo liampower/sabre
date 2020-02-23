@@ -40,7 +40,7 @@ extern const char* const RaycasterComputeKernel = R"GLSL(
 #define SVO_NODE_CHILD_PTR_MASK 0x7FFF0000U
 #define SVO_FAR_PTR_BIT_MASK    0x80000000U
 
-#define MAX_STEPS 16
+#define MAX_STEPS 64
 #define SCREEN_DIM 512
 
 #define ASSERT(Expr) if (! (Expr)) { return vec3(1); }
@@ -265,7 +265,6 @@ struct st_frame
 {
     uint Node;
     int Scale;
-    float tMin;
     vec3 ParentCentre;
     uint BlkIndex;
 };
@@ -287,6 +286,7 @@ vec3 Raycast(in ray R)
     int Step;
     uint CurrentOct;
     uint CurrentDepth;
+    int Pushas = 0;
 
     // Check if the ray is within the octree at all
     if (CurrentIntersection.tMin <= CurrentIntersection.tMax && CurrentIntersection.tMax > 0)
@@ -318,7 +318,6 @@ vec3 Raycast(in ray R)
 
         Stack[CurrentDepth] = st_frame(ParentNode, 
                                        Scale,
-                                       CurrentIntersection.tMin,
                                        ParentCentre,
                                        BlkIndex);
 
@@ -329,7 +328,7 @@ vec3 Raycast(in ray R)
             vec3 NodeCentre = GetNodeCentreP(CurrentOct, Scale, ParentCentre);
             vec3 NodeMin = (NodeCentre - vec3(Scale >> 1)) * InvBiasUniform;
             vec3 NodeMax = (NodeCentre + vec3(Scale >> 1)) * InvBiasUniform;
-            
+
             CurrentIntersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
 
             // TODO(Liam): There are some spots occurring due to (probably) error in
@@ -338,7 +337,7 @@ vec3 Raycast(in ray R)
             // we use below.
 
             float K = CurrentIntersection.tMin - CurrentIntersection.tMax;
-            if (K <= -0.001 && CurrentIntersection.tMax > 0)
+            if (CurrentIntersection.tMin <= CurrentIntersection.tMax && CurrentIntersection.tMax > 0)
             {
                 // Ray hit this voxel
                 
@@ -361,15 +360,15 @@ vec3 Raycast(in ray R)
                         ++CurrentDepth;
 
                         ParentCentre = NodeCentre;
-                        if (CurrentIntersection.tMax < StkThreshold)
+                        if (CurrentIntersection.tMax < StkThreshold || true)
                         {
-                            Stack[CurrentDepth] = st_frame(ParentNode, 
-                                                       Scale, 
-                                                       CurrentIntersection.tMin, 
+                            Stack[CurrentDepth] = st_frame(ParentNode,
+                                                       Scale,
                                                        ParentCentre,
                                                        BlkIndex);
                         }
 
+                        ++Pushas;
 
                         StkThreshold = CurrentIntersection.tMax;
 
@@ -380,7 +379,7 @@ vec3 Raycast(in ray R)
                 // Octant not occupied, need to handle advance/pop
                 uint NextOct = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
 
-                RayP = R.Origin + (CurrentIntersection.tMax + 0.001) * R.Dir;
+                RayP = R.Origin + (CurrentIntersection.tMax + 0.0001) * R.Dir;
 
                 if (IsAdvanceValid(NextOct, CurrentOct, R.Dir))
                 {
@@ -405,7 +404,7 @@ vec3 Raycast(in ray R)
 
                     uint NextDepth = ((ScaleExponentUniform + BiasUniform) - M);
 
-                    if (NextDepth >= CurrentDepth) return vec3(1, 0, 0);
+                    if (NextDepth >= CurrentDepth) return vec3(0.15);
 
                     if (NextDepth >= 0 && NextDepth <= MAX_STEPS)
                     {
@@ -415,6 +414,7 @@ vec3 Raycast(in ray R)
                         ParentNode = Stack[CurrentDepth].Node;
                         BlkIndex = Stack[CurrentDepth].BlkIndex;
 
+                        uint Old = CurrentOct;
                         CurrentOct = GetOctant(RayP, ParentCentre*InvBiasUniform);
                         StkThreshold = 0.0;
                     }
@@ -422,12 +422,14 @@ vec3 Raycast(in ray R)
                     {
                         return vec3(1, 1, 0);
                     }
-
                 }
             }
             else
             {
-                return vec3(0.16);
+                if (Pushas > 7) return vec3(0, 0, 1);
+                //if (CurrentDepth == 2) return vec3(0, 0, 1);
+                if (any(greaterThan(ParentCentre, vec3(18)))) return vec3(1, 0, 0);
+                return vec3(1);
             }
         }
     }
@@ -437,8 +439,7 @@ vec3 Raycast(in ray R)
         return vec3(0.12);
     }
 
-    return Oct2Cr(CurrentOct);
-    return (float(Step) / MAX_STEPS) * vec3(1, 1, 1);
+    return vec3(0, 1, 0);
 }
 
 void main()
