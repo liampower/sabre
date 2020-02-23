@@ -524,7 +524,8 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
 
         vec3 RootCentre = vec3(RootScale >> 1);
 
-        printf("BIAS :%f\n", Tree->InvBias);
+        printf("Bias: %u\n", Tree->Bias);
+        printf("Inv Bias: %f\n", Tree->InvBias);
         // Initiate the recursive construction process
         // The root depth is initialised to 1 because we are
         // technically beginning at the *second* tree level
