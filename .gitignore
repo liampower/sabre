@@ -12,3 +12,6 @@ code/data.h
 .ninja_deps
 .ninja_log
 vcshell.cmd
+"VTune Amplifier Results"/
+GPUCache/
+debug.log

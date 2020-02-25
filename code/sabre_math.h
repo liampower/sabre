@@ -925,11 +925,5 @@ Rotate(quat Rotation, vec3 V)
 
 // }}}
 
-inline bool
-TriangleBoxIntersection(vec3 Tri[3], vec3 BMin, vec3 BMax)
-{
-    
-}
-
 #endif
 

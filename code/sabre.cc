@@ -11,7 +11,7 @@
 #include "sabre_svo.h"
 #include "sabre_data.h"
 
-#define SABRE_MAX_TREE_DEPTH 8
+#define SABRE_MAX_TREE_DEPTH 3
 #define SABRE_SCALE_EXPONENT 5
 #define SABRE_WORK_SIZE_X 512
 #define SABRE_WORK_SIZE_Y 512
@@ -58,14 +58,34 @@ HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei L
 {
     if (GL_DEBUG_TYPE_ERROR == Type)
     {
-        //fprintf(stderr, "[OpenGL Error] %s\n", Msg);
+        fprintf(stderr, "[OpenGL Error] %s\n", Msg);
     }
     else
     {
-        //fprintf(stderr, "[OpenGL Info] %s\n", Msg);
+        fprintf(stderr, "[OpenGL Info] %s\n", Msg);
     }
 }
 
+
+static void
+OutputShaderAssembly(gl_uint ShaderID)
+{
+    int Length = 0;
+    glGetProgramiv(ShaderID, GL_PROGRAM_BINARY_LENGTH, &Length);
+    printf("size: %d\n", Length);
+    unsigned char* Data = (unsigned char*)malloc(Length);
+    GLsizei DataLength = 0;
+
+    FILE* F = fopen("data.out", "wb");
+
+    GLenum BinFormats[64];
+    glGetProgramBinary(ShaderID, Length, &DataLength, BinFormats, Data);
+
+    fwrite(Data, sizeof(unsigned char), DataLength, F);
+
+    fclose(F);
+    free(Data);
+}
 
 static inline f32
 Squared(f32 X)
@@ -339,6 +359,7 @@ main(int ArgCount, const char** const Args)
     gl_uint ComputeShader = CompileComputeShader(RaycasterComputeKernel);
     gl_uint MainShader = CompileShader(MainVertexCode, MainFragmentCode);
 
+    OutputShaderAssembly(ComputeShader);
     if (0 == MainShader)
     {
         fprintf(stderr, "Failed to compile shader\n");

@@ -90,6 +90,9 @@ uniform float InvBiasUniform;
 uniform vec3 ViewPosUniform;
 uniform mat3 ViewMatrixUniform;
 
+const uvec3 OCT_BITS = uvec3(1, 2, 4);
+const vec3 OCT_BITS_F32 = vec3(1.0, 2.0, 4.0);
+
 layout (std430, binding = 3) readonly buffer svo_input
 {
     uint Nodes[];
@@ -166,59 +169,60 @@ ray_intersection ComputeRayBoxIntersection(in ray R, in vec3 vMin, in vec3 vMax)
 }
 
 
-bool IsAdvanceValid(in uint NewOct, in uint OldOct, in vec3 RayDir)
+bool IsAdvanceValid(in uint NewOct, in uint OldOct, in vec3 RaySgn)
 {
-    vec3 Sgn = sign(RayDir);
-    ivec3 OctBits = ivec3(1, 2, 4);
-    
-    ivec3 NewOctBits = ivec3(NewOct) & OctBits;
-    ivec3 OldOctBits = ivec3(OldOct) & OctBits;
+    ivec3 NewOctBits = ivec3(NewOct) & ivec3(OCT_BITS);
+    ivec3 OldOctBits = ivec3(OldOct) & ivec3(OCT_BITS);
 
     vec3 OctSgn = sign(NewOctBits - OldOctBits);
 
-    if (Sgn.x == 0 && OctSgn.x != 0) return false;
-    if (Sgn.y == 0 && OctSgn.y != 0) return false;
-    if (Sgn.z == 0 && OctSgn.z != 0) return false;
+    return any(equal(RaySgn, OctSgn));
+}
 
-    if (Sgn.x < 0 && OctSgn.x > 0) return false;
-    if (Sgn.y < 0 && OctSgn.y > 0) return false;
-    if (Sgn.z < 0 && OctSgn.z > 0) return false;
+vec3 GetNodeCentreP(in uint Oct, in uint Scale, in vec3 ParentP)
+{
+    // TODO(Liam): We can actually use a bitwise AND op on uvec3s
+    // so we don't have to work on scalars.
 
-    if (Sgn.x > 0 && OctSgn.x < 0) return false;
-    if (Sgn.y > 0 && OctSgn.y < 0) return false;
-    if (Sgn.z > 0 && OctSgn.z < 0) return false;
+    float X = 1.0;
+    float Y = 1.0;
+    float Z = 1.0;
 
-    return true;
+    // TODO(Liam): More speed here with step intrinsic?
+    
+    //  Use the bits of the input octant to compute the
+    //  X, Y and Z vectors. A zero-bit corresponds to -1
+    //  in some D direction, and a 1-bit corresponds to
+    //  1.0 in D.
+    if (0 == (Oct & 1)) X = -1.0;
+    if (0 == (Oct & 2)) Y = -1.0;
+    if (0 == (Oct & 4)) Z = -1.0;
+
+    uint Radius = Scale >> 1;
+
+    return ParentP + (vec3(X, Y, Z) * float(Radius));
 }
 
 
 uint GetNextOctant(in float tMax, in vec3 tValues, in uint CurrentOct)
 {
-    uint NextOct = CurrentOct;
-
-    if (tMax >= tValues.x)
-    {
-        NextOct ^= 1;
-    }
-
-    if (tMax >= tValues.y)
-    {
-        NextOct ^= 2;
-    }
-
-    if (tMax >= tValues.z)
-    {
-        NextOct ^= 4;
-    }
-
-    return NextOct;
+    // For every element of tValues that is equal to tMax, XOR the corresponding
+    // bit in CurrentOct.
+    // if tMax >= tValues.x then NextOct ^= 1;
+    // if tMax >= tValues.y then NextOct ^= 2;
+    // if tMax >= tValues.z then NextOct ^= 4;
+    uvec3 XorMsk3 = uvec3(greaterThanEqual(vec3(tMax), tValues)) * OCT_BITS;
+    uint XorMsk = XorMsk3.x + XorMsk3.y + XorMsk3.z;
+    return CurrentOct ^ XorMsk;
 }
 
 uint GetOctant(in vec3 P, in vec3 ParentCentreP)
 {
     uvec3 G = uvec3(greaterThan(P, ParentCentreP));
 
-    // TODO(Liam): Can use a DP here 
+    // It is likely that a DP is actually *not* faster
+    // here because the GLSL `dot` function can only return floats,
+    // so we would need to convert this back into a uint. 
     return G.x + G.y*2 + G.z*4;
 }
 
@@ -266,7 +270,7 @@ vec3 Raycast(in ray R)
     
     vec3 RootMin = vec3(0);
     vec3 RootMax = vec3(Scale) * InvBiasUniform;
-    vec3 Sgn = sign(R.Dir);
+    vec3 RaySgn = sign(R.Dir);
 
     // Intersection of the ray with the root cube (i.e. entire tree)
     ray_intersection CurrentIntersection = ComputeRayBoxIntersection(R, RootMin, RootMax);
@@ -288,8 +292,6 @@ vec3 Raycast(in ray R)
 
         vec3 ParentCentre = vec3(Scale >> 1);
 
-        float StkThreshold = CurrentIntersection.tMax;
-
         // Current octant the ray is in (confirmed good)
         CurrentOct = GetOctant(RayP, ParentCentre*InvBiasUniform);
         
@@ -308,17 +310,15 @@ vec3 Raycast(in ray R)
                                        ParentCentre,
                                        BlkIndex);
 
-        bool Skip = false;
-
         // Begin stepping along the ray
         for (Step = 0; Step < MAX_STEPS; ++Step)
         {
+            vec3 Rad = vec3(Scale >> 1);
             // Get the centre position of this octant
-            vec3 NodeCentre = GetNodeCentre(CurrentOct, Scale, ParentCentre);
-            vec3 NodeMin = (NodeCentre - vec3(Scale >> 1)) * InvBiasUniform;
-            vec3 NodeMax = (NodeCentre + vec3(Scale >> 1)) * InvBiasUniform;
+            vec3 NodeCentre = GetNodeCentreP(CurrentOct, Scale, ParentCentre);
+            vec3 NodeMin = (NodeCentre - Rad) * InvBiasUniform;
+            vec3 NodeMax = (NodeCentre + Rad) * InvBiasUniform;
 
-            //R.Origin = RayP;
             CurrentIntersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
 
             // TODO(Liam): There are some spots occurring due to (probably) error in
@@ -347,27 +347,23 @@ vec3 Raycast(in ray R)
                         Scale >>= 1;
                         ++CurrentDepth;
 
-                        if (CurrentIntersection.tMax < StkThreshold || true)
-                        {
-                            Stack[CurrentDepth] = st_frame(ParentNode,
-                                                       Scale,
-                                                       ParentCentre,
-                                                       BlkIndex);
-                        }
-                        Skip = true;
-                        StkThreshold = CurrentIntersection.tMax;
+                        Stack[CurrentDepth] = st_frame(ParentNode,
+                                                   Scale,
+                                                   ParentCentre,
+                                                   BlkIndex);
+
 
                         continue;
                     }
                 }
 
+
                 // Octant not occupied, need to handle advance/pop
                 uint NextOct = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
 
                 RayP = R.Origin + (CurrentIntersection.tMax + 0.0001) * R.Dir;
-                Skip = false;
 
-                if (IsAdvanceValid(NextOct, CurrentOct, R.Dir))
+                if (IsAdvanceValid(NextOct, CurrentOct, RaySgn))
                 {
                     CurrentOct = NextOct;
                 }
@@ -386,11 +382,11 @@ vec3 Raycast(in ray R)
                     uint M = 0;
                     M = (HDB.x > M && HDB.x < ScaleExponentUniform + BiasUniform) ? HDB.x : M;
                     M = (HDB.y > M && HDB.y < ScaleExponentUniform + BiasUniform) ? HDB.y : M;
-                    M = (HDB.z > M && HDB.z < ScaleExponentUniform + BiasUniform)  ? HDB.z : M;
+                    M = (HDB.z > M && HDB.z < ScaleExponentUniform + BiasUniform) ? HDB.z : M;
 
                     uint NextDepth = ((ScaleExponentUniform + BiasUniform) - M);
 
-                    if (NextDepth >= CurrentDepth) return vec3(1, 0, 0);
+                    if (NextDepth >= CurrentDepth) return (float(Step) / MAX_STEPS) * vec3(1, 0, 0);
 
                     if (NextDepth <= MAX_STEPS)
                     {
@@ -401,17 +397,16 @@ vec3 Raycast(in ray R)
                         BlkIndex = Stack[CurrentDepth].BlkIndex;
 
                         CurrentOct = GetOctant(RayP, ParentCentre*InvBiasUniform);
-                        StkThreshold = 0.0;
                     }
                     else
                     {
-                        return vec3(1, 1, 1);
+                        break;
                     }
                 }
             }
             else
             {
-                return vec3(0, 1, 0);
+                break;
             }
         }
     }
@@ -421,7 +416,7 @@ vec3 Raycast(in ray R)
         return vec3(0);
     }
 
-    return vec3(0, 1, 0);
+    return (float(Step) / MAX_STEPS) * vec3(0, 1, 0);
 }
 
 void main()

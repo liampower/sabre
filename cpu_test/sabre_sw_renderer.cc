@@ -11,10 +11,10 @@
 #define SVO_NODE_CHILD_PTR_MASK 0x7FFF0000U
 #define SVO_FAR_PTR_BIT_MASK    0x80000000U
 
-#define SVO_FAR_PTRS_PER_BLOCK  2
+#define SVO_FAR_PTRS_PER_BLOCK  4096
 //#define SVO_ENTRIES_PER_BLOCK   1
 
-#define MAX_STEPS 16
+#define MAX_STEPS 64
 #define SCREEN_DIM 512
 
 #define SABRE_MAX_TREE_DEPTH 4
@@ -469,21 +469,32 @@ vec3 Raycast(in ray R)
 
         // Stack of previous voxels
         st_frame Stack[MAX_STEPS + 1] = { 0 };
+
+        // Drop down one scale value to the initial children of the
+        // root node.
         Scale >>= 1;
+
         Stack[CurrentDepth] = { ParentNode, 
                                 Scale,
                                 ParentCentre,
                                 BlkIndex };
 
+        bool Skip = false;
+
         // Begin stepping along the ray
         for (Step = 0; Step < MAX_STEPS; ++Step)
         {
+            // Get the centre position of this octant
             vec3 NodeCentre = GetNodeCentreP(CurrentOct, Scale, ParentCentre);
             vec3 NodeMin = (NodeCentre - vec3(Scale >> 1)) * InvBiasUniform;
             vec3 NodeMax = (NodeCentre + vec3(Scale >> 1)) * InvBiasUniform;
 
             CurrentIntersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
 
+            // TODO(Liam): There are some spots occurring due to (probably) error in
+            // the intersection. Investigate an epsilon value that lets us eliminate
+            // these spots. The epsilon should probably be the same as the step value
+            // we use below.
             if (CurrentIntersection.tMin < CurrentIntersection.tMax && CurrentIntersection.tMax > 0)
             {
                 // Ray hit this voxel
@@ -501,7 +512,6 @@ vec3 Raycast(in ray R)
                         // Voxel has children --- execute push
                         // NOTE(Liam): BlkIndex (potentially) updated here
                         ParentNode = GetNodeChild(ParentNode, CurrentOct, BlkIndex);
-
                         CurrentOct = GetOctant(RayP, NodeCentre*InvBiasUniform);
                         ParentCentre = NodeCentre;
                         Scale >>= 1;
@@ -514,6 +524,7 @@ vec3 Raycast(in ray R)
                                                     ParentCentre,
                                                     BlkIndex };
                         }
+                        Skip = true;
                         StkThreshold = CurrentIntersection.tMax;
 
                         continue;
@@ -523,7 +534,8 @@ vec3 Raycast(in ray R)
                 // Octant not occupied, need to handle advance/pop
                 uint NextOct = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
 
-                RayP = R.Origin + (CurrentIntersection.tMax + 0.001) * R.Dir;
+                RayP = R.Origin + (CurrentIntersection.tMax + 0.0001) * R.Dir;
+                Skip = false;
 
                 if (IsAdvanceValid(NextOct, CurrentOct, R.Dir))
                 {
@@ -548,9 +560,9 @@ vec3 Raycast(in ray R)
 
                     uint NextDepth = ((ScaleExponentUniform + BiasUniform) - M);
 
-                    if (NextDepth >= CurrentDepth) return vec3(0.15f);
+                    if (NextDepth >= CurrentDepth) return vec3(1, 0, 0);
 
-                    if (NextDepth >= 0 && NextDepth <= MAX_STEPS)
+                    if (NextDepth <= MAX_STEPS)
                     {
                         CurrentDepth = NextDepth;
                         Scale = Stack[CurrentDepth].Scale;
@@ -579,29 +591,25 @@ vec3 Raycast(in ray R)
         return vec3(0.12f);
     }
 
-    return vec3(0, 0, 1);
+    return vec3(0, 1, 0);
 }
 
-bool Trace2(in ray R)
-{
-    vec3 Min = vec3(-4);
-    vec3 Max = vec3(4);
-
-    ray_intersection I = ComputeRayBoxIntersection(R, Min, Max);
-
-
-    return I.tMin <= I.tMax;
-}
-
-int main()
+void main()
 {
     //DEBUGSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
 
-    vec3 Right = vec3(0.372178, 0.000000, -0.928161);
-    vec3 Up = vec3(-0.233177, 0.967929, -0.093500);
-    vec3 Forward = vec3(-0.898394, -0.251225, -0.360242);
-    vec3 Position = vec3(27.843899, 24.496868, 25.777744);
+#if 1
+    vec3 Right= vec3(0.944949f, -0.000000f, 0.327218f);
+    vec3 Up= vec3(-0.026243f, 0.996779f, 0.075784f);
+    vec3 Forward= vec3(0.326164f, 0.080199f, -0.941905f);
+    vec3 Position= vec3(25.368835f, 27.123180f, 14.338293f);
 
+#else
+   vec3 Right = vec3(1.000000, -0.000000, 0.000000);
+   vec3 Up = vec3(0.000000, 1.000000, 0.000000);
+   vec3 Forward = vec3(0.000000, 0.000000, -1.000000);
+   vec3 Position = vec3(19.399998, 17.999998, -35.600060);
+#endif
     mat3 View = {{
         { Right.X, Right.Y, Right.Z },
         { Up.X, Up.Y, Up.Z },
@@ -633,6 +641,4 @@ int main()
     }
 
     //DeleteSparseVoxelOctree(DEBUGSvo);
-
-    return 0;
 }
