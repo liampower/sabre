@@ -311,17 +311,38 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint& ParentBlkIndex)
 
 ray_intersection ComputeRayBoxIntersection(in ray R, in vec3 vMin, in vec3 vMax)
 {
-    vec3 t0 = (vMin - R.Origin) * R.InvDir;
-    vec3 t1 = (vMax - R.Origin) * R.InvDir;
+	float InvRadius = 1.0f / 8.0f;
+	float Radius = 8.0f;
+	//float Winding = (MaxComponent(fabsf(R.Origin) * InvRadius) < 1.0) ? -1.0 : 1.0;
+
+	vec3 S = -Sign(R.Dir);
+
+    vec3 t0 = (vMin - R.Origin) * R.InvDir * S;
+    vec3 t1 = (vMax - R.Origin) * R.InvDir * S;
 
     vec3 tMin = Min(t0, t1);
     vec3 tMax = Max(t0, t1);
+
 
     float ttMin = MaxComponent(tMin);
     float ttMax = MinComponent(tMax);
 
     ray_intersection Result = { ttMin, ttMax, tMax, tMin };
     return Result;
+}
+
+bool ailaWaldHitAABox(vec3 boxCenter, vec3 boxRadius, vec3 rayOrigin, vec3 rayDirection, vec3 invRayDirection) {
+	rayOrigin -= boxCenter;
+
+	vec3 t_min = (-boxRadius - rayOrigin) * invRayDirection;
+	vec3 t_max = (boxRadius - rayOrigin) * invRayDirection;
+	float t0 = MaxComponent(Min(t_min, t_max));
+	float t1 = MinComponent(Max(t_min, t_max));
+
+	// Compute the intersection distance
+	float distance = (t0 > 0.0) ? t0 : t1;
+
+	return (t0 <= t1) && (distance > 0.0);
 }
 
 
@@ -486,10 +507,13 @@ vec3 Raycast(in ray R)
         {
             // Get the centre position of this octant
             vec3 NodeCentre = GetNodeCentreP(CurrentOct, Scale, ParentCentre);
-            vec3 NodeMin = (NodeCentre - vec3(Scale >> 1)) * InvBiasUniform;
-            vec3 NodeMax = (NodeCentre + vec3(Scale >> 1)) * InvBiasUniform;
+            vec3 NodeMin = (NodeCentre + vec3(Scale >> 1)) * InvBiasUniform * Sign(R.InvDir);
+			vec3 NodeMax = (NodeCentre - vec3(Scale >> 1)) * InvBiasUniform * Sign(R.InvDir);
 
             CurrentIntersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
+			//vec3 HalfSize = vec3(Scale >> 1);
+			//vec3 BoxCentre = GetNodeCentreP(CurrentOct, Scale, ParentCentre);
+			//bool Z = ailaWaldHitAABox(BoxCentre, HalfSize, R.Origin, R.Dir, R.InvDir);
 
             // TODO(Liam): There are some spots occurring due to (probably) error in
             // the intersection. Investigate an epsilon value that lets us eliminate

@@ -740,6 +740,55 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
 }
 
 extern "C" void
+DeleteVoxel(svo* Tree, vec3 P)
+{
+    // Always go down to leaf scale (cheat at mem. mgmt!)
+    u32 RootScale = (1 << Tree->ScaleExponent) << Tree->Bias;
+    svo_node* ParentNode = &Tree->RootBlock->Entries[0];
+    vec3 ParentCentre = vec3(RootScale >> 1);
+    svo_oct CurrentOct = GetOctantForPosition(P, ParentCentre);
+    svo_block* ParentBlk = Tree->RootBlock;
+
+    for (u32 VoxelScale = RootScale; VoxelScale > 1; VoxelScale >>= 1)
+    {
+        if (IsOctantOccupied(ParentNode, CurrentOct))
+        {
+            if (IsOctantLeaf(ParentNode, CurrentOct))
+            {
+                if (VoxelScale == 1)
+                {
+                    // Clear the leaf and occupied bits
+                    u8 ClearMsk = ~(1 << (u32)CurrentOct);
+                    ParentNode->LeafMask &= ClearMsk;
+                    ParentNode->OccupiedMask &= ClearMsk;
+
+                    return;
+                }
+                else
+                {
+                    // Insert a child node into the parent
+                    node_ref ChildRef = InsertChild(ParentNode, CurrentOct, ParentBlk, Tree, VOXEL_PARENT);
+                    // Set all octants *except* the current one to leaves
+                }
+            }
+            else
+            {
+                // Traverse deeper into the tree
+                ParentCentre = GetOctantCentre(CurrentOct, VoxelScale >> 1, ParentCentre);
+                CurrentOct = GetOctantForPosition(P, ParentCentre);
+                node_ref ParentRef = GetNodeChildWithBlock(ParentNode, ParentBlk, CurrentOct);
+                ParentNode = ParentRef.Node;
+                ParentBlk = ParentRef.Blk;
+            }
+        }
+        else
+        {
+            return;
+        }
+    }
+}
+
+extern "C" void
 DeleteSparseVoxelOctree(svo* Tree)
 {
     svo_block* CurrentBlk = Tree->RootBlock;

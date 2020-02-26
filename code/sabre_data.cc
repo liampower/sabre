@@ -155,14 +155,14 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
 
 ray_intersection ComputeRayBoxIntersection(in ray R, in vec3 vMin, in vec3 vMax)
 {
-    vec3 t0 = (vMin - R.Origin) * R.InvDir;
-    vec3 t1 = (vMax - R.Origin) * R.InvDir;
+    vec3 t0 = (vMin - R.Origin) * R.InvDir; // Distance along ray to vmin planes
+    vec3 t1 = (vMax - R.Origin) * R.InvDir; // Distance along ray to vmax planes
 
-    vec3 tMin = min(t0, t1);
-    vec3 tMax = max(t0, t1);
+    vec3 tMin = min(t0, t1); // Minimums of all distances
+    vec3 tMax = max(t0, t1); // Maximums of all distances
 
-    float ttMin = MaxComponent(tMin);
-    float ttMax = MinComponent(tMax);
+    float ttMin = MaxComponent(tMin); // Largest of the min distances (closest to box)
+    float ttMax = MinComponent(tMax); // Smallest of max distances (closest to box)
 
     ray_intersection Result = { ttMin, ttMax, tMax, tMin };
     return Result;
@@ -261,6 +261,16 @@ struct st_frame
     uint BlkIndex;
 };
 
+// NOTE(Liam): Lessons learned in GPU optimisation:
+// * Functions are (mostly) fine. The compiler inlines nearly everything
+// * Even very trivial ifs can cause bad asm. Nearly always worth optimising these out
+// * Swizzling is free in h.w.
+// * Integer/float conversions aren't free
+// * It appears we can only do 32-bit loads/stores, so this means that for an 8-byte structure
+//   we need two corresponding movs, etc.
+// * No h.w. instruction for `sign` - deceptively slow, especially with conversions
+// * Vector min/max map directly to asm instructions
+
 vec3 Raycast(in ray R)
 {
     // Scale up by the tree bias.
@@ -316,7 +326,7 @@ vec3 Raycast(in ray R)
             vec3 Rad = vec3(Scale >> 1);
             // Get the centre position of this octant
             vec3 NodeCentre = GetNodeCentreP(CurrentOct, Scale, ParentCentre);
-            vec3 NodeMin = (NodeCentre - Rad) * InvBiasUniform;
+            vec3 NodeMin = (NodeCentre - Rad) * InvBiasUniform ;
             vec3 NodeMax = (NodeCentre + Rad) * InvBiasUniform;
 
             CurrentIntersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
