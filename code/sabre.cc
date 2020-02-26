@@ -377,7 +377,8 @@ main(int ArgCount, const char** const Args)
     }
 
     svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
-    InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
+    DeleteVoxel(WorldSvo, vec3(0, 0, 0));
+    //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
 
 	gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
 
@@ -520,12 +521,6 @@ main(int ArgCount, const char** const Args)
             quat PitchRotation = RotationQuaternion(Pitch, Cam.Right);
 
             Cam.Forward = Normalize(Rotate((YawRotation * PitchRotation), Cam.Forward));
-        }
-
-        f32 ScaleValue = 1.0;
-        if (SABRE_MAX_TREE_DEPTH > SABRE_SCALE_EXPONENT)
-        {
-            ScaleValue = 1.0 / (1 << (SABRE_MAX_TREE_DEPTH - SABRE_SCALE_EXPONENT));
         }
 
         f32 CameraMatrix[3][3] = {

@@ -107,6 +107,9 @@ extern "C" void
 InsertVoxel(svo* Svo, vec3 P, u32 VoxelScale);
 
 extern "C" void
+DeleteVoxel(svo* Tree, vec3 P);
+
+extern "C" void
 DeleteSparseVoxelOctree(svo* Tree);
 
 extern "C" svo*
