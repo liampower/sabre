@@ -114,6 +114,11 @@ float MinComponent(vec3 V)
     return min(min(V.x, V.y), V.z);
 }
 
+uint MaxComponentU(uvec3 V)
+{
+    return max(max(V.x, V.y), V.z);
+}
+
 uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
 {
     uint ChildPtr = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
@@ -389,12 +394,14 @@ vec3 Raycast(in ray R)
                     // Find the highest differing bit
                     uvec3 HDB = findMSB(NodeCentreBits ^ RayPBits);
 
-                    uint M = 0;
-                    M = (HDB.x > M && HDB.x < ScaleExponentUniform + BiasUniform) ? HDB.x : M;
+                    uvec3 M0 = uvec3(0);
+                    /*M = (HDB.x > M && HDB.x < ScaleExponentUniform + BiasUniform) ? HDB.x : M;
                     M = (HDB.y > M && HDB.y < ScaleExponentUniform + BiasUniform) ? HDB.y : M;
-                    M = (HDB.z > M && HDB.z < ScaleExponentUniform + BiasUniform) ? HDB.z : M;
+                    M = (HDB.z > M && HDB.z < ScaleExponentUniform + BiasUniform) ? HDB.z : M;*/
 
-                    uint NextDepth = ((ScaleExponentUniform + BiasUniform) - M);
+                    uint M = MaxComponentU(mix(M0, HDB, lessThan(HDB, uvec3(ScaleExponentUniform + BiasUniform))));
+
+                    uint NextDepth = ((ScaleExponentUniform + BiasUniform) - M.x);
 
                     if (NextDepth >= CurrentDepth) return (float(Step) / MAX_STEPS) * vec3(1, 0, 0);
 

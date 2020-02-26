@@ -11,7 +11,7 @@
 #include "sabre_svo.h"
 #include "sabre_data.h"
 
-#define SABRE_MAX_TREE_DEPTH 2
+#define SABRE_MAX_TREE_DEPTH 8
 #define SABRE_SCALE_EXPONENT 7
 #define SABRE_WORK_SIZE_X 512
 #define SABRE_WORK_SIZE_Y 512
@@ -377,7 +377,7 @@ main(int ArgCount, const char** const Args)
     }
 
     svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
-    DeleteVoxel(WorldSvo, vec3(0, 0, 0));
+    //DeleteVoxel(WorldSvo, vec3(0, 0, 0));
     //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
 
 	gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
