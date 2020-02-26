@@ -814,6 +814,7 @@ DeleteVoxel(svo* Tree, vec3 P)
             SetNodeChildPointer(NewParent, NewParentBlk, ParentBlk, ParentNode);
             ParentNode = NewParent;
             ParentBlk = NewParentBlk;
+            continue;
         }
 
         if (IsOctantOccupied(ParentNode, CurrentOct))
