@@ -692,12 +692,6 @@ InsertChild(svo_node* Parent, svo_oct ChildOct, svo_block* ParentBlk, svo* Tree,
             CurrentChildBlk = ChildRef.Blk;
             svo_node* Child = ChildRef.Node;
             node_ref MovedChild = ReAllocateNode(Child, CurrentChildBlk, Tree);
-
-            if (nullptr == FirstChild)
-            {
-                FirstChild = MovedChild.Node;
-                FirstChildBlk = MovedChild.Blk;
-            }
         }
 
         // Clear the processed oct from the mask
@@ -727,6 +721,12 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
 
     svo_node* ParentNode = &Tree->RootBlock->Entries[0];
     svo_block* ParentBlk = Tree->RootBlock;
+
+    u32 TreeMinScale = Tree->ScaleExponent - Tree->MaxDepth;
+    if (VoxelScale < TreeMinScale)
+    {
+       Tree->MaxDepth += TreeMinScale - VoxelScale; 
+    }
 
     // Beginning at the root scale, descend the tree until we get
     // to the desired scale, or we hit a leaf octant (which means
@@ -761,8 +761,8 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
             {
                 // Get a new parent  and loop back to the beginning
                 ParentCentreP = GetOctantCentre(CurrentOct, Scale >> 1, ParentCentreP);
-                CurrentOct = GetOctantForPosition(P, ParentCentreP);
                 node_ref ParentRef = GetNodeChildWithBlock(ParentNode, ParentBlk, CurrentOct);
+                CurrentOct = GetOctantForPosition(P, ParentCentreP);
                 ParentNode = ParentRef.Node;
                 ParentBlk = ParentRef.Blk;
                 //ParentNode = GetNodeChildWithBlock(ParentNode, ParentBlk, CurrentOct);
