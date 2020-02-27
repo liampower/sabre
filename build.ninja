@@ -1,6 +1,6 @@
 Compiler = clang
-DisabledWarnings = -Wno-unused-parameter -Wno-c++98-compat -Wno-gnu-anonymous-struct -Wno-old-style-cast
-CompilerFlags = -isystem include -Wall -Wextra -Weverything -Wpadded -std=c++14 -mavx -fno-omit-frame-pointer -fno-exceptions -fno-rtti -ffast-math -g -gcodeview $DisabledWarnings
+DisabledWarnings = -Wno-unused-parameter -Wno-c++98-compat -Wno-gnu-anonymous-struct -Wno-old-style-cast -Wno-unused-function -Wno-double-promotion
+CompilerFlags = -isystem include -Wall -Wextra -Weverything -pedantic -Wpadded -std=c++14 -mavx -fno-omit-frame-pointer -fno-exceptions -fno-rtti -ffast-math -g -gcodeview $DisabledWarnings
 Linker = link -nologo
 Libs = glad.lib glfw3.lib opengl32.lib kernel32.lib user32.lib gdi32.lib shell32.lib
 LinkerFlags = -incremental:no -debug -entry:mainCRTStartup -libpath:libs -machine:x64 -nodefaultlib:libcmt $Libs -natvis:misc/svo.natvis
