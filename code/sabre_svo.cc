@@ -642,13 +642,11 @@ DeleteChild(svo_node* Parent, svo_oct ChildOct, svo_block* ParentBlk, svo* Tree)
     SetNodeChildPointer(FirstChild, FirstChildBlk, ParentBlk, Parent);
 }
 
-// TODO(Liam): MAJOR NO BUENO: Doesn't actually return the inserted child!!
 static node_ref
 InsertChild(svo_node* Parent, svo_oct ChildOct, svo_block* ParentBlk, svo* Tree, svo_voxel_type Type)
 {
     node_ref Result = { };
 
-    // TODO(Liam): Handle case where Parent does not have any non-leaf children!
     svo_node PCopy = *Parent;
     SetOctantOccupied(ChildOct, Type, &PCopy);
     
@@ -660,6 +658,8 @@ InsertChild(svo_node* Parent, svo_oct ChildOct, svo_block* ParentBlk, svo* Tree,
     svo_block* FirstChildBlk = nullptr;
     svo_block* CurrentChildBlk = ParentBlk;
     svo_node* FirstChild = nullptr;
+
+    node_ref CreatedNode = { };
 
     // Process each child (max 8) of the parent node, including the one
     // we just inserted.
@@ -685,6 +685,9 @@ InsertChild(svo_node* Parent, svo_oct ChildOct, svo_block* ParentBlk, svo* Tree,
                 FirstChild = NewChild;
                 FirstChildBlk = CurrentChildBlk;
             }
+
+            CreatedNode.Node = NewChild;
+            CreatedNode.Blk = CurrentChildBlk;
         }
         else
         {
@@ -692,6 +695,11 @@ InsertChild(svo_node* Parent, svo_oct ChildOct, svo_block* ParentBlk, svo* Tree,
             CurrentChildBlk = ChildRef.Blk;
             svo_node* Child = ChildRef.Node;
             node_ref MovedChild = ReAllocateNode(Child, CurrentChildBlk, Tree);
+            if (nullptr == FirstChild)
+            {
+                FirstChild = MovedChild.Node;
+                FirstChildBlk = MovedChild.Blk;
+            }
         }
 
         // Clear the processed oct from the mask
@@ -703,10 +711,7 @@ InsertChild(svo_node* Parent, svo_oct ChildOct, svo_block* ParentBlk, svo* Tree,
     *Parent = PCopy;
     SetNodeChildPointer(FirstChild, FirstChildBlk, ParentBlk, Parent);
 
-    Result.Node = FirstChild;
-    Result.Blk  = FirstChildBlk;
-
-    return Result;
+    return CreatedNode;
 }
 
 extern "C" void
