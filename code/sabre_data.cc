@@ -403,7 +403,7 @@ vec3 Raycast(in ray R)
 
                     uint NextDepth = ((ScaleExponentUniform + BiasUniform) - M.x);
 
-                    if (NextDepth >= CurrentDepth) return (float(Step) / MAX_STEPS) * vec3(1, 0, 0);
+                    if (NextDepth >= CurrentDepth) return vec3(1, 0, 0);
 
                     if (NextDepth <= MAX_STEPS)
                     {
@@ -423,6 +423,10 @@ vec3 Raycast(in ray R)
             }
             else
             {
+                // PROBLEM: NodeMin == 1, NodeMax == 1
+                if (Rad == 0) return vec3(0, 1, 0);
+                else return vec3(0);
+                //return Oct2Cr(CurrentOct) * vec3(0.5, 0.5, 1);
                 break;
             }
         }
@@ -430,10 +434,10 @@ vec3 Raycast(in ray R)
     else
     {
         // Ray doesn't hit octree --- output background colour
-        return vec3(0);
+        return vec3(1);
     }
 
-    return (float(Step) / MAX_STEPS) * vec3(0, 1, 0);
+    return vec3(0, 1, 0);
 }
 
 void main()

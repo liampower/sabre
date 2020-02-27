@@ -11,7 +11,7 @@
 #include "sabre_svo.h"
 #include "sabre_data.h"
 
-#define SABRE_MAX_TREE_DEPTH 3
+#define SABRE_MAX_TREE_DEPTH 8
 #define SABRE_SCALE_EXPONENT 5
 #define SABRE_WORK_SIZE_X 512
 #define SABRE_WORK_SIZE_Y 512
@@ -246,7 +246,6 @@ PackSvoNodeToGLUint(svo_node* Node)
 static gl_uint
 UploadOctreeBlockData(const svo* const Svo)
 {
-    printf("BLKCOUNT: %d\n", Svo->UsedBlockCount);
     gl_uint SvoBuffer, FarPtrBuffer;
 
     // TODO(Liam): Look into combining these allocations
@@ -378,10 +377,15 @@ main(int ArgCount, const char** const Args)
 
     svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
     //InsertVoxel(WorldSvo, vec3(20, 20, 20), 2);
-    InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
+    //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
     //DeleteVoxel(WorldSvo, vec3(0, 4, 0));
 
-	gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
+    printf("BlkCount: %u\n", WorldSvo->UsedBlockCount);
+    printf("Bias: %u\n", WorldSvo->Bias);
+    printf("Inv Bias: %f\n", (f64)WorldSvo->InvBias);
+    printf("Max Depth: %d\n", WorldSvo->MaxDepth);
+    printf("Scale exponent: %d\n", WorldSvo->ScaleExponent);
+    gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
 
     if (0 == SvoShaderBuffer)
     {
@@ -535,7 +539,7 @@ main(int ArgCount, const char** const Args)
         glUniformMatrix3fv(ViewMatrixUniformLocation, 1, GL_TRUE, *CameraMatrix);
         f32 F[3] = { Cam.Position.X, Cam.Position.Y, Cam.Position.Z };
         glUniform3fv(glGetUniformLocation(ComputeShader, "ViewPosUniform"), 1, F);
-        glDispatchCompute(SABRE_WORK_SIZE_X, SABRE_WORK_SIZE_Y, 1);
+        glDispatchCompute(SABRE_WORK_SIZE_X/8, SABRE_WORK_SIZE_Y/8, 1);
 
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 

@@ -131,6 +131,22 @@ SetOctantOccupied(svo_oct SubOctant, svo_voxel_type Type, svo_node* OutEntry)
    }
 }
 
+
+static void
+SetOctreeScaleBias(svo* const Tree)
+{
+    if (Tree->MaxDepth > Tree->ScaleExponent)
+    {
+        Tree->Bias = (Tree->MaxDepth - Tree->ScaleExponent) + 1;
+        Tree->InvBias = (1.0f / (f32)(1U << Tree->Bias));
+    }
+    else
+    {
+        Tree->Bias = 0;
+        Tree->InvBias = 1.0f;
+    }
+}
+
 static inline svo_node*
 PushNode(svo_block* Blk, svo_node Node)
 {
@@ -511,7 +527,7 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
         // Begin building tree
         u32 RootScale = (1U << ScaleExponent);
         
-        if (MaxDepth > ScaleExponent)
+        /*if (MaxDepth > ScaleExponent)
         {
             Tree->Bias = (MaxDepth - ScaleExponent) + 1;
             Tree->InvBias = (1.0f / (f32)(1U << Tree->Bias));
@@ -520,15 +536,14 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
         {
             Tree->Bias = 0;
             Tree->InvBias = 1.0f;
-        }
+        }*/
+        SetOctreeScaleBias(Tree);
 
         // Scale up by the bias
         RootScale <<= Tree->Bias;
 
         vec3 RootCentre = vec3(RootScale >> 1);
 
-        printf("Bias: %u\n", Tree->Bias);
-        printf("Inv Bias: %f\n", Tree->InvBias);
         // Initiate the recursive construction process
         // The root depth is initialised to 1 because we are
         // technically beginning at the *second* tree level
@@ -580,7 +595,8 @@ ReAllocateNode(svo_node* Node, svo_block* NodeBlk, svo* Tree)
             far_ptr* FarPtr = GetFarPointer(Node, NodeBlk);
 
             // Copy the far ptr into the new block
-            far_ptr* NewPtr = PushFarPtr(*FarPtr, NewBlk);
+            PushFarPtr(*FarPtr, NewBlk);
+
             // Set the node's far pointer index to the new far pointer.
             NewNode->ChildPtr = SVO_FAR_PTR_BIT_MASK | u16(NewBlk->NextFarPtrSlot - 1);
         }
@@ -645,8 +661,6 @@ DeleteChild(svo_node* Parent, svo_oct ChildOct, svo_block* ParentBlk, svo* Tree)
 static node_ref
 InsertChild(svo_node* Parent, svo_oct ChildOct, svo_block* ParentBlk, svo* Tree, svo_voxel_type Type)
 {
-    node_ref Result = { };
-
     svo_node PCopy = *Parent;
     SetOctantOccupied(ChildOct, Type, &PCopy);
     
@@ -654,7 +668,6 @@ InsertChild(svo_node* Parent, svo_oct ChildOct, svo_block* ParentBlk, svo* Tree,
     u32 NonLeafChildMsk = PCopy.OccupiedMask & (~PCopy.LeafMask);
     u32 ChildCount = CountSetBits(NonLeafChildMsk);
 
-    svo_block* CurrentParentBlk = ParentBlk;
     svo_block* FirstChildBlk = nullptr;
     svo_block* CurrentChildBlk = ParentBlk;
     svo_node* FirstChild = nullptr;
@@ -717,7 +730,8 @@ InsertChild(svo_node* Parent, svo_oct ChildOct, svo_block* ParentBlk, svo* Tree,
 extern "C" void
 InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
 {
-    u32 RootScale = 1 << (Tree->ScaleExponent - 1);
+    // TODO(Liam): Bias here?
+    u32 RootScale = 1U << (Tree->ScaleExponent - 1);
 
     vec3 ParentCentreP = vec3(RootScale);
     svo_oct CurrentOct = GetOctantForPosition(P, ParentCentreP);
@@ -731,6 +745,8 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
     if (VoxelScale < TreeMinScale)
     {
        Tree->MaxDepth += TreeMinScale - VoxelScale; 
+
+       SetOctreeScaleBias(Tree);
     }
 
     // Beginning at the root scale, descend the tree until we get
@@ -793,9 +809,9 @@ extern "C" void
 DeleteVoxel(svo* Tree, vec3 P)
 {
     // Always go down to leaf scale (cheat at mem. mgmt!)
-    u32 RootScale = (1 << Tree->ScaleExponent) << Tree->Bias;
+    u32 RootScale = (1U << Tree->ScaleExponent) << Tree->Bias;
     svo_node* ParentNode = &Tree->RootBlock->Entries[0];
-    vec3 ParentCentre = vec3(RootScale >> 1);
+    vec3 ParentCentre = vec3(RootScale >> 1U);
     svo_oct CurrentOct = GetOctantForPosition(P, ParentCentre);
     svo_block* ParentBlk = Tree->RootBlock;
 
@@ -813,8 +829,8 @@ DeleteVoxel(svo* Tree, vec3 P)
             }
 
             u32 OctMsk = ~(1U << (u32)CurrentOct);
-            NewParent->OccupiedMask = 0xFF; // All octants occupied
-            NewParent->LeafMask = OctMsk; // All octants except current leaves
+            NewParent->OccupiedMask = 0xFF;   // All octants occupied
+            NewParent->LeafMask = (u8)OctMsk; // All octants except current leaves
 
             SetNodeChildPointer(NewParent, NewParentBlk, ParentBlk, ParentNode);
             ParentNode = NewParent;
@@ -831,7 +847,8 @@ DeleteVoxel(svo* Tree, vec3 P)
                     // Remove the deleted child from the parent
                     u32 ClearMsk = ~(1U << (u32)CurrentOct);
                     ParentNode->LeafMask &= ClearMsk;
-                    ParentNode->OccupiedMask &= ClearMsk;
+                    ParentNode->OccupiedMask |= ~ClearMsk;
+                    //ParentNode->OccupiedMask &= ClearMsk;
 
                     return;
                 }
@@ -851,8 +868,8 @@ DeleteVoxel(svo* Tree, vec3 P)
 
                     // Set all octants *except* the current one to leaves
                     u32 OctMsk = ~(1U << (u32)CurrentOct);
-                    ParentNode->OccupiedMask = 0xFF; // All octants occupied
-                    ParentNode->LeafMask = OctMsk; // All octants except current leaves
+                    ParentNode->OccupiedMask = 0xFF;   // All octants occupied
+                    ParentNode->LeafMask = (u8)OctMsk; // All octants except current leaves
 
                     CreatedChild = true;
                 }
