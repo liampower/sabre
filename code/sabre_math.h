@@ -481,6 +481,18 @@ operator*(float Scalar, vec3 Vec)
     return Result;
 }
 
+inline vec3 
+operator*(vec3 Vec, float Scalar)
+{
+    vec3 Result;
+
+    Result.X = Scalar * Vec.X;
+    Result.Y = Scalar * Vec.Y;
+    Result.Z = Scalar * Vec.Z;
+
+    return Result;
+}
+
 inline vec3
 operator*(vec3 V, int Scalar)
 {
@@ -912,5 +924,6 @@ Rotate(quat Rotation, vec3 V)
 }
 
 // }}}
+
 #endif
 

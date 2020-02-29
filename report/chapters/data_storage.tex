@@ -1,4 +1,4 @@
-All voxel engines must address the question of how to store and process voxel data. For any reasonably large scene with a high level of detail, the number of voxels required can grow very large. Implementations must also devise a strategy for handling large, empty regions of space; an ideal solution would not store voxels that do not contain interesting geometry.
+All voxel engines must address the question of how to store and process voxel data. For any reasonably large scene with a high level of detail, the number of voxels required to represent such a scene can grow very large. Implementations must also devise a strategy for handling large, empty regions of space; an ideal solution would not store voxels that do not contain interesting geometry.
 
 The most basic voxel storage strategy is to store each individual voxel in a flat array. This approach was used by \textit{Minecraft} \autocite{minecraftchunkformat} \footnote{Technically, Minecraft uses a paged array of flat arrays termed "chunks". Chunks are paged in and out depending on where the player travels in the game world.}. Although this scheme has the advantage of being very simple to implement, and provides $\mathcal{O}(1)$ voxel access and update times, the amount of memory required to store the voxel world is linear in the number of voxels. This restricts games using this technique to a low resolution "blocky" style. To represent more detailed worlds, some way of compressing voxel data is required.
 
@@ -17,8 +17,6 @@ In classical octrees, each octree node contains eight pointers to it's children,
 \section{The Sparse Voxel Octree}
 This project stores scene voxel data in a Sparse Voxel Octree (SVO) data structure. Unlike traditional octrees, SVOs do not store eight child pointers for each node. Instead, two eight-bit masks are stored in each node; one to indicate that there is geometry resident in each child node corresponding to each bit position, and another to indicate whether or not a particular child is a leaf. This means that leaf nodes need not be stored at all, reducing the storage space required for a voxel scene even further than regular octrees.
 
-The implementation of the sparse voxel octree in this project closely follows the ideas laid down by Laine and Karras. Throughout the project, the following convention is used for numbering cube octants: 0 to 7 increasing in X, then Y, then Z. Figure \ref{fig:octants_example} shows an example.
-
 \begin{figure}[ht]
     \centering
     \footnotesize
@@ -27,8 +25,35 @@ The implementation of the sparse voxel octree in this project closely follows th
     \label{fig:octants_example}
 \end{figure}
 
+The implementation of the sparse voxel octree in this project closely follows the ideas laid down by Laine and Karras. Throughout the project, the following convention is used for numbering cube octants: 0 to 7 increasing in X, then Y, then Z. Figure \ref{fig:octants_example} shows an example.
+
+At the highest level, the SVO tree data structure used to store the entire scene in \textit{Sabre} consists of a list of fixed-size blocks of octree nodes. Only non-leaf and non-empty nodes are actually stored; Laine and Karras' methodology stores all of the information required to construct a leaf node in its parent.
+
+\subsection{SVO Blocks}\label{sec:svo_blocks}
+Since \textit{Sabre} is designed to handle very large voxel scenes, it would be infeasible to attempt to store all of the SVO nodes required for a scene contiguously in memory. Instead, \textit{Sabre} uses a singly-linked list of \texttt{svo\_block} structures (see listing \ref{listing:svo_block_struct}). Blocks are fixed-size chunks of memory that store a predetermined number of nodes, controlled by the \texttt{SVO\_ENTRIES\_PER\_BLOCK} constant. 
+
+\begin{listing}[ht]
+\begin{minted}{C}
+struct svo_block
+{
+    usize       NextFreeSlot;
+    svo_block*  Prev;
+    svo_far_ptr FarPtrs[SVO_FAR_PTRS_PER_BLOCK];
+    svo_node    Entries[SVO_ENTRIES_PER_BLOCK];
+};
+\end{minted}
+\caption{SVO block structure. \mintinline{C}{SVO_ENTRIES_PER_BLOCK} is a constant that determines how many entries are stored within each block}
+\label{listing:svo_block_struct}
+\end{listing}
+
+Blocks function similarly to stacks. The \texttt{NextFreeSlot} field is the stack pointer, denoting an offset to the next available memory address that an hold a new \texttt{svo\_node} structure. In the case that all slots are used up, a new block is transparently allocated and the two are linked together via the \texttt{Prev} pointer. 
+
+This stack-based approach is used for performance reasons; allocating each node entry on the heap would introduce the considerable overhead of a call to \texttt{malloc} or similar every time a new node was inserted (these allocations would also have to be freed one at a time). With millions of nodes, this strategy would be unacceptably slow. With the block-based approach, a call to the system allocator is only required each time a new block is required, and individual node allocations are very fast as they only require (in most cases) incrementing \texttt{NextFreeSlot}.
+
+SVO blocks also store a fixed number of \texttt{far\_ptr} instances (see listing \ref{listing:far_ptr_struct}). These are used in case child references for an individual node overrun block boundaries.
+
 \subsection{SVO Nodes}
-All voxel geometry in \textit{Sabre} is fundamentally stored in a \texttt{svo\_node} structure (see listing \ref{listing:svo_node_struct} and figure \ref{fig:svo_entry}). The \texttt{OccupiedMask} field is used to test if this particular node contains any geometry at all, where each bit at position $i$ determines if there is geometry resident in the $i$\textsuperscript{th} child octant of this node. Each bit in the \texttt{LeafMask} field indicates whether or not the $i$\textsuperscript{th} child octant is a leaf node -- this renders storage of leaf nodes unnecessary. 
+All voxel geometry in \textit{Sabre} is fundamentally stored in a \texttt{svo\_node} structure (see listing \ref{listing:svo_node_struct} and figure \ref{fig:svo_entry}). The \texttt{OccupiedMask} field is used to test if this particular node contains any geometry at all, where each bit at position $i$ determines if there is geometry resident in the $i$\textsuperscript{th} child octant of this node. Each bit in the \texttt{LeafMask} field indicates whether or not the $i$\textsuperscript{th} child octant is a leaf node --- this means that storage of leaf nodes becomes unnecessary as leaf nodes can be inferred by looking at the leaf mask of their parent. 
 
 \begin{figure}[ht]
     \centering
@@ -72,63 +97,22 @@ struct far_ptr
 \label{listing:far_ptr_struct}
 \end{listing}
 
-\subsection{SVO Blocks}\label{sec:svo_blocks}
-Since \textit{Sabre} is designed to handle very large voxel scenes, it would be infeasible to attempt to store all of the SVO nodes required for a scene continuously in memory. Instead, \textit{Sabre} uses a singly-linked list of \texttt{svo\_block} structures (see listing \ref{listing:svo_block_struct}). Blocks are fixed-size chunks of memory that store a predetermined number of nodes, controlled by the \texttt{SVO\_ENTRIES\_PER\_BLOCK} constant. 
-
-\begin{listing}[ht]
-\begin{minted}{C}
-struct svo_block
-{
-    usize       NextFreeSlot;
-    svo_block*  Prev;
-    svo_far_ptr FarPtrs[SVO_FAR_PTRS_PER_BLOCK];
-    svo_node    Entries[SVO_ENTRIES_PER_BLOCK];
-};
-\end{minted}
-\caption{SVO block structure. \mintinline{C}{SVO_ENTRIES_PER_BLOCK} is a constant that determines how many entries are stored within each block}
-\label{listing:svo_block_struct}
-\end{listing}
-
-Blocks function similarly to stacks. The \texttt{NextFreeSlot} field is the stack pointer, denoting an offset to the next available memory address that an hold a new \texttt{svo\_node} structure. In the case that all slots are used up, a new block is transparently allocated and the two are linked together via the \texttt{Prev} pointer. This stack-based approach is used for performance reasons; allocating each node entry on the heap would introduce the considerable overhead of a call to \texttt{malloc} or similar every time a new node was inserted (these allocations would also have to be freed one at a time). With millions of nodes, this strategy would be unacceptably slow. With the block-based approach, a call to the system allocator is only required each time a new block is required, and individual node allocations are very fast as they only require (in most cases) incrementing \texttt{NextFreeSlot}.
-
-SVO blocks also store a fixed number of \texttt{far\_ptr} instances (see listing \ref{listing:far_ptr_struct}). These are used in case child references for an individual node overrun block boundaries.
-
 
 \section{SVO Construction}
 The engine constructs SVOs using two parameters, $S_{max}$ and $\Lambda(c_0, c_1)$. $S_{max}$ is a 32-bit integer which, when used as an exponent to $2$, defines the maximum size of each dimension in the octree root cube.
 
 $\Lambda(c_0, c_1)$ is a user-supplied function which defines the intersection of a used-defined three dimensional surface with a cube defined such that its minimum corner resides at the vector $c_0$ and its maximum corner at $c_1$. This function is used to determine whether or not the engine should continue to subdivide space at a particular octree node.
 
-Construction begins at the root octree node which, in world space, represents a cube of dimensions $2^{S_{max}}$. $\Lambda$ is evaluated for this cube to determine if there is interesting geometry resident inside this cube. If $\Lambda$ evaluates to \texttt{true}, the root node is subdivided and marked as a parent (see \ref{child_node_insertion} for a detailed description of this process).
+Construction begins at the root octree node which, in world space, represents a cube of dimensions $2^{S_{max}}$. $\Lambda$ is evaluated for this cube to determine if there is interesting geometry resident inside this cube. If $\Lambda$ evaluates to \texttt{true}, the root node is subdivided and marked as a parent.
 
 The octree construction process is considered complete when $\Lambda$ will no longer evaluate to \texttt{true} at any possible child cube, or we have reached a tree depth of $S_{max}$.
 
-\subsection{Child node insertion} \label{child_node_insertion}
-Due to the sparse nature of the engine's octree data structure, and the fact that the SVO data structure will store the majority of a particular voxel's data in conjunction with its parent, some care is required when inserting child nodes into the octree. To insert a child for some node $n_0$, we must first determine if this is a leaf voxel by examining both the current tree depth and the surface intersection function $\Lambda$ used to build the tree.
+Nodes are inserted in a breadth-first fashion using a queue. This is to make calculation of child pointers easier, and to facilitate future level-of-detail optimisations --- since all levels of the tree are stored sequentially, it is straightforward to only traverse the tree to a certain depth.
 
 \begin{figure}[ht]
     \centering
     \footnotesize
     \includesvg[width=360px, height=225px]{graphics/svo_quad_analogue.svg}
-    \caption{Layout of child descriptors inside a block. Child entries are organised in a depth-first fashion.}
+    \caption{Layout of nodes inside a block. In memory, nodes are organised in a breadth-first fashion. In this example, A, B and C are leaf nodes.}
     \label{fig:quadtree_analogue}
 \end{figure}
-
-\section{Implementation}
-The SVO handling code is contained within the \texttt{sabre\_svo} module. The entire
-SVO data structure is conceptualised as the following struct definition:
-
-\begin{listing}[H]
-\begin{minted}{C}
-struct svo
-{
-    u32 UsedBlockCount;
-    u32 MaxDepth;
-
-    svo_block* CurrentBlock;
-};
-\end{minted}
-\caption{Definition of Sparse Voxel Octree data structure}
-\end{listing}
-
-The \texttt{MaxDepth} field determines the maximum number of levels in the octree. This field is used in SVO construction to determine when to halt the tree building process. Largers values correspond to more voxel data. The \texttt{UsedBlockCount} field records how many total blocks are resident in this octree. \texttt{CurrentBlock} points to the latest block in use. 

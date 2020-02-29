@@ -1,8 +1,8 @@
 #ifndef SABRE_SVO_H
 #define SABRE_SVO_H
 
-constexpr u32 SVO_ENTRIES_PER_BLOCK  = 8;
-constexpr u32 SVO_FAR_PTRS_PER_BLOCK = 8;
+constexpr u32 SVO_ENTRIES_PER_BLOCK  = 4096;
+constexpr u32 SVO_FAR_PTRS_PER_BLOCK = 4096;
 constexpr u32 SVO_FAR_PTR_BIT_MASK   = 0x8000;
 
 
@@ -26,12 +26,11 @@ enum svo_oct
 
 struct far_ptr
 {
-    // How many blocks forwards (negative values are backwards) needed
-    // to be traversed to arrive at the resident block
-    i32 BlkOffset;
+    // Index of the child node's block
+    u32 BlkIndex;
 
-    // Which slot in the resident block the particular child node
-    // resides at.
+    // Which slot in the child block the 
+    // particular child node resides at
     u32 NodeOffset;
 };
 
@@ -56,7 +55,7 @@ struct svo_block
 {
     usize      NextFreeSlot;
     usize      NextFarPtrSlot;
-    i32        Index;
+    u32        Index;
     svo_block* Prev;
     svo_block* Next;
     svo_node   Entries[SVO_ENTRIES_PER_BLOCK];
@@ -74,11 +73,25 @@ struct svo
     // Extant of the octree in world space.
     u32 ScaleExponent;
 
+    // Required to maintain subtree-scale values as
+    // integers. 
+    //
+    // In the case that MaxDepth >= ScaleExponent, the
+    // scale values of the subtrees will become fractional
+    // values. This scale factor must first be applied to
+    // the entire tree scale so that the smallest extant
+    // of any child region is 1. Remember to divide by this
+    // value when doing any space-operations!
+    u32 Bias;
+
+    f32 InvBias;
+
     // Last block of nodes in this tree
     // NOTE(Liam): Warning! This field is volatile and unsafe
     // to use; it is frequently modified by the implementation
     // and probably not a good way to achieve much of anything
     // besides tree construction!
+    // TODO(Liam): Can we entirely replace this with node_refs?
     svo_block* LastBlock;
 
     // First block of nodes in this tree
@@ -92,6 +105,9 @@ BuildSparseVoxelOctree(u32 ScaleExponent,
 
 extern "C" void
 InsertVoxel(svo* Svo, vec3 P, u32 VoxelScale);
+
+extern "C" void
+DeleteVoxel(svo* Tree, vec3 P);
 
 extern "C" void
 DeleteSparseVoxelOctree(svo* Tree);

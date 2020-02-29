@@ -2,8 +2,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <assert.h>
-#include <deque>
-#include <stack>
 
 #include <glad/glad.h>
 #include <glfw/glfw3.h>
@@ -69,6 +67,26 @@ HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei L
 }
 
 
+static void
+OutputShaderAssembly(gl_uint ShaderID)
+{
+    int Length = 0;
+    glGetProgramiv(ShaderID, GL_PROGRAM_BINARY_LENGTH, &Length);
+    printf("size: %d\n", Length);
+    unsigned char* Data = (unsigned char*)malloc(Length);
+    GLsizei DataLength = 0;
+
+    FILE* F = fopen("data.out", "wb");
+
+    GLenum BinFormats[64];
+    glGetProgramBinary(ShaderID, Length, &DataLength, BinFormats, Data);
+
+    fwrite(Data, sizeof(unsigned char), DataLength, F);
+
+    fclose(F);
+    free(Data);
+}
+
 static inline f32
 Squared(f32 X)
 {
@@ -89,7 +107,7 @@ static inline bool
 CubeSphereIntersection(vec3 Min, vec3 Max)
 {
     const vec3 S = vec3(16);
-    const f32 R = 8.0f;
+    const f32 R = 4;
 
     f32 DistanceSqToCube = R * R;
 
@@ -228,7 +246,6 @@ PackSvoNodeToGLUint(svo_node* Node)
 static gl_uint
 UploadOctreeBlockData(const svo* const Svo)
 {
-    printf("BLKCOUNT: %d\n", Svo->UsedBlockCount);
     gl_uint SvoBuffer, FarPtrBuffer;
 
     // TODO(Liam): Look into combining these allocations
@@ -295,21 +312,6 @@ UploadOctreeBlockData(const svo* const Svo)
     return SvoBuffer;
 }
 
-static int
-NCount(svo* Tree)
-{
-	int N = 0;
-	svo_block* Blk = Tree->RootBlock;
-	while (Blk)
-	{
-		++N;
-
-		Blk = Blk->Next;
-	}
-
-	return N;
-}
-
 extern int
 main(int ArgCount, const char** const Args)
 {
@@ -356,6 +358,7 @@ main(int ArgCount, const char** const Args)
     gl_uint ComputeShader = CompileComputeShader(RaycasterComputeKernel);
     gl_uint MainShader = CompileShader(MainVertexCode, MainFragmentCode);
 
+    OutputShaderAssembly(ComputeShader);
     if (0 == MainShader)
     {
         fprintf(stderr, "Failed to compile shader\n");
@@ -372,13 +375,17 @@ main(int ArgCount, const char** const Args)
         return EXIT_FAILURE;
     }
 
-    svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);//BuildSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
-	int N = NCount(WorldSvo);
-	assert(N == WorldSvo->UsedBlockCount);
-    //InsertVoxel(WorldSvo, vec3(32, 0, 32), 4);
-    //InsertVoxel(WorldSvo, vec3(48, 48, 48), 32);
+    svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
+    InsertVoxel(WorldSvo, vec3(20, 20, 20), 2);
+    InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
+    DeleteVoxel(WorldSvo, vec3(0, 4, 0));
 
-	gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
+    printf("BlkCount: %u\n", WorldSvo->UsedBlockCount);
+    printf("Bias: %u\n", WorldSvo->Bias);
+    printf("Inv Bias: %f\n", (f64)WorldSvo->InvBias);
+    printf("Max Depth: %d\n", WorldSvo->MaxDepth);
+    printf("Scale exponent: %d\n", WorldSvo->ScaleExponent);
+    gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
 
     if (0 == SvoShaderBuffer)
     {
@@ -407,6 +414,8 @@ main(int ArgCount, const char** const Args)
     glUniform1ui(glGetUniformLocation(ComputeShader, "BlockCountUniform"), WorldSvo->UsedBlockCount);
     glUniform1ui(glGetUniformLocation(ComputeShader, "EntriesPerBlockUniform"), SVO_ENTRIES_PER_BLOCK);
     glUniform1ui(glGetUniformLocation(ComputeShader, "FarPtrsPerBlockUniform"), SVO_FAR_PTRS_PER_BLOCK);
+    glUniform1ui(glGetUniformLocation(ComputeShader, "BiasUniform"), WorldSvo->Bias);
+    glUniform1f(glGetUniformLocation(ComputeShader, "InvBiasUniform"), WorldSvo->InvBias);
 
     gl_int ViewMatrixUniformLocation = glGetUniformLocation(ComputeShader, "ViewMatrixUniform");
 
@@ -439,7 +448,7 @@ main(int ArgCount, const char** const Args)
     Cam.Right = vec3(1, 0, 0);
     Cam.Up = vec3(0, 1, 0);
     Cam.Position = vec3(4, 4, 96);
-    Cam.Velocity = 2.4f;
+    Cam.Velocity = 1.4f;
 
     const vec3 WorldYAxis = vec3(0, 1, 0);
 
@@ -530,7 +539,7 @@ main(int ArgCount, const char** const Args)
         glUniformMatrix3fv(ViewMatrixUniformLocation, 1, GL_TRUE, *CameraMatrix);
         f32 F[3] = { Cam.Position.X, Cam.Position.Y, Cam.Position.Z };
         glUniform3fv(glGetUniformLocation(ComputeShader, "ViewPosUniform"), 1, F);
-        glDispatchCompute(SABRE_WORK_SIZE_X, SABRE_WORK_SIZE_Y, 1);
+        glDispatchCompute(SABRE_WORK_SIZE_X/8, SABRE_WORK_SIZE_Y/8, 1);
 
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 

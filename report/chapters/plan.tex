@@ -1,0 +1,40 @@
+Going forward, my next immediate objective is to extend the current voxel ray-casting code so that it can handle shading attributes --- colours, surface normals and so on. Support for this feature is necessary because the currently implemented sparse voxel octree data structure can only represent occupancy data; it cannot tell the difference between a red solid object and a green one. Following this, I will also need to port the first-person camera code from the polygon renderer into the final \texttt{sabre\_viewer} application. Lastly, I will need to optimise the code, in particular the ray-casting, to produce an application capable of rendering at interactive frame rates.
+
+\section{Shading Attributes}
+I plan to support shading attributes through the use of GPU textures. Cyril Crassin's PhD thesis \autocite{crassin2009gigavoxels} describes a method of storing voxel shading attributes by storing the shading attributes in 3D "bricks" of voxels. The SVO, then, becomes an index for these bricks, much like a traditional relational database index. 
+
+Since this project cannot know ahead of time what exact shading attributes customers will use, some method of allowing client developers to specify the format of their shading data is required. One option might be to allow client developers to fill out a structure similar to listing \ref{listing:shading_attribute_struct}.
+
+\begin{listing}[ht]
+\begin{minted}{C}
+struct voxel_attrib_spec
+{
+    // Enum; represents type of attribute (e.g. float, uint)
+    data_format Format; 
+    // How many data elements there are in an attribute 
+    // (1 for scalars, 3 for vectors, etc.)
+    usize ElemCount; 
+    // Raw data. 
+    // This will likely change to a more type-safe implementation
+    void* AttribData; 
+};
+\end{minted}
+\caption{Proposed definition for a \texttt{voxel\_attrib\_spec} structure}
+\label{listing:shading_attribute_struct}
+\end{listing}
+
+Once client developers have filled out a \mintinline{C}{voxel_attrib_spec   } structure for each of their voxel shading attributes, they can upload the data to the GPU through the \textit{Sabre} API.
+
+The question of how to associate attribute data blocks with a particular region of space is currently a subject of ongoing research. A viable option may be to compute some form of spacial hash --- a Morton index \footnote{A Morton index maps 1D numbers to 3D coordinates. \autocite{morton1966computer}} for example --- and using this to compute octree depth/octant information.
+
+
+\section{Viewer Camera}
+Although the controllable first-person camera code has been written, it still needs to be ported from the prototype polygon renderer source into \textit{Sabre's} main codebase.
+
+To represent the world-to-camera transformation, I intend to use a 4x4 matrix. This matrix can then be easily transferred to the GPU using a \texttt{uniform} variable or a shader storage buffer object (SSBO).
+
+\section{Optimisation}
+In order to have the library render voxel scenes at interactive frame-rates, I expect it will be necessary to spend some time optimising the code, particularly the ray-casting compute shader, though it is quite difficult to predict what specific optimisations will be required. Optimising the ray-caster ensures that the application can fill more pixels in the same time frame, producing a higher resolution output image.
+
+The SVO construction process is also a good candidate for optimisation. Since the tree is build in a breadth-first fashion, specialised hardware SIMD instructions could be used to perform many of the geometric computations in parallel. For example, currently the code determines the centre of an octant by subtracting a scale vector from the parent node's centre vector. This computation is performed 8 times; once for every octant. These individual vectors could be replaced with an array of 3 AVX2 256-bit vector types, holding the X, Y and Z dimensions of all eight octants simultaneously. AVX2 intrinsics could then be used to compute all eight octant centre positions at once.
+
