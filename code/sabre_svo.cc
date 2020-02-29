@@ -45,6 +45,12 @@ FindHighestSetBit(u32 Msk)
 }
 
 static inline u32
+GetTreeMaxScaleBiased(const svo* const Tree)
+{
+    return 1U << Tree->ScaleExponent << Tree->Bias;
+}
+
+static inline u32
 FindLowestSetBit(u32 Msk)
 {
 #if defined(_MSC_VER)
@@ -417,7 +423,6 @@ AllocateNode(svo_block* const Blk)
 static void
 BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth, u32 Scale, svo_block* ParentBlk, vec3 Centre, intersector_fn SurfaceFn)
 {
-    //printf("BEGIN LEVEL %d OCT %d\n", Depth, (u32)RootOct);
     struct node_child
     {
         svo_oct Oct;
@@ -809,16 +814,30 @@ extern "C" void
 DeleteVoxel(svo* Tree, vec3 P)
 {
     // Always go down to leaf scale (cheat at mem. mgmt!)
-    u32 RootScale = (1U << Tree->ScaleExponent) << Tree->Bias;
+    u32 TreeMaxScale = GetTreeMaxScaleBiased(Tree);
+
     svo_node* ParentNode = &Tree->RootBlock->Entries[0];
     vec3 ParentCentre = vec3(RootScale >> 1U);
     svo_oct CurrentOct = GetOctantForPosition(P, ParentCentre);
     svo_block* ParentBlk = Tree->RootBlock;
 
     bool CreatedChild = false;
-    for (u32 VoxelScale = RootScale; VoxelScale > 1; VoxelScale >>= 1)
+
+    // For configurations where MaxDepth > ScaleExponent, this will always
+    // be 1.
+    //
+    // For configurations where MaxDepth < ScaleExponent, this will always
+    // be 1 << (ScaleExponent - MaxDepth)
+    u32 MinScale = (Tree->MaxDepth > Tree->ScaleExponent) ? 1U : 1U << (Tree->ScaleExponent - Tree->MaxDepth)
+    u32 CurrentScale = TreeMaxScale;
+
+    // Descend the tree until we get to the minium scale.
+    //
+    while (CurrentScale > MinScale)
     {
-        if (CreatedChild)
+        CurrentScale >>= 1;
+
+        if (CreatedChild && CurrentScale != MinScale)
         {
             svo_node* NewParent = AllocateNode(ParentBlk);    
             svo_block* NewParentBlk = ParentBlk;
@@ -835,20 +854,16 @@ DeleteVoxel(svo* Tree, vec3 P)
             SetNodeChildPointer(NewParent, NewParentBlk, ParentBlk, ParentNode);
             ParentNode = NewParent;
             ParentBlk = NewParentBlk;
-            continue;
         }
-
-        if (IsOctantOccupied(ParentNode, CurrentOct))
+        else if (IsOctantOccupied(ParentNode, CurrentOct))
         {
             if (IsOctantLeaf(ParentNode, CurrentOct))
             {
-                if (VoxelScale == 1)
+                if (CurrentScale == MinScale)
                 {
-                    // Remove the deleted child from the parent
                     u32 ClearMsk = ~(1U << (u32)CurrentOct);
                     ParentNode->LeafMask &= ClearMsk;
                     ParentNode->OccupiedMask |= ~ClearMsk;
-                    //ParentNode->OccupiedMask &= ClearMsk;
 
                     return;
                 }
@@ -889,6 +904,87 @@ DeleteVoxel(svo* Tree, vec3 P)
             return;
         }
     }
+
+#if 0
+    // Descend through the tree until we reach a voxel scale of 1
+    for (u32 VoxelScale = RootScale; VoxelScale >= 1; VoxelScale >>= 1)
+    {
+        // If we have previously created a parent node (by splitting a larger
+        // leaf node into smaller leaf nodes) then we need to continue building
+        // the tree down through this 
+        if (CreatedChild && VoxelScale != 1)
+        {
+            // Allocate a new parent node for this octant
+            svo_node* NewParent = AllocateNode(ParentBlk);    
+            svo_block* NewParentBlk = ParentBlk;
+            if (nullptr == NewParent)
+            {
+                NewParentBlk = AllocateAndLinkNewBlock(Tree->LastBlock, Tree);
+                NewParent = AllocateNode(NewParentBlk);
+            }
+
+            u32 OctMsk = ~(1U << (u32)CurrentOct);
+            NewParent->OccupiedMask = 0xFF;   // All octants occupied
+            NewParent->LeafMask = (u8)OctMsk; // All octants except current leaves
+
+            SetNodeChildPointer(NewParent, NewParentBlk, ParentBlk, ParentNode);
+            ParentNode = NewParent;
+            ParentBlk = NewParentBlk;
+
+            continue;
+        }
+
+        if (IsOctantOccupied(ParentNode, CurrentOct))
+        {
+            if (IsOctantLeaf(ParentNode, CurrentOct))
+            {
+                if (VoxelScale == 1)
+                {
+                    // Remove the deleted child from the parent
+                    u32 ClearMsk = ~(1U << (u32)CurrentOct);
+                    ParentNode->LeafMask &= ClearMsk;
+                    ParentNode->OccupiedMask |= ~ClearMsk;
+
+                    return;
+                }
+                else
+                {
+                    // Insert a child node into the parent
+                    node_ref ChildRef = InsertChild(ParentNode, 
+                                                    CurrentOct,
+                                                    ParentBlk, 
+                                                    Tree, 
+                                                    VOXEL_PARENT);
+                    ParentNode = ChildRef.Node;
+                    ParentBlk = ChildRef.Blk;
+
+                    ParentCentre = GetOctantCentre(CurrentOct, VoxelScale >> 1, ParentCentre);
+                    CurrentOct = GetOctantForPosition(P, ParentCentre);
+
+                    // Set all octants *except* the current one to leaves
+                    u32 OctMsk = ~(1U << (u32)CurrentOct);
+                    ParentNode->OccupiedMask = 0xFF;   // All octants occupied
+                    ParentNode->LeafMask = (u8)OctMsk; // All octants except current leaves
+
+                    CreatedChild = true;
+                }
+            }
+            else
+            {
+                // Traverse deeper into the tree
+                ParentCentre = GetOctantCentre(CurrentOct, VoxelScale >> 1, ParentCentre);
+                CurrentOct = GetOctantForPosition(P, ParentCentre);
+                node_ref ParentRef = GetNodeChildWithBlock(ParentNode, ParentBlk, CurrentOct);
+                ParentNode = ParentRef.Node;
+                ParentBlk = ParentRef.Blk;
+            }
+        }
+        else
+        {
+            return;
+        }
+    }
+#endif
 }
 
 extern "C" void

@@ -11,7 +11,7 @@
 #include "sabre_svo.h"
 #include "sabre_data.h"
 
-#define SABRE_MAX_TREE_DEPTH 8
+#define SABRE_MAX_TREE_DEPTH 4
 #define SABRE_SCALE_EXPONENT 5
 #define SABRE_WORK_SIZE_X 512
 #define SABRE_WORK_SIZE_Y 512
@@ -376,9 +376,9 @@ main(int ArgCount, const char** const Args)
     }
 
     svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
-    //InsertVoxel(WorldSvo, vec3(20, 20, 20), 2);
-    //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
-    //DeleteVoxel(WorldSvo, vec3(0, 4, 0));
+    InsertVoxel(WorldSvo, vec3(20, 20, 20), 2);
+    InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
+    DeleteVoxel(WorldSvo, vec3(0, 4, 0));
 
     printf("BlkCount: %u\n", WorldSvo->UsedBlockCount);
     printf("Bias: %u\n", WorldSvo->Bias);
