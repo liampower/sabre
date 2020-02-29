@@ -532,16 +532,6 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
         // Begin building tree
         u32 RootScale = (1U << ScaleExponent);
         
-        /*if (MaxDepth > ScaleExponent)
-        {
-            Tree->Bias = (MaxDepth - ScaleExponent) + 1;
-            Tree->InvBias = (1.0f / (f32)(1U << Tree->Bias));
-        }
-        else
-        {
-            Tree->Bias = 0;
-            Tree->InvBias = 1.0f;
-        }*/
         SetOctreeScaleBias(Tree);
 
         // Scale up by the bias
@@ -817,7 +807,7 @@ DeleteVoxel(svo* Tree, vec3 P)
     u32 TreeMaxScale = GetTreeMaxScaleBiased(Tree);
 
     svo_node* ParentNode = &Tree->RootBlock->Entries[0];
-    vec3 ParentCentre = vec3(RootScale >> 1U);
+    vec3 ParentCentre = vec3(TreeMaxScale >> 1U);
     svo_oct CurrentOct = GetOctantForPosition(P, ParentCentre);
     svo_block* ParentBlk = Tree->RootBlock;
 
@@ -828,7 +818,7 @@ DeleteVoxel(svo* Tree, vec3 P)
     //
     // For configurations where MaxDepth < ScaleExponent, this will always
     // be 1 << (ScaleExponent - MaxDepth)
-    u32 MinScale = (Tree->MaxDepth > Tree->ScaleExponent) ? 1U : 1U << (Tree->ScaleExponent - Tree->MaxDepth)
+    u32 MinScale = (Tree->MaxDepth > Tree->ScaleExponent) ? 1U : 1U << (Tree->ScaleExponent - Tree->MaxDepth);
     u32 CurrentScale = TreeMaxScale;
 
     // Descend the tree until we get to the minium scale.
@@ -857,42 +847,40 @@ DeleteVoxel(svo* Tree, vec3 P)
         }
         else if (IsOctantOccupied(ParentNode, CurrentOct))
         {
+            if (CurrentScale == MinScale)
+            {
+                u32 ClearMsk = ~(1U << (u32)CurrentOct);
+                ParentNode->LeafMask &= ClearMsk;
+                ParentNode->OccupiedMask &= ClearMsk;
+
+                return;
+            }
+
             if (IsOctantLeaf(ParentNode, CurrentOct))
             {
-                if (CurrentScale == MinScale)
-                {
-                    u32 ClearMsk = ~(1U << (u32)CurrentOct);
-                    ParentNode->LeafMask &= ClearMsk;
-                    ParentNode->OccupiedMask |= ~ClearMsk;
+                // Insert a child node into the parent
+                node_ref ChildRef = InsertChild(ParentNode, 
+                                                CurrentOct,
+                                                ParentBlk, 
+                                                Tree, 
+                                                VOXEL_PARENT);
+                ParentNode = ChildRef.Node;
+                ParentBlk = ChildRef.Blk;
 
-                    return;
-                }
-                else
-                {
-                    // Insert a child node into the parent
-                    node_ref ChildRef = InsertChild(ParentNode, 
-                                                    CurrentOct,
-                                                    ParentBlk, 
-                                                    Tree, 
-                                                    VOXEL_PARENT);
-                    ParentNode = ChildRef.Node;
-                    ParentBlk = ChildRef.Blk;
+                ParentCentre = GetOctantCentre(CurrentOct, CurrentScale >> 1, ParentCentre);
+                CurrentOct = GetOctantForPosition(P, ParentCentre);
 
-                    ParentCentre = GetOctantCentre(CurrentOct, VoxelScale >> 1, ParentCentre);
-                    CurrentOct = GetOctantForPosition(P, ParentCentre);
+                // Set all octants *except* the current one to leaves
+                u32 OctMsk = ~(1U << (u32)CurrentOct);
+                ParentNode->OccupiedMask = 0xFF;   // All octants occupied
+                ParentNode->LeafMask = (u8)OctMsk; // All octants except current leaves
 
-                    // Set all octants *except* the current one to leaves
-                    u32 OctMsk = ~(1U << (u32)CurrentOct);
-                    ParentNode->OccupiedMask = 0xFF;   // All octants occupied
-                    ParentNode->LeafMask = (u8)OctMsk; // All octants except current leaves
-
-                    CreatedChild = true;
-                }
+                CreatedChild = true;
             }
             else
             {
                 // Traverse deeper into the tree
-                ParentCentre = GetOctantCentre(CurrentOct, VoxelScale >> 1, ParentCentre);
+                ParentCentre = GetOctantCentre(CurrentOct, CurrentScale >> 1, ParentCentre);
                 CurrentOct = GetOctantForPosition(P, ParentCentre);
                 node_ref ParentRef = GetNodeChildWithBlock(ParentNode, ParentBlk, CurrentOct);
                 ParentNode = ParentRef.Node;
