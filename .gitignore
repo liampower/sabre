@@ -16,3 +16,4 @@ vcshell.cmd
 "VTune Amplifier Results"/
 GPUCache/
 debug.log
+logs/
