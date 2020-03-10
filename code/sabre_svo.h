@@ -1,14 +1,14 @@
 #ifndef SABRE_SVO_H
 #define SABRE_SVO_H
 
-constexpr u32 SVO_ENTRIES_PER_BLOCK  = 4096;
-constexpr u32 SVO_FAR_PTRS_PER_BLOCK = 4096;
-constexpr u32 SVO_FAR_PTR_BIT_MASK   = 0x8000;
+#include "sabre_math.h"
 
+constexpr u32 SVO_ENTRIES_PER_BLOCK  = 8192;
+constexpr u32 SVO_FAR_PTRS_PER_BLOCK = 8192;
+constexpr u32 SVO_FAR_PTR_BIT_MASK   = 0x8000;
 
 static_assert(SVO_FAR_PTRS_PER_BLOCK >= SVO_ENTRIES_PER_BLOCK, "Far Ptrs Per Blk must be >= Entries per Blk");
 
-typedef bool (*intersector_fn)(vec3, vec3);
 
 struct svo_block;
 
@@ -98,10 +98,8 @@ struct svo
     svo_block* RootBlock;
 };
 
-extern "C" svo*
-BuildSparseVoxelOctree(u32 ScaleExponent,
-                       u32 MaxDepth,
-                       intersector_fn Surface);
+typedef bool (*intersector_fn)(vec3, vec3, const svo* const);
+
 
 extern "C" void
 InsertVoxel(svo* Svo, vec3 P, u32 VoxelScale);
@@ -113,12 +111,18 @@ extern "C" void
 DeleteSparseVoxelOctree(svo* Tree);
 
 extern "C" svo*
-BuildFromPlyFile(const char* const FileName);
+ImportGltfToSvo(u32 MaxDepth, const char* const GLTFPath);
 
 extern "C" svo*
 CreateSparseVoxelOctree(u32 ScaleExponent,
                         u32 MaxDepth,
                         intersector_fn Surface);
+
+extern "C" void
+OutputSvoToFile(const svo* const Svo, FILE* FileOut);
+
+extern "C" svo*
+LoadSvoFromFile(FILE* FileIn);
 
 static inline void
 DEBUGPrintVec3(vec3 V)
