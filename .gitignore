@@ -4,6 +4,7 @@
 *.exe
 *.ilk
 *.exp
+imgui.ini
 sabre.lib
 tags
 .vs/
