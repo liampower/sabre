@@ -1,3 +1,8 @@
+#include <imgui/imgui.h>
+#include <imgui/imgui_impl_glfw.h>
+#include <imgui/imgui_impl_opengl3.h>
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -6,15 +11,18 @@
 #include <glad/glad.h>
 #include <glfw/glfw3.h>
 
+
 #include "sabre.h"
 #include "sabre_math.h"
 #include "sabre_svo.h"
 #include "sabre_data.h"
 
-#define SABRE_MAX_TREE_DEPTH 4
+#define SABRE_MAX_TREE_DEPTH 9
 #define SABRE_SCALE_EXPONENT 5
 #define SABRE_WORK_SIZE_X 512
 #define SABRE_WORK_SIZE_Y 512
+
+#define OUTPUT_SHADER_ASM 0
 
 
 typedef GLuint gl_uint;
@@ -76,7 +84,7 @@ OutputShaderAssembly(gl_uint ShaderID)
     unsigned char* Data = (unsigned char*)malloc(Length);
     GLsizei DataLength = 0;
 
-    FILE* F = fopen("data.out", "wb");
+    FILE* F = fopen("logs/cs_asm.nv", "wb");
 
     GLenum BinFormats[64];
     glGetProgramBinary(ShaderID, Length, &DataLength, BinFormats, Data);
@@ -103,11 +111,13 @@ OutputGraphicsDeviceInfo(void)
 
 // NOTE(Liam): Warning! Does not work if Min,Max are not the **actual** (dimension-wise) min and
 // max corners.
+//
+// Tree parameter ignored here.
 static inline bool
-CubeSphereIntersection(vec3 Min, vec3 Max)
+CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const)
 {
     const vec3 S = vec3(16);
-    const f32 R = 4;
+    const f32 R = 8;
 
     f32 DistanceSqToCube = R * R;
 
@@ -243,6 +253,7 @@ PackSvoNodeToGLUint(svo_node* Node)
     return Packed;
 }
 
+
 static gl_uint
 UploadOctreeBlockData(const svo* const Svo)
 {
@@ -322,6 +333,9 @@ main(int ArgCount, const char** const Args)
         return EXIT_FAILURE;
     }
 
+
+    //return 0;
+
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
@@ -342,6 +356,15 @@ main(int ArgCount, const char** const Args)
     }
 
     OutputGraphicsDeviceInfo();
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui::StyleColorsDark();
+    //ImGui::StyleColorsClassic();
+
+    // Setup Platform/Renderer bindings
+    ImGui_ImplGlfw_InitForOpenGL(Window, true);
+    ImGui_ImplOpenGL3_Init("#version 430 core");
+
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_DEPTH_CLAMP);
@@ -358,7 +381,10 @@ main(int ArgCount, const char** const Args)
     gl_uint ComputeShader = CompileComputeShader(RaycasterComputeKernel);
     gl_uint MainShader = CompileShader(MainVertexCode, MainFragmentCode);
 
+#if OUTPUT_SHADER_ASM
     OutputShaderAssembly(ComputeShader);
+#endif
+
     if (0 == MainShader)
     {
         fprintf(stderr, "Failed to compile shader\n");
@@ -375,10 +401,24 @@ main(int ArgCount, const char** const Args)
         return EXIT_FAILURE;
     }
 
+#if 0
+    FILE* SvoInFile = fopen("data/Scenes/serapis.9.svo", "rb");
+    svo* WorldSvo = LoadSvoFromFile(SvoInFile);
+    if (nullptr == WorldSvo)
+    {
+        fprintf(stderr, "Failed to load SVO file\n");
+        glfwTerminate();
+        fclose(SvoInFile);
+        return EXIT_FAILURE;
+    }
+    fclose(SvoInFile);
+
     svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
-    InsertVoxel(WorldSvo, vec3(20, 20, 20), 2);
-    InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
-    DeleteVoxel(WorldSvo, vec3(0, 4, 0));
+    //InsertVoxel(WorldSvo, vec3(20, 20, 20), 2);
+    //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
+    //DeleteVoxel(WorldSvo, vec3(0, 4, 0));
+#endif
+    svo* WorldSvo = ImportGltfToSvo(SABRE_MAX_TREE_DEPTH, "data/TestModels/serapis.glb");
 
     printf("BlkCount: %u\n", WorldSvo->UsedBlockCount);
     printf("Bias: %u\n", WorldSvo->Bias);
@@ -458,8 +498,28 @@ main(int ArgCount, const char** const Args)
     // NOTE: Camera yaw and pitch
     f32 Yaw, Pitch;
 
+
+
+    f64 DeltaTime = 0.0;
+    f64 FrameStartTime = 0.0;
+    f64 FrameEndTime = 0.0;
     while (GLFW_FALSE == glfwWindowShouldClose(Window))
     {
+        FrameStartTime = glfwGetTime();
+        glfwPollEvents();
+
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+        
+        //ImGui::ShowDemoWindow();
+
+        if (ImGui::BeginMainMenuBar())
+        {
+            ImGui::Text("%fms CPU  %d BLKS  %d LVLS", 1000.0*DeltaTime, WorldSvo->UsedBlockCount, WorldSvo->MaxDepth);
+            ImGui::EndMainMenuBar();
+        }
+
         glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -528,6 +588,7 @@ main(int ArgCount, const char** const Args)
             Cam.Forward = Normalize(Rotate((YawRotation * PitchRotation), Cam.Forward));
         }
 
+
         f32 CameraMatrix[3][3] = {
             { Cam.Right.X, Cam.Right.Y, Cam.Right.Z },
             { Cam.Up.X, Cam.Up.Y, Cam.Up.Z },
@@ -552,8 +613,13 @@ main(int ArgCount, const char** const Args)
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
         glDrawArrays(GL_TRIANGLES, 0, 6);
 
-        glfwPollEvents();
+        ImGui::Render();
+
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
         glfwSwapBuffers(Window);
+        FrameEndTime = glfwGetTime();
+        DeltaTime = FrameEndTime - FrameStartTime;
     }
 
     glUseProgram(0);
@@ -567,6 +633,10 @@ main(int ArgCount, const char** const Args)
     glDeleteBuffers(1, &VBO);
 
     DeleteSparseVoxelOctree(WorldSvo);
+
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
     glfwTerminate();
 
     return EXIT_SUCCESS;
