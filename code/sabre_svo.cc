@@ -452,7 +452,7 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
         vec3 OctMin = (OctCentre - Radius) * Tree->InvBias;
         vec3 OctMax = (OctCentre + Radius) * Tree->InvBias;
 
-        if (SurfaceFn(OctMin, OctMax))
+        if (SurfaceFn(OctMin, OctMax, Tree))
         {
             // Check if the NEXT depth is less than the tree max
             // depth.
@@ -536,6 +536,8 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
 
         // Scale up by the bias
         RootScale <<= Tree->Bias;
+
+        printf("ROOTSCALE %u\n", RootScale);
 
         vec3 RootCentre = vec3(RootScale >> 1);
 
@@ -726,7 +728,7 @@ extern "C" void
 InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
 {
     // TODO(Liam): Bias here?
-    u32 RootScale = 1U << (Tree->ScaleExponent - 1);
+    u32 RootScale = 1U << (Tree->ScaleExponent - 1) << Tree->Bias;
 
     vec3 ParentCentreP = vec3(RootScale);
     svo_oct CurrentOct = GetOctantForPosition(P, ParentCentreP);
@@ -736,8 +738,9 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
     svo_node* ParentNode = &Tree->RootBlock->Entries[0];
     svo_block* ParentBlk = Tree->RootBlock;
 
-    u32 TreeMinScale = Tree->ScaleExponent - Tree->MaxDepth;
-    if (VoxelScale < TreeMinScale)
+    //u32 TreeMinScale = (Tree->ScaleExponent + Tree->Bias) - Tree->MaxDepth;
+    u32 TreeMinScale = (Tree->MaxDepth > Tree->ScaleExponent) ? 1U : 1U << (Tree->ScaleExponent - Tree->MaxDepth);
+    if (VoxelScale < TreeMinScale && false)
     {
        Tree->MaxDepth += TreeMinScale - VoxelScale; 
 
@@ -976,14 +979,75 @@ DeleteVoxel(svo* Tree, vec3 P)
 }
 
 extern "C" void
+OutputSvoToFile(const svo* const Svo, FILE* FileOut)
+{
+    // First, write the header
+    fwrite(Svo, sizeof(svo), 1, FileOut);
+
+    // Traverse tree and write blocks
+    svo_block* CurrentBlk = Svo->RootBlock;
+    while (CurrentBlk)
+    {
+        fwrite(CurrentBlk, sizeof(svo_block), 1, FileOut);
+        CurrentBlk = CurrentBlk->Next;
+    }
+}
+
+extern "C" svo*
+LoadSvoFromFile(FILE* FileIn)
+{
+    // Allocate a buffer to load into
+    svo* Svo = (svo*)calloc(1, sizeof(svo));
+
+    // Read the header
+    if (0 == fread(Svo, sizeof(svo), 1, FileIn))
+    {
+        fprintf(stderr, "IO Error\n");
+        return nullptr;
+    }
+
+    // Need to invalidate all pointers
+    Svo->RootBlock = nullptr;
+    Svo->LastBlock = nullptr;
+
+    // Start reading the blocks 
+    for (u32 BlkIndex = 0; BlkIndex < Svo->UsedBlockCount; ++BlkIndex)
+    {
+        // Read the block
+        svo_block* CurrentBlk = (svo_block*)calloc(1, sizeof(svo_block));
+
+        if (Svo->RootBlock == nullptr)
+        {
+            Svo->RootBlock = CurrentBlk;
+        }
+
+        CurrentBlk->Prev = Svo->LastBlock;
+        if (Svo->LastBlock) Svo->LastBlock->Next = CurrentBlk;
+
+        // TODO(Liam): Check failure
+        if (0 == fread(CurrentBlk, sizeof(svo_block), 1, FileIn))
+        {
+            // TODO(Liam): Free? (ugh)
+            fprintf(stderr, "IO Error\n");
+            return nullptr;
+        }
+        // Need to link prev block to this one
+        Svo->LastBlock = CurrentBlk;
+    }
+
+    return Svo;
+}
+
+extern "C" void
 DeleteSparseVoxelOctree(svo* Tree)
 {
     svo_block* CurrentBlk = Tree->RootBlock;
-    for (u32 BlkIndex = 0; BlkIndex < Tree->UsedBlockCount; ++BlkIndex)
-    {
-        free(CurrentBlk);
 
-        CurrentBlk = CurrentBlk->Next;
+    while (CurrentBlk)
+    {
+        svo_block* NextBlk = CurrentBlk->Next;
+        free(CurrentBlk);
+        CurrentBlk = NextBlk;
     }
 
     free(Tree);
