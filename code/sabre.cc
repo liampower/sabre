@@ -17,10 +17,10 @@
 #include "sabre_svo.h"
 #include "sabre_data.h"
 
-#define SABRE_MAX_TREE_DEPTH 9
-#define SABRE_SCALE_EXPONENT 5
-#define SABRE_WORK_SIZE_X 512
-#define SABRE_WORK_SIZE_Y 512
+static constexpr uint SABRE_MAX_TREE_DEPTH = 9;
+static constexpr uint SABRE_SCALE_EXPONENT = 5;
+static constexpr uint SABRE_WORK_SIZE_X = 512;
+static constexpr uint SABRE_WORK_SIZE_Y = 512;
 
 #define OUTPUT_SHADER_ASM 0
 
