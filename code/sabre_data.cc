@@ -40,7 +40,7 @@ extern const char* const RaycasterComputeKernel = R"GLSL(
 #define SVO_NODE_CHILD_PTR_MASK 0x7FFF0000U
 #define SVO_FAR_PTR_BIT_MASK    0x80000000U
 
-#define MAX_STEPS 64
+#define MAX_STEPS 128
 #define SCREEN_DIM 512
 
 #define ASSERT(Expr) if (! (Expr)) { return vec3(1); }
@@ -266,6 +266,20 @@ struct st_frame
     uint BlkIndex;
 };
 
+
+vec3 BoxNormal(vec3 Min, vec3 Max, vec3 tMinV)
+{
+    vec3 C = (Min + Max) * 0.5;
+    vec3 P = tMinV - C;
+    vec3 D = (Min - Max) * 0.5 + 0.0001;
+
+    float Bias = 1.00001;
+    vec3 O = normalize(vec3(ivec3(P / abs(D) * Bias)));
+
+    return O;
+
+}
+
 // NOTE(Liam): Lessons learned in GPU optimisation:
 // * Functions are (mostly) fine. The compiler inlines nearly everything
 // * Even very trivial ifs can cause bad asm. Nearly always worth optimising these out
@@ -275,6 +289,7 @@ struct st_frame
 //   we need two corresponding movs, etc.
 // * No h.w. instruction for `sign` - deceptively slow, especially with conversions
 // * Vector min/max map directly to asm instructions
+
 
 vec3 Raycast(in ray R)
 {
@@ -331,7 +346,7 @@ vec3 Raycast(in ray R)
             vec3 Rad = vec3(Scale >> 1);
             // Get the centre position of this octant
             vec3 NodeCentre = GetNodeCentreP(CurrentOct, Scale, ParentCentre);
-            vec3 NodeMin = (NodeCentre - Rad) * InvBiasUniform ;
+            vec3 NodeMin = (NodeCentre - Rad) * InvBiasUniform;
             vec3 NodeMax = (NodeCentre + Rad) * InvBiasUniform;
 
             CurrentIntersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
@@ -350,13 +365,14 @@ vec3 Raycast(in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
-                        return vec3(1, 0, 1);
+                        vec3 N = abs(BoxNormal(NodeMin, NodeMax, sign(R.Dir)));
+                        return 0.2 + dot(N, R.Dir) * vec3(1, 1, 1);
                     }
                     else
                     {
                         // Voxel has children --- execute push
                         // NOTE(Liam): BlkIndex (potentially) updated here
-                        ParentNode = GetNodeChild(ParentNode, CurrentOct, BlkIndex);
+                        ParentNode = GetNodeChild(ParentNode, CurrentOct, BlkIndex /*out*/);
                         CurrentOct = GetOctant(RayP, NodeCentre*InvBiasUniform);
                         ParentCentre = NodeCentre;
                         Scale >>= 1;
@@ -376,7 +392,7 @@ vec3 Raycast(in ray R)
                 // Octant not occupied, need to handle advance/pop
                 uint NextOct = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
 
-                RayP = R.Origin + (CurrentIntersection.tMax + 0.0001) * R.Dir;
+                RayP = R.Origin + (CurrentIntersection.tMax + 0.000099) * R.Dir;
 
                 if (IsAdvanceValid(NextOct, CurrentOct, RaySgn))
                 {
@@ -403,7 +419,7 @@ vec3 Raycast(in ray R)
 
                     uint NextDepth = ((ScaleExponentUniform + BiasUniform) - M.x);
 
-                    if (NextDepth >= CurrentDepth) return vec3(1, 0, 0);
+                    if (NextDepth >= CurrentDepth) return vec3(0.12);
 
                     if (NextDepth <= MAX_STEPS)
                     {
@@ -423,10 +439,6 @@ vec3 Raycast(in ray R)
             }
             else
             {
-                // PROBLEM: NodeMin == 1, NodeMax == 1
-                if (Rad == 0) return vec3(0, 1, 0);
-                else return vec3(0);
-                //return Oct2Cr(CurrentOct) * vec3(0.5, 0.5, 1);
                 break;
             }
         }
@@ -434,10 +446,10 @@ vec3 Raycast(in ray R)
     else
     {
         // Ray doesn't hit octree --- output background colour
-        return vec3(1);
+        return vec3(0.12);
     }
 
-    return vec3(0, 1, 0);
+    return vec3(0.12);
 }
 
 void main()
@@ -454,6 +466,7 @@ void main()
 
     RayD = RayD * ViewMatrixUniform;
 
+    RayD += 0.0001;
     ray R = { RayP, RayD, 1.0 / RayD };
 
     vec3 OutCr = Raycast(R);
