@@ -64,7 +64,6 @@ struct tri_buffer
 
 struct pos_attrib
 {
-    //float V[4];
     float V[3];
 };
 
@@ -341,34 +340,7 @@ LoadMeshTriangles(cgltf_mesh* Mesh)
 
                         cgltf_accessor_unpack_floats(Accessor, (f32*)PosBuffer, PosCount*3);
 
-                        /*for (u32 PosIndex = 0; PosIndex < PosCount; ++PosIndex)
-                        {
-
-                        }*/
-
-#if 0
-                        for (u32 TriIndex = 0; TriIndex < PosList.size() - 3; TriIndex += 3)
-                        {
-                            pos_attrib P0 = PosList.at(TriIndex);
-                            pos_attrib P1 = PosList.at(TriIndex + 1);
-                            pos_attrib P2 = PosList.at(TriIndex + 2);
-
-                            tri3 T = { };
-
-                            // FIXME(Liam): MAJOR HACK ALERT MAJOR HACK ALERT!!!
-                            // I love Blender. Really, I do. But it does some incredibly
-                            // stupid things sometimes, like insisting that the Z axis
-                            // is inverted, despite my option selections. So, we abs the
-                            // Z coordinate here for no real reason other than to work around
-                            // Blender's brain damage.
-                            T.V0 = vec3(P0.V[0], P0.V[1], fabsf(P0.V[2]));
-                            T.V1 = vec3(P1.V[0], P1.V[1], fabsf(P1.V[2]));
-                            T.V2 = vec3(P2.V[0], P2.V[1], fabsf(P2.V[2]));
-
-                            GlobalTriangleList.push_back(T);
-                        }
-#endif
-                        u32 TriCount = PosCount - 3;//IndexCount / 3;
+                        u32 TriCount = IndexCount - 3;
                         tri_buffer* TriBuffer = (tri_buffer*) malloc(sizeof(tri_buffer) + (sizeof(tri3) * TriCount));
                         TriBuffer->TriangleCount = TriCount;
 
@@ -376,13 +348,13 @@ LoadMeshTriangles(cgltf_mesh* Mesh)
                         {
                             tri3 T;
 
-                            //u32 I0 = IndexBuffer[TriIndex];
-                            //u32 I1 = IndexBuffer[TriIndex + 1];
-                            //u32 I2 = IndexBuffer[TriIndex + 2];
-                            pos_attrib P0 = PosBuffer[TriIndex];
-                            pos_attrib P1 = PosBuffer[TriIndex + 1];
-                            pos_attrib P2 = PosBuffer[TriIndex + 2];
-
+                            // Load the indices
+                            u32 I0 = IndexBuffer[TriIndex];
+                            u32 I1 = IndexBuffer[TriIndex + 1];
+                            u32 I2 = IndexBuffer[TriIndex + 2];
+                            pos_attrib P0 = PosBuffer[I0];
+                            pos_attrib P1 = PosBuffer[I1];
+                            pos_attrib P2 = PosBuffer[I2];
 
                             // FIXME(Liam): MAJOR HACK ALERT MAJOR HACK ALERT!!!
                             // I love Blender. Really, I do. But it does some incredibly
