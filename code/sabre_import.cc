@@ -275,30 +275,6 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
 }
 
 
-
-
-#if 0
-static inline void
-ReadPositionData(std::vector<pos_attrib>& Data, const cgltf_accessor* Accessor)
-{
-	usize ComponentCount = cgltf_num_components(Accessor->type);
-
-    // THIS IS INDICES!!
-	/*std::vector<float> temp(accessor->count * components);
-	cgltf_accessor_unpack_floats(accessor, &temp[0], temp.size());
-
-	data.resize(accessor->count);
-
-	for (size_t i = 0; i < accessor->count; ++i)
-	{
-		for (size_t k = 0; k < components && k < 4; ++k)
-			data[i].f[k] = temp[i * components + k];
-	}*/
-
-    
-}
-#endif
-
 static std::vector<tri3> GlobalTriangleList;
 static std::unordered_set<u32, u32_hash> GlobalTriangleIndex;
 
@@ -446,7 +422,7 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
 
         Stack.push_front(RootCtx);
 
-        m128 TriVerts[3];
+        alignas(16) m128 TriVerts[3];
         TriVerts[0] = _mm_set_ps(0.0f, T.V0.Z, T.V0.Y, T.V0.X);
         TriVerts[1] = _mm_set_ps(0.0f, T.V1.Z, T.V1.Y, T.V1.X);
         TriVerts[2] = _mm_set_ps(0.0f, T.V2.Z, T.V2.Y, T.V2.X);
@@ -477,7 +453,7 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
                 m128 CentreM = _mm_set_ps(0.0f, Centre.Z*InvBias, Centre.Y*InvBias, Centre.X*InvBias);
                 m128 RadiusM = _mm_set_ps(0.0f, Radius.Z, Radius.Y, Radius.X);
 
-                if (TriangleAABBIntersection(CentreM, RadiusM, TriVerts)/*triBoxOverlap(CentreV, HSizeV, TriVerts)*/)
+                if (TriangleAABBIntersection(CentreM, RadiusM, TriVerts))
                 {
                     IndexOut.insert(EncodeMorton3(Centre.X, Centre.Y, Centre.Z));
                     /*usize OffsetX = (u32)Centre.X / 64;
@@ -602,7 +578,6 @@ ImportGltfToSvo(u32 MaxDepth, const char* const GLTFPath)
 
 	if (cgltf_result_success == Result)
     {
-        //parseMeshesGltf(Data);
         tri_buffer* TriangleData = LoadMeshTriangles(&Data->meshes[0]);
         if (nullptr == TriangleData)
         {
