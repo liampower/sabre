@@ -728,33 +728,42 @@ extern "C" void
 InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
 {
     // TODO(Liam): Bias here?
-    u32 RootScale = 1U << (Tree->ScaleExponent - 1) << Tree->Bias;
+    u32 RootScale = 1U << (Tree->ScaleExponent) << Tree->Bias;
 
-    vec3 ParentCentreP = vec3(RootScale);
-    svo_oct CurrentOct = GetOctantForPosition(P, ParentCentreP);
+    //u32 TreeMinScale = (Tree->ScaleExponent + Tree->Bias) - Tree->MaxDepth;
+    u32 TreeMinScale = (Tree->MaxDepth > Tree->ScaleExponent) ? 1U : 1U << (Tree->ScaleExponent - Tree->MaxDepth);
+    if (VoxelScale < TreeMinScale)
+    {
+       Tree->MaxDepth += TreeMinScale - VoxelScale; 
+
+       // Re-scale the tree if the requested voxel scale is smaller than
+       // the tree minimum scale.
+       SetOctreeScaleBias(Tree);
+    }
+
+    vec3 InsertP = P * (1U << Tree->Bias);
+
+    RootScale = 1U << (Tree->ScaleExponent) << Tree->Bias;
+    vec3 ParentCentreP = vec3(RootScale >> 1);
+    svo_oct CurrentOct = GetOctantForPosition(InsertP, ParentCentreP);
 
     bool AllocatedParent = false;
 
     svo_node* ParentNode = &Tree->RootBlock->Entries[0];
     svo_block* ParentBlk = Tree->RootBlock;
 
-    //u32 TreeMinScale = (Tree->ScaleExponent + Tree->Bias) - Tree->MaxDepth;
-    u32 TreeMinScale = (Tree->MaxDepth > Tree->ScaleExponent) ? 1U : 1U << (Tree->ScaleExponent - Tree->MaxDepth);
-    if (VoxelScale < TreeMinScale && false)
-    {
-       Tree->MaxDepth += TreeMinScale - VoxelScale; 
-
-       SetOctreeScaleBias(Tree);
-    }
+    // Need to bias the voxel scale in case of upscaled
+    // trees.
+    u32 EditScale = VoxelScale << Tree->Bias;
 
     // Beginning at the root scale, descend the tree until we get
     // to the desired scale, or we hit a leaf octant (which means
     // we can't go any further).
-    for (u32 Scale = RootScale; Scale >= VoxelScale; Scale >>= 1)
+    for (u32 Scale = RootScale; Scale >= EditScale; Scale >>= 1)
     {
         // Check if we've reached the desired scale; if so, set
         // the current octant as a leaf and break out.
-        if (Scale <= VoxelScale)
+        if (Scale <= EditScale)
         {
             if (AllocatedParent)
             {
@@ -781,7 +790,7 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
                 // Get a new parent  and loop back to the beginning
                 ParentCentreP = GetOctantCentre(CurrentOct, Scale >> 1, ParentCentreP);
                 node_ref ParentRef = GetNodeChildWithBlock(ParentNode, ParentBlk, CurrentOct);
-                CurrentOct = GetOctantForPosition(P, ParentCentreP);
+                CurrentOct = GetOctantForPosition(InsertP, ParentCentreP);
                 ParentNode = ParentRef.Node;
                 ParentBlk = ParentRef.Blk;
                 //ParentNode = GetNodeChildWithBlock(ParentNode, ParentBlk, CurrentOct);
@@ -992,6 +1001,7 @@ OutputSvoToFile(const svo* const Svo, FILE* FileOut)
         CurrentBlk = CurrentBlk->Next;
     }
 }
+
 
 extern "C" svo*
 LoadSvoFromFile(FILE* FileIn)

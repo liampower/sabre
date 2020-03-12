@@ -17,7 +17,7 @@
 #include "sabre_svo.h"
 #include "sabre_data.h"
 
-static constexpr uint SABRE_MAX_TREE_DEPTH = 9;
+static constexpr uint SABRE_MAX_TREE_DEPTH = 6;
 static constexpr uint SABRE_SCALE_EXPONENT = 5;
 static constexpr uint SABRE_WORK_SIZE_X = 512;
 static constexpr uint SABRE_WORK_SIZE_Y = 512;
@@ -401,8 +401,8 @@ main(int ArgCount, const char** const Args)
         return EXIT_FAILURE;
     }
 
-#if 0
-    FILE* SvoInFile = fopen("data/Scenes/serapis.9.svo", "rb");
+#if 1
+    /*FILE* SvoInFile = fopen("data/Scenes/serapis.9.svo", "rb");
     svo* WorldSvo = LoadSvoFromFile(SvoInFile);
     if (nullptr == WorldSvo)
     {
@@ -411,14 +411,16 @@ main(int ArgCount, const char** const Args)
         fclose(SvoInFile);
         return EXIT_FAILURE;
     }
-    fclose(SvoInFile);
+    fclose(SvoInFile);*/
 
     svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
-    //InsertVoxel(WorldSvo, vec3(20, 20, 20), 2);
-    //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
+    InsertVoxel(WorldSvo, vec3(0, 9, 0), 16);
+    InsertVoxel(WorldSvo, vec3(20, 20, 20), 16);
+    InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
     //DeleteVoxel(WorldSvo, vec3(0, 4, 0));
-#endif
+#else
     svo* WorldSvo = ImportGltfToSvo(SABRE_MAX_TREE_DEPTH, "data/TestModels/serapis.glb");
+#endif
 
     printf("BlkCount: %u\n", WorldSvo->UsedBlockCount);
     printf("Bias: %u\n", WorldSvo->Bias);

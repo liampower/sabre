@@ -505,6 +505,14 @@ operator*(vec3 V, int Scalar)
     return Result;
 }
 
+inline vec3
+operator*=(vec3& L, float R)
+{
+    L = L * R;
+
+    return L;
+}
+
 
 static inline vec3 
 Cross(vec3 U, vec3 V)
