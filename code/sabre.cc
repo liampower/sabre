@@ -60,6 +60,12 @@ struct camera
     vec3   Position;
 };
 
+struct svo_render_data
+{
+    gl_uint SvoBuffer;
+    gl_uint FarPtrBuffer;
+    // TODO(Liam): Maybe include shader IDs here too?
+};
 
 static void
 HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei Length, const GLchar* Msg, const void*)
@@ -254,9 +260,10 @@ PackSvoNodeToGLUint(svo_node* Node)
 }
 
 
-static gl_uint
+static svo_render_data
 UploadOctreeBlockData(const svo* const Svo)
 {
+    svo_render_data RenderData = { };
     gl_uint SvoBuffer, FarPtrBuffer;
 
     // TODO(Liam): Look into combining these allocations
@@ -320,8 +327,39 @@ UploadOctreeBlockData(const svo* const Svo)
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, FarPtrBuffer);
     }
 
-    return SvoBuffer;
+    RenderData.SvoBuffer = SvoBuffer;
+    RenderData.FarPtrBuffer = FarPtrBuffer;
+
+    return RenderData;
 }
+
+static void
+InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, vec3 CameraPos, svo* const Svo, svo_render_data* RenderData)
+{
+    // Need to unproject the mouse X and Y into the scene.
+#if 0
+    vec3 ViewDir = Normalize(/* ??? */);
+
+    for (u32 Step = 0; Step < MAX_HAND_STEPS; ++Step)
+    {
+        // World position of the "hand" point
+        vec3 HandPos = CameraPos + ViewDir*Step;
+
+    }
+#endif
+
+
+    vec3 InsertP = vec3(CameraPos.X, CameraPos.Y, CameraPos.Z - 1.0f);
+    DEBUGPrintVec3(InsertP); printf("\n");
+    InsertVoxel(Svo, InsertP, 16);
+
+    
+    svo_render_data NewRenderData = UploadOctreeBlockData(Svo);
+    glDeleteBuffers(1, &RenderData->SvoBuffer);
+    glDeleteBuffers(1, &RenderData->FarPtrBuffer);
+    *RenderData = NewRenderData;
+}
+
 
 extern int
 main(int ArgCount, const char** const Args)
@@ -402,7 +440,7 @@ main(int ArgCount, const char** const Args)
     }
 
 #if 1
-    /*FILE* SvoInFile = fopen("data/Scenes/serapis.9.svo", "rb");
+    FILE* SvoInFile = fopen("data/Scenes/serapis.9.svo", "rb");
     svo* WorldSvo = LoadSvoFromFile(SvoInFile);
     if (nullptr == WorldSvo)
     {
@@ -411,12 +449,13 @@ main(int ArgCount, const char** const Args)
         fclose(SvoInFile);
         return EXIT_FAILURE;
     }
-    fclose(SvoInFile);*/
+    fclose(SvoInFile);
 
-    svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
-    InsertVoxel(WorldSvo, vec3(0, 9, 0), 16);
-    InsertVoxel(WorldSvo, vec3(20, 20, 20), 16);
     InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
+    //svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
+    //InsertVoxel(WorldSvo, vec3(0, 9, 0), 16);
+    //InsertVoxel(WorldSvo, vec3(20, 20, 20), 16);
+    //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
     //DeleteVoxel(WorldSvo, vec3(0, 4, 0));
 #else
     svo* WorldSvo = ImportGltfToSvo(SABRE_MAX_TREE_DEPTH, "data/TestModels/serapis.glb");
@@ -427,8 +466,11 @@ main(int ArgCount, const char** const Args)
     printf("Inv Bias: %f\n", (f64)WorldSvo->InvBias);
     printf("Max Depth: %d\n", WorldSvo->MaxDepth);
     printf("Scale exponent: %d\n", WorldSvo->ScaleExponent);
-    gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
 
+    svo_render_data RenderData = UploadOctreeBlockData(WorldSvo);
+    //gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
+
+#if 0
     if (0 == SvoShaderBuffer)
     {
         fprintf(stderr, "Failed to upload octree block data\n");
@@ -436,6 +478,8 @@ main(int ArgCount, const char** const Args)
         glfwTerminate();
         return EXIT_FAILURE;
     }
+    // FIXME(Liam): Check render data creation failure
+#endif
 
     glUseProgram(ComputeShader);
 
@@ -463,7 +507,7 @@ main(int ArgCount, const char** const Args)
 
     glUseProgram(MainShader);
     glUniform1i(glGetUniformLocation(MainShader, "RenderedTextureUniform"), 0);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoShaderBuffer);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, RenderData.SvoBuffer);
 
 
     gl_uint VAO, VBO;
@@ -575,6 +619,11 @@ main(int ArgCount, const char** const Args)
             f64 MouseX, MouseY;
             glfwGetCursorPos(Window, &MouseX, &MouseY);
 
+            if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_LEFT))
+            {
+                InsertVoxelAtMousePoint(MouseX, MouseY, Cam.Position, WorldSvo, &RenderData);
+            }
+
             const f32 DX = (f32)(MouseX - LastMouseX);
             const f32 DY = (f32)(MouseY - LastMouseY);
 
@@ -597,7 +646,7 @@ main(int ArgCount, const char** const Args)
             { -Cam.Forward.X, -Cam.Forward.Y, -Cam.Forward.Z },
         };
 
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoShaderBuffer);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, RenderData.SvoBuffer);
         glUseProgram(ComputeShader);
         glUniformMatrix3fv(ViewMatrixUniformLocation, 1, GL_TRUE, *CameraMatrix);
         f32 F[3] = { Cam.Position.X, Cam.Position.Y, Cam.Position.Z };
@@ -629,7 +678,8 @@ main(int ArgCount, const char** const Args)
     glDeleteProgram(MainShader);
     glDeleteProgram(ComputeShader);
 
-    glDeleteBuffers(1, &SvoShaderBuffer);
+    glDeleteBuffers(1, &RenderData.SvoBuffer);
+    glDeleteBuffers(1, &RenderData.FarPtrBuffer);
 
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);

@@ -50,6 +50,12 @@ GetTreeMaxScaleBiased(const svo* const Tree)
     return 1U << Tree->ScaleExponent << Tree->Bias;
 }
 
+static inline bool
+PointInCube(vec3 P, vec3 Min, vec3 Max)
+{
+    return All(GreaterThanEqual(P, Min) && LessThanEqual(P, Max));
+}
+
 static inline u32
 FindLowestSetBit(u32 Msk)
 {
@@ -727,11 +733,16 @@ InsertChild(svo_node* Parent, svo_oct ChildOct, svo_block* ParentBlk, svo* Tree,
 extern "C" void
 InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
 {
-    // TODO(Liam): Bias here?
+    // Obtain the original root scale of the tree, though
+    // this may need to be biased further if the inserted
+    // voxel scale is smaller than the tree minimum scale.
     u32 RootScale = 1U << (Tree->ScaleExponent) << Tree->Bias;
 
-    //u32 TreeMinScale = (Tree->ScaleExponent + Tree->Bias) - Tree->MaxDepth;
+    // Scale of the smallest voxel in the SVO. For biased
+    // trees, this will always be 1. For non-biased trees,
+    // this will be the scale at the tree's MaxDepth.
     u32 TreeMinScale = (Tree->MaxDepth > Tree->ScaleExponent) ? 1U : 1U << (Tree->ScaleExponent - Tree->MaxDepth);
+
     if (VoxelScale < TreeMinScale)
     {
        Tree->MaxDepth += TreeMinScale - VoxelScale; 
@@ -741,9 +752,19 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
        SetOctreeScaleBias(Tree);
     }
 
+    // Inserted voxel position, scaled by the tree bias.
     vec3 InsertP = P * (1U << Tree->Bias);
 
     RootScale = 1U << (Tree->ScaleExponent) << Tree->Bias;
+    const vec3 TreeMax = vec3(RootScale);
+    const vec3 TreeMin = vec3(0);
+
+    // TODO(Liam): Expand tree?
+    if (false == PointInCube(InsertP, TreeMin, TreeMax))
+    {
+        return;
+    }
+
     vec3 ParentCentreP = vec3(RootScale >> 1);
     svo_oct CurrentOct = GetOctantForPosition(InsertP, ParentCentreP);
 

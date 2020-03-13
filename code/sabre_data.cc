@@ -388,7 +388,6 @@ vec3 Raycast(in ray R)
                     }
                 }
 
-
                 // Octant not occupied, need to handle advance/pop
                 uint NextOct = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
 

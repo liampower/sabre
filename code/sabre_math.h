@@ -346,6 +346,19 @@ GreaterThanEqual(uvec3 A, uvec3 B)
 }
 
 static inline bvec3
+GreaterThanEqual(vec3 A, vec3 B)
+{
+    bvec3 Out;
+
+    Out.X = A.X >= B.X;
+    Out.Y = A.Y >= B.Y;
+    Out.Z = A.Z >= B.Z;
+
+    return Out;
+}
+
+
+static inline bvec3
 LessThan(vec3 A, vec3 B)
 {
     bvec3 Out;
@@ -353,6 +366,30 @@ LessThan(vec3 A, vec3 B)
     Out.X = A.X < B.X;
     Out.Y = A.Y < B.Y;
     Out.Z = A.Z < B.Z;
+
+    return Out;
+}
+
+static inline bvec3
+LessThanEqual(vec3 A, vec3 B)
+{
+    bvec3 Out;
+
+    Out.X = A.X < B.X;
+    Out.Y = A.Y < B.Y;
+    Out.Z = A.Z < B.Z;
+
+    return Out;
+}
+
+static inline bvec3
+operator&&(bvec3 L, bvec3 R)
+{
+    bvec3 Out;
+
+    Out.X = L.X && R.X;
+    Out.Y = L.Y && R.Y;
+    Out.Z = L.Z && R.Z;
 
     return Out;
 }
