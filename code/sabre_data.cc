@@ -355,6 +355,7 @@ vec3 Raycast(in ray R)
             // the intersection. Investigate an epsilon value that lets us eliminate
             // these spots. The epsilon should probably be the same as the step value
             // we use below.
+
             if (CurrentIntersection.tMin <= CurrentIntersection.tMax)
             {
                 // Ray hit this voxel
@@ -365,8 +366,9 @@ vec3 Raycast(in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
-                        vec3 N = abs(BoxNormal(NodeMin, NodeMax, sign(R.Dir)));
-                        return 0.2 + dot(N, R.Dir) * vec3(1, 1, 1);
+                        return vec3(1, 0, 0);
+                        //vec3 N = abs(BoxNormal(NodeMin, NodeMax, sign(R.Dir)));
+                        //return 0.2 + dot(N, R.Dir) * vec3(1, 1, 1);
                     }
                     else
                     {
@@ -409,14 +411,9 @@ vec3 Raycast(in ray R)
                     // Find the highest differing bit
                     uvec3 HDB = findMSB(NodeCentreBits ^ RayPBits);
 
-                    uvec3 M0 = uvec3(0);
-                    /*M = (HDB.x > M && HDB.x < ScaleExponentUniform + BiasUniform) ? HDB.x : M;
-                    M = (HDB.y > M && HDB.y < ScaleExponentUniform + BiasUniform) ? HDB.y : M;
-                    M = (HDB.z > M && HDB.z < ScaleExponentUniform + BiasUniform) ? HDB.z : M;*/
+                    uint M = MaxComponentU(mix(uvec3(0), HDB, lessThan(HDB, uvec3(ScaleExponentUniform + BiasUniform))));
 
-                    uint M = MaxComponentU(mix(M0, HDB, lessThan(HDB, uvec3(ScaleExponentUniform + BiasUniform))));
-
-                    uint NextDepth = ((ScaleExponentUniform + BiasUniform) - M.x);
+                    uint NextDepth = ((ScaleExponentUniform + BiasUniform) - M);
 
                     if (NextDepth >= CurrentDepth) return vec3(0.12);
 
@@ -432,12 +429,16 @@ vec3 Raycast(in ray R)
                     }
                     else
                     {
+                        // NOT HERE
                         break;
                     }
                 }
             }
             else
             {
+                // HERE
+                //if (Scale == 1) return vec3(1, 0, 1);
+                //return Oct2Cr(CurrentOct);
                 break;
             }
         }

@@ -395,6 +395,18 @@ operator&&(bvec3 L, bvec3 R)
 }
 
 static inline bvec3
+operator||(bvec3 L, bvec3 R)
+{
+    bvec3 Out;
+
+    Out.X = L.X || R.X;
+    Out.Y = L.Y || R.Y;
+    Out.Z = L.Z || R.Z;
+
+    return Out;
+}
+
+static inline bvec3
 Equals(vec3 A, vec3 B, float Tolerance)
 {
     bvec3 Out;
@@ -532,6 +544,18 @@ operator*(vec3 Vec, float Scalar)
 
 inline vec3
 operator*(vec3 V, int Scalar)
+{
+    vec3 Result;
+
+    Result.X = Scalar * V.X;
+    Result.Y = Scalar * V.Y;
+    Result.Z = Scalar * V.Z;
+
+    return Result;
+}
+
+inline vec3
+operator*(vec3 V, unsigned int Scalar)
 {
     vec3 Result;
 

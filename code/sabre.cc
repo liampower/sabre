@@ -17,21 +17,20 @@
 #include "sabre_svo.h"
 #include "sabre_data.h"
 
-static constexpr uint SABRE_MAX_TREE_DEPTH = 6;
-static constexpr uint SABRE_SCALE_EXPONENT = 5;
-static constexpr uint SABRE_WORK_SIZE_X = 512;
-static constexpr uint SABRE_WORK_SIZE_Y = 512;
-
 #define OUTPUT_SHADER_ASM 0
-
 
 typedef GLuint gl_uint;
 typedef GLint  gl_int;
 
+static constexpr u32 SABRE_MAX_TREE_DEPTH = 7;
+static constexpr u32 SABRE_SCALE_EXPONENT = 5;
+static constexpr u32 SABRE_WORK_SIZE_X = 512;
+static constexpr u32 SABRE_WORK_SIZE_Y = 512;
+
+
 static constexpr u32 DisplayWidth = 512;
 static constexpr u32 DisplayHeight = 512;
 static constexpr const char* const DisplayTitle = "Sabre";
-
 
 // NOTE(Liam): Forces use of nVidia GPU on hybrid graphics systems.
 extern "C" {
@@ -80,6 +79,14 @@ HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei L
     }
 }
 
+static bool
+PointCubeIntersector(vec3 Min, vec3 Max, const svo* const)
+{
+    const vec3 Cmin = vec3(0);
+    const vec3 Cmax = vec3(64);
+
+    return Any(Equals(Min, Cmin, 0.001f) || Equals(Max, Cmax, 0.001f));
+}
 
 static void
 OutputShaderAssembly(gl_uint ShaderID)
@@ -360,6 +367,19 @@ InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, vec3 CameraPos, svo* const Svo, 
     *RenderData = NewRenderData;
 }
 
+static void
+DeleteVoxelAtMousePoint(f64 MouseX, f64 MouseY, vec3 CameraPos, svo* const Svo, svo_render_data* RenderData)
+{
+    vec3 DeleteP = vec3(CameraPos.X, CameraPos.Y, CameraPos.Z - 1.0f);
+    
+    DeleteVoxel(Svo, DeleteP);
+
+    svo_render_data NewRenderData = UploadOctreeBlockData(Svo);
+    glDeleteBuffers(1, &RenderData->SvoBuffer);
+    glDeleteBuffers(1, &RenderData->FarPtrBuffer);
+    *RenderData = NewRenderData;
+}
+
 
 extern int
 main(int ArgCount, const char** const Args)
@@ -440,7 +460,7 @@ main(int ArgCount, const char** const Args)
     }
 
 #if 1
-    FILE* SvoInFile = fopen("data/Scenes/serapis.9.svo", "rb");
+    /*FILE* SvoInFile = fopen("data/Scenes/serapis.9.svo", "rb");
     svo* WorldSvo = LoadSvoFromFile(SvoInFile);
     if (nullptr == WorldSvo)
     {
@@ -449,14 +469,14 @@ main(int ArgCount, const char** const Args)
         fclose(SvoInFile);
         return EXIT_FAILURE;
     }
-    fclose(SvoInFile);
+    fclose(SvoInFile);*/
 
-    InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
-    //svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
+    svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
+    //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
     //InsertVoxel(WorldSvo, vec3(0, 9, 0), 16);
     //InsertVoxel(WorldSvo, vec3(20, 20, 20), 16);
-    //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
-    //DeleteVoxel(WorldSvo, vec3(0, 4, 0));
+    InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
+    DeleteVoxel(WorldSvo, vec3(0, 0, 0));
 #else
     svo* WorldSvo = ImportGltfToSvo(SABRE_MAX_TREE_DEPTH, "data/TestModels/serapis.glb");
 #endif
@@ -558,8 +578,6 @@ main(int ArgCount, const char** const Args)
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         
-        //ImGui::ShowDemoWindow();
-
         if (ImGui::BeginMainMenuBar())
         {
             ImGui::Text("%fms CPU  %d BLKS  %d LVLS", 1000.0*DeltaTime, WorldSvo->UsedBlockCount, WorldSvo->MaxDepth);
@@ -622,6 +640,11 @@ main(int ArgCount, const char** const Args)
             if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_LEFT))
             {
                 InsertVoxelAtMousePoint(MouseX, MouseY, Cam.Position, WorldSvo, &RenderData);
+            }
+            
+            if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_RIGHT))
+            {
+                DeleteVoxelAtMousePoint(MouseX, MouseY, Cam.Position, WorldSvo, &RenderData);
             }
 
             const f32 DX = (f32)(MouseX - LastMouseX);
