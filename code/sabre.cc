@@ -20,14 +20,8 @@
 
 #define OUTPUT_SHADER_ASM 0
 
-typedef GLuint gl_uint;
-typedef GLint  gl_int;
-
 static constexpr u32 SABRE_MAX_TREE_DEPTH = 7;
 static constexpr u32 SABRE_SCALE_EXPONENT = 5;
-static constexpr u32 SABRE_WORK_SIZE_X = 512;
-static constexpr u32 SABRE_WORK_SIZE_Y = 512;
-
 
 static constexpr u32 DisplayWidth = 512;
 static constexpr u32 DisplayHeight = 512;
@@ -68,26 +62,6 @@ PointCubeIntersector(vec3 Min, vec3 Max, const svo* const)
     const vec3 Cmax = vec3(64);
 
     return Any(Equals(Min, Cmin, 0.001f) || Equals(Max, Cmax, 0.001f));
-}
-
-static void
-OutputShaderAssembly(gl_uint ShaderID)
-{
-    int Length = 0;
-    glGetProgramiv(ShaderID, GL_PROGRAM_BINARY_LENGTH, &Length);
-    printf("size: %d\n", Length);
-    unsigned char* Data = (unsigned char*)malloc(Length);
-    GLsizei DataLength = 0;
-
-    FILE* F = fopen("logs/cs_asm.nv", "wb");
-
-    GLenum BinFormats[64];
-    glGetProgramBinary(ShaderID, Length, &DataLength, BinFormats, Data);
-
-    fwrite(Data, sizeof(unsigned char), DataLength, F);
-
-    fclose(F);
-    free(Data);
 }
 
 static inline f32
@@ -185,7 +159,7 @@ main(int ArgCount, const char** const Args)
     GLFWwindow* Window = glfwCreateWindow(DisplayWidth, DisplayHeight, DisplayTitle, nullptr, nullptr);
     glfwMakeContextCurrent(Window);
     glfwSetWindowPos(Window, 100, 100);
-    //glfwSwapInterval(1);
+    glfwSwapInterval(1);
 
     if (0 == gladLoadGL())
     {
@@ -214,10 +188,6 @@ main(int ArgCount, const char** const Args)
 
     glViewport(0, 0, FramebufferWidth, FramebufferHeight);
     glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
-#if OUTPUT_SHADER_ASM
-    OutputShaderAssembly(ComputeShader);
-#endif
 
 #if 1
     /*FILE* SvoInFile = fopen("data/Scenes/serapis.9.svo", "rb");

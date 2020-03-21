@@ -9,9 +9,10 @@
 static constexpr uint SABRE_WORK_SIZE_X = 512;
 static constexpr uint SABRE_WORK_SIZE_Y = 512;
 
-typedef GLuint  gl_uint;
-typedef GLint   gl_int;
-typedef GLsizei gl_isize;
+typedef GLuint gl_uint;
+typedef GLint  gl_int;
+typedef GLsizei gl_sizei;
+typedef GLenum gl_enum;
 
 // Holds the contextual data required to render a SVO voxel
 // scene with OpenGL.
@@ -420,4 +421,24 @@ UpdateSvoRenderData(const svo* const Svo, sbr_render_data* const RenderDataOut)
 
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, RenderDataOut->SvoBuffer);
     glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+}
+
+
+extern "C" bool
+DEBUGOutputRenderShaderAssembly(const sbr_render_data* const RenderData, FILE* OutFile)
+{
+    gl_sizei DataLength = 0;
+    gl_enum BinFormats[64];
+    gl_int AsmLength = 0;
+
+    glGetProgramiv(RenderData->RenderShader, GL_PROGRAM_BINARY_LENGTH, &AsmLength);
+    unsigned char* ShaderAssembly = (unsigned char*) malloc((usize)AsmLength);
+    glGetProgramBinary(RenderData->RenderShader, AsmLength, &DataLength, BinFormats, ShaderAssembly);
+
+    fwrite(ShaderAssembly, sizeof(unsigned char), (usize)DataLength, OutFile);
+
+    free(ShaderAssembly);
+
+    // TODO(Liam): Error checking
+    return true;
 }

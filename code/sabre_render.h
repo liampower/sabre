@@ -29,4 +29,8 @@ DrawSvoRenderData(const sbr_render_data* const RenderData,
 extern "C" void
 DeleteSvoRenderData(sbr_render_data* RenderData);
 
+
+extern "C" bool
+DEBUGOutputRenderShaderAssembly(const sbr_render_data* const RenderData, FILE* OutFile);
+
 #endif
