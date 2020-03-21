@@ -48,13 +48,6 @@ struct camera
     vec3   Position;
 };
 
-/*struct svo_render_data
-{
-    gl_uint SvoBuffer;
-    gl_uint FarPtrBuffer;
-    // TODO(Liam): Maybe include shader IDs here too?
-};*/
-
 static void
 HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei Length, const GLchar* Msg, const void*)
 {
@@ -122,8 +115,6 @@ CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const)
     const f32 R = 8;
 
     f32 DistanceSqToCube = R * R;
-
-    //printf("MIN (%f, %f, %f), MAX (%f, %f, %f)", Min.X, Min.Y, Min.Z, Max.X, Max.Y, Max.Z);
 
     // STACKOVER
     if (S.X < Min.X) DistanceSqToCube -= Squared(S.X - Min.X);
@@ -194,7 +185,7 @@ main(int ArgCount, const char** const Args)
     GLFWwindow* Window = glfwCreateWindow(DisplayWidth, DisplayHeight, DisplayTitle, nullptr, nullptr);
     glfwMakeContextCurrent(Window);
     glfwSetWindowPos(Window, 100, 100);
-    glfwSwapInterval(1);
+    //glfwSwapInterval(1);
 
     if (0 == gladLoadGL())
     {
@@ -224,28 +215,9 @@ main(int ArgCount, const char** const Args)
     glViewport(0, 0, FramebufferWidth, FramebufferHeight);
     glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-    //gl_uint ComputeShader = CompileComputeShader(RaycasterComputeKernel);
-    //gl_uint MainShader = CompileShader(MainVertexCode, MainFragmentCode);
-
 #if OUTPUT_SHADER_ASM
     OutputShaderAssembly(ComputeShader);
 #endif
-
-    /*if (0 == MainShader)
-    {
-        fprintf(stderr, "Failed to compile shader\n");
-
-        glfwTerminate();
-        return EXIT_FAILURE;
-    }
-
-    if (0 == ComputeShader)
-    {
-        fprintf(stderr, "Failed to compile compute shader\n");
-
-        glfwTerminate();
-        return EXIT_FAILURE;
-    }*/
 
 #if 1
     /*FILE* SvoInFile = fopen("data/Scenes/serapis.9.svo", "rb");
@@ -276,12 +248,11 @@ main(int ArgCount, const char** const Args)
     printf("Scale exponent: %d\n", WorldSvo->ScaleExponent);
 
     // Initialise the render data
-
     sbr_view_data ViewData = { };
     ViewData.ScreenWidth = 512;
     ViewData.ScreenHeight = 512;
 
-    sbr_render_data* RenderData = CreateSvoRenderData(WorldSvo, &ViewData);//UploadOctreeBlockData(WorldSvo);
+    sbr_render_data* RenderData = CreateSvoRenderData(WorldSvo, &ViewData);
     if (nullptr == RenderData)
     {
         fprintf(stderr, "Failed to initialise render data\n");
@@ -289,46 +260,7 @@ main(int ArgCount, const char** const Args)
         glfwTerminate();
         return EXIT_FAILURE;
     }
-    //gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
 
-#if 0
-    if (0 == SvoShaderBuffer)
-    {
-        fprintf(stderr, "Failed to upload octree block data\n");
-
-        glfwTerminate();
-        return EXIT_FAILURE;
-    }
-    // FIXME(Liam): Check render data creation failure
-#endif
-
-    /*glUseProgram(ComputeShader);
-
-    gl_int ViewMatrixUniformLocation = glGetUniformLocation(ComputeShader, "ViewMatrixUniform");
-
-    glUseProgram(nainShader);
-    glUniform1i(glGetUniformLocation(MainShader, "RenderedTextureUniform"), 0);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, RenderData.SvoBuffer);*/
-
-
-    /*gl_uint VAO, VBO;
-    {
-        glGenBuffers(1, &VBO);
-        glGenVertexArrays(1, &VAO);
-
-        assert(VAO);
-        assert(VBO);
-
-        glBindVertexArray(VAO);
-
-        glBindBuffer(GL_ARRAY_BUFFER, VBO);
-        glBufferData(GL_ARRAY_BUFFER, 12*sizeof(f32), ScreenQuadVerts, GL_STATIC_DRAW);
-
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
-        glEnableVertexAttribArray(0);
-
-        glBindVertexArray(0);
-    }*/
 
     camera Cam = { };
     Cam.Forward = vec3(0, 0, -1);
@@ -450,24 +382,6 @@ main(int ArgCount, const char** const Args)
             { -Cam.Forward.X, -Cam.Forward.Y, -Cam.Forward.Z },
         };
 
-        /*glBindBuffer(GL_SHADER_STORAGE_BUFFER, RenderData.SvoBuffer);
-        glUseProgram(ComputeShader);
-        glUniformMatrix3fv(ViewMatrixUniformLocation, 1, GL_TRUE, *CameraMatrix);
-        f32 F[3] = { Cam.Position.X, Cam.Position.Y, Cam.Position.Z };
-        glUniform3fv(glGetUniformLocation(ComputeShader, "ViewPosUniform"), 1, F);
-        glDispatchCompute(SABRE_WORK_SIZE_X/8, SABRE_WORK_SIZE_Y/8, 1);
-
-        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-
-        glUseProgram(MainShader);
-        glBindVertexArray(VAO);
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, OutputTexture);
-
-        glBindBuffer(GL_ARRAY_BUFFER, VBO);
-        glDrawArrays(GL_TRIANGLES, 0, 6);*/
-
         f32 F[3] = { Cam.Position.X, Cam.Position.Y, Cam.Position.Z };
         ViewData.CamTransform = (float*)CameraMatrix;
         ViewData.CamPos = F;
@@ -486,21 +400,10 @@ main(int ArgCount, const char** const Args)
     DeleteSparseVoxelOctree(WorldSvo);
     DeleteSvoRenderData(RenderData);
 
-    /*glUseProgram(0);
-
-    glDeleteProgram(MainShader);
-    glDeleteProgram(ComputeShader);
-
-    glDeleteBuffers(1, &RenderData.SvoBuffer);
-    glDeleteBuffers(1, &RenderData.FarPtrBuffer);
-
-    glDeleteVertexArrays(1, &VAO);
-    glDeleteBuffers(1, &VBO);*/
-
-
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
+
     glfwTerminate();
 
     return EXIT_SUCCESS;

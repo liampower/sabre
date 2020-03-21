@@ -277,7 +277,6 @@ UploadOctreeBlockData(const svo* const Svo)
 extern "C" void
 DrawSvoRenderData(const sbr_render_data* const RenderData, const sbr_view_data* const ViewData)
 {
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, RenderData->SvoBuffer);
     glUseProgram(RenderData->RenderShader);
     glUniformMatrix3fv(RenderData->ViewMatUniformLocation, 1, GL_TRUE, ViewData->CamTransform);
     glUniform3fv(RenderData->ViewPosUniformLocation, 1, ViewData->CamPos);
@@ -289,7 +288,6 @@ DrawSvoRenderData(const sbr_render_data* const RenderData, const sbr_view_data* 
     glUseProgram(RenderData->CanvasShader);
     glBindVertexArray(RenderData->CanvasVAO);
 
-    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, RenderData->RenderImage);
 
     glBindBuffer(GL_ARRAY_BUFFER, RenderData->CanvasVBO);
@@ -346,6 +344,9 @@ CreateSvoRenderData(const svo* const Tree, const sbr_view_data* const ViewData)
 
     RenderData->ViewMatUniformLocation = glGetUniformLocation(RenderData->RenderShader, "ViewMatrixUniform");
     RenderData->ViewPosUniformLocation = glGetUniformLocation(RenderData->RenderShader, "ViewPosUniform");
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, RenderData->SvoBuffer);
+    glActiveTexture(GL_TEXTURE0);
 
     return RenderData;
 }
