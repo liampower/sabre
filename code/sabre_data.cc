@@ -366,7 +366,7 @@ vec3 Raycast(in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
-                        return vec3(1, 0, 0);
+                        return Oct2Cr(CurrentOct); 
                         //vec3 N = abs(BoxNormal(NodeMin, NodeMax, sign(R.Dir)));
                         //return 0.2 + dot(N, R.Dir) * vec3(1, 1, 1);
                     }

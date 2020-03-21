@@ -1,6 +1,7 @@
 #ifndef SABRE_SVO_H
 #define SABRE_SVO_H
 
+#include "sabre.h"
 #include "sabre_math.h"
 
 static constexpr u32 SVO_ENTRIES_PER_BLOCK  = 8192;

@@ -908,7 +908,7 @@ DeleteVoxel(svo* Tree, vec3 VoxelP)
 
     // Always go down to leaf scale (cheat at mem. mgmt!)
     u32 MaxScale = GetTreeMaxScaleBiased(Tree);
-    u32 MinScale = GetTreeMinScaleBiased(Tree);
+    u32 MinScale = GetTreeMinScaleBiased(Tree) << 1;
 
     node_ref ParentNodeRef = { Tree->RootBlock, &Tree->RootBlock->Entries[0] };
 

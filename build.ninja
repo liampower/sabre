@@ -1,6 +1,6 @@
 Compiler = clang
 DisabledWarnings = -Wno-unused-parameter -Wno-c++98-compat -Wno-gnu-anonymous-struct -Wno-old-style-cast -Wno-unused-function -Wno-double-promotion
-CompilerFlags = -isystem include -Wall -Wextra -pedantic -Weverything -Wpadded -std=c++14 -mavx2 -g -gcodeview -fno-omit-frame-pointer -fno-exceptions -fno-rtti -ffast-math $DisabledWarnings
+CompilerFlags = -isystem include -Wall -Wextra -pedantic -Weverything -Wpadded -std=c++14 -mavx2 -Os -fno-omit-frame-pointer -fno-exceptions -fno-rtti -ffast-math $DisabledWarnings
 Linker = link -nologo
 Libs = imgui.lib glad.lib glfw3.lib opengl32.lib kernel32.lib user32.lib gdi32.lib shell32.lib
 LinkerFlags = -incremental:no -debug -entry:mainCRTStartup -libpath:libs -machine:x64 -nodefaultlib:libcmt $Libs -natvis:misc/svo.natvis
@@ -29,8 +29,9 @@ build sabre.o: compile code/sabre.cc
 build sabre_svo.o: compile code/sabre_svo.cc
 build sabre_data.o: compile code/sabre_data.cc
 build sabre_import.o: compile code/sabre_import.cc
+build sabre_render.o: compile code/sabre_render.cc
 
-build sabre.exe: link sabre.o sabre_svo.o sabre_data.o sabre_import.o | tags
+build sabre.exe: link sabre.o sabre_svo.o sabre_data.o sabre_import.o sabre_render.o | tags
 
 build run phony: run_this sabre.exe
 
