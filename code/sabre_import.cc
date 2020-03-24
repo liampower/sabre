@@ -25,11 +25,6 @@ struct tri3
     vec3 V2;
 };
 
-
-static u64 TriangleBitmapX[128]; // 8192 max dim
-static u64 TriangleBitmapY[128]; // 8192 max dim
-static u64 TriangleBitmapZ[128]; // 8192 max dim
-
 static inline u32
 Part1By2(u32 X)
 {
@@ -429,13 +424,6 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
 
         u32 RootCode = EncodeMorton3(ParentCentreP.X, ParentCentreP.Y, ParentCentreP.Z);
         IndexOut.insert(RootCode);
-
-        /*usize OffsetX = (u32)ParentCentreP.X / 64;
-        usize OffsetY = (u32)ParentCentreP.Y / 64;
-        usize OffsetZ = (u32)ParentCentreP.Z / 64;
-        TriangleBitmapX[OffsetX] |= (1 << (u32)ParentCentreP.X % 64);
-        TriangleBitmapY[OffsetY] |= (1 << (u32)ParentCentreP.X % 64);
-        TriangleBitmapZ[OffsetZ] |= (1 << (u32)ParentCentreP.X % 64);*/
 
         while (false == Stack.empty())
         {

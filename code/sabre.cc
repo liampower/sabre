@@ -2,7 +2,6 @@
 #include <imgui/imgui_impl_glfw.h>
 #include <imgui/imgui_impl_opengl3.h>
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -17,8 +16,6 @@
 #include "sabre_svo.h"
 #include "sabre_data.h"
 #include "sabre_render.h"
-
-#define OUTPUT_SHADER_ASM 0
 
 static constexpr u32 SABRE_MAX_TREE_DEPTH = 7;
 static constexpr u32 SABRE_SCALE_EXPONENT = 5;
