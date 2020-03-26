@@ -52,15 +52,6 @@ HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei L
     }
 }
 
-static bool
-PointCubeIntersector(vec3 Min, vec3 Max, const svo* const)
-{
-    const vec3 Cmin = vec3(0);
-    const vec3 Cmax = vec3(64);
-
-    return Any(Equals(Min, Cmin, 0.001f) || Equals(Max, Cmax, 0.001f));
-}
-
 static inline f32
 Squared(f32 X)
 {
@@ -208,12 +199,6 @@ main(int ArgCount, const char** const Args)
     svo* WorldSvo = ImportGltfToSvo(SABRE_MAX_TREE_DEPTH, "data/TestModels/serapis.glb");
 #endif
 
-    printf("BlkCount: %u\n", WorldSvo->UsedBlockCount);
-    printf("Bias: %u\n", WorldSvo->Bias);
-    printf("Inv Bias: %f\n", (f64)WorldSvo->InvBias);
-    printf("Max Depth: %d\n", WorldSvo->MaxDepth);
-    printf("Scale exponent: %d\n", WorldSvo->ScaleExponent);
-
     // Initialise the render data
     sbr_view_data ViewData = { };
     ViewData.ScreenWidth = 512;
@@ -259,7 +244,7 @@ main(int ArgCount, const char** const Args)
         
         if (ImGui::BeginMainMenuBar())
         {
-            ImGui::Text("%fms CPU  %d BLKS  %d LVLS", 1000.0*DeltaTime, WorldSvo->UsedBlockCount, WorldSvo->MaxDepth);
+            ImGui::Text("%fms CPU  %d BLKS  %d LVLS", 1000.0*DeltaTime, GetSvoUsedBlockCount(WorldSvo), GetSvoDepth(WorldSvo));
             ImGui::EndMainMenuBar();
         }
 

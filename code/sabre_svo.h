@@ -13,18 +13,6 @@ static_assert(SVO_FAR_PTRS_PER_BLOCK >= SVO_ENTRIES_PER_BLOCK, "Far Ptrs Per Blk
 
 struct svo_block;
 
-enum svo_oct
-{
-    OCT_C000 = 0,
-    OCT_C001 = 1,
-    OCT_C010 = 2,
-    OCT_C011 = 3,
-    OCT_C100 = 4,
-    OCT_C101 = 5,
-    OCT_C110 = 6,
-    OCT_C111 = 7
-};
-
 struct far_ptr
 {
     // Index of the child node's block
@@ -124,6 +112,12 @@ OutputSvoToFile(const svo* const Svo, FILE* FileOut);
 
 extern "C" svo*
 LoadSvoFromFile(FILE* FileIn);
+
+extern "C" unsigned int
+GetSvoUsedBlockCount(const svo* const Svo);
+
+extern "C" unsigned int
+GetSvoDepth(const svo* const Svo);
 
 static inline void
 DEBUGPrintVec3(vec3 V)

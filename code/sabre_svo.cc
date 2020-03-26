@@ -9,6 +9,19 @@
 
 static constexpr u16 SVO_NODE_CHILD_PTR_MSK = 0x7FFFU;
 
+
+enum svo_oct
+{
+    OCT_C000 = 0,
+    OCT_C001 = 1,
+    OCT_C010 = 2,
+    OCT_C011 = 3,
+    OCT_C100 = 4,
+    OCT_C101 = 5,
+    OCT_C110 = 6,
+    OCT_C111 = 7
+};
+
 enum svo_voxel_type
 {
     VOXEL_PARENT = 0U,
@@ -405,14 +418,14 @@ AllocateNewNode(svo_block* const ParentBlk, svo* const Tree)
         svo_block* NewBlk = AllocateAndLinkNewBlock(Tree->LastBlock, Tree);
         svo_node* NewNode = &NewBlk->Entries[NewBlk->NextFreeSlot];
 
-        return { NewBlk, NewNode };
+        return node_ref{ NewBlk, NewNode };
     }
     else
     {
         svo_node* NewNode = &ParentBlk->Entries[ParentBlk->NextFreeSlot];
         ++ParentBlk->NextFreeSlot;
 
-        return { ParentBlk, NewNode };
+        return node_ref{ ParentBlk, NewNode };
     }
 }
 
@@ -1142,5 +1155,17 @@ DeleteSparseVoxelOctree(svo* Tree)
     }
 
     free(Tree);
+}
+
+extern "C" unsigned int
+GetSvoUsedBlockCount(const svo* const Svo)
+{
+    return Svo->UsedBlockCount;
+}
+
+extern "C" unsigned int
+GetSvoDepth(const svo* const Svo)
+{
+    return Svo->MaxDepth;
 }
 
