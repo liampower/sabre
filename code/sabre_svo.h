@@ -6,7 +6,6 @@
 
 static constexpr u32 SVO_ENTRIES_PER_BLOCK  = 8192;
 static constexpr u32 SVO_FAR_PTRS_PER_BLOCK = 8192;
-static constexpr u32 SVO_FAR_PTR_BIT_MASK   = 0x8000;
 
 static_assert(SVO_FAR_PTRS_PER_BLOCK >= SVO_ENTRIES_PER_BLOCK, "Far Ptrs Per Blk must be >= Entries per Blk");
 

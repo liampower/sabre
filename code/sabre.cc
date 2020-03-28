@@ -98,6 +98,52 @@ CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const)
     }
 }
 
+static inline svo*
+CreateCubeSphereTestScene(void)
+{
+    svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
+    InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
+    InsertVoxel(WorldSvo, vec3(0, 17, 0), 16);
+    //InsertVoxel(WorldSvo, vec3(20, 20, 20), 16);
+    //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
+    DeleteVoxel(WorldSvo, vec3(0, 0, 0));
+
+    return WorldSvo;
+}
+
+
+static inline svo*
+CreateImportedMeshTestScene(const char* const GLBFileName)
+{
+    return ImportGltfToSvo(SABRE_MAX_TREE_DEPTH, GLBFileName);
+}
+
+static inline svo*
+CreateLoadedMeshTestScene(const char* const SvoMeshFileName)
+{
+    FILE* SvoInFile;
+    errno_t Result = fopen_s(&SvoInFile, SvoMeshFileName, "rb");
+
+    if (0 == Result)
+    {
+        svo* WorldSvo = LoadSvoFromFile(SvoInFile);
+
+        if (nullptr == WorldSvo)
+        {
+            fprintf(stderr, "Failed to load SVO file\n");
+        }
+
+        fclose(SvoInFile);
+
+        return WorldSvo;
+
+    }
+    else
+    {
+        return nullptr;
+    }
+}
+
 
 static void
 InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, vec3 CameraPos, svo* const Svo)
@@ -177,27 +223,7 @@ main(int ArgCount, const char** const Args)
     glViewport(0, 0, FramebufferWidth, FramebufferHeight);
     glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-#if 1
-    /*FILE* SvoInFile = fopen("data/Scenes/serapis.9.svo", "rb");
-    svo* WorldSvo = LoadSvoFromFile(SvoInFile);
-    if (nullptr == WorldSvo)
-    {
-        fprintf(stderr, "Failed to load SVO file\n");
-        glfwTerminate();
-        fclose(SvoInFile);
-        return EXIT_FAILURE;
-    }
-    fclose(SvoInFile);*/
-
-    svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
-    InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
-    //InsertVoxel(WorldSvo, vec3(0, 17, 0), 16);
-    //InsertVoxel(WorldSvo, vec3(20, 20, 20), 16);
-    //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
-    DeleteVoxel(WorldSvo, vec3(0, 0, 0));
-#else
-    svo* WorldSvo = ImportGltfToSvo(SABRE_MAX_TREE_DEPTH, "data/TestModels/serapis.glb");
-#endif
+    svo* WorldSvo = CreateCubeSphereTestScene();
 
     // Initialise the render data
     sbr_view_data ViewData = { };

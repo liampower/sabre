@@ -67,11 +67,11 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
 {
     //                THE BEAST AWAITS
 
-    static const m128 F32SgnMsk = _mm_set1_ps(-0.0f);
-    static const m128 Zero4 = _mm_set1_ps(0.0f);
+    const m128 F32SgnMsk = _mm_set1_ps(-0.0f);
+    const m128 Zero4 = _mm_set1_ps(0.0f);
 
     // Stackoverflow: https://stackoverflow.com/a/20084034/3121161
-    const m128 NRadius = _mm_xor_ps(Radius, F32SgnMsk);
+    m128 NRadius = _mm_xor_ps(Radius, F32SgnMsk);
 
     // Transformed triangle vertices
     m128 V0 = _mm_sub_ps(Tri[0], Centre);
@@ -83,8 +83,7 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
     m128 E1 = _mm_sub_ps(V2, V1);
     m128 E2 = _mm_sub_ps(V0, V2);
     
-    
-    // Test the bounding box of the triangle against the box
+    // Test the bounding box of the triangle against that of the box
     m128 TriMin = _mm_min_ps(_mm_min_ps(V0, V1), V2);
     int MinMask = _mm_movemask_ps(_mm_cmpgt_ps(TriMin, Radius));
     if (0x0 != (0x7 & MinMask)) return false;
@@ -97,23 +96,18 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
     //      W Z Y X
     {
         // Check if triangle and box overlap on the triangle's normal axis.
-        m128 E1_YZXW = _mm_shuffle_ps(E1, E1, _MM_SHUFFLE(3, 0, 2, 1));//_MM_SHUFFLE(1, 2, 0, 3));
-        m128 E0_YZXW = _mm_shuffle_ps(E0, E0, _MM_SHUFFLE(3, 0, 2, 1));//_MM_SHUFFLE(1, 2, 0, 3));
+        m128 E1_YZXW = _mm_shuffle_ps(E1, E1, _MM_SHUFFLE(3, 0, 2, 1));
+        m128 E0_YZXW = _mm_shuffle_ps(E0, E0, _MM_SHUFFLE(3, 0, 2, 1));
         m128 XP_ZXYW = _mm_sub_ps(_mm_mul_ps(E1_YZXW, E0), _mm_mul_ps(E0_YZXW, E1));
 
         // Reshuffle to get the correct cross product
-        m128 TNormal = _mm_shuffle_ps(XP_ZXYW, XP_ZXYW, _MM_SHUFFLE(3, 0, 2, 1));//_MM_SHUFFLE(1, 2, 0, 3)); 
+        m128 TNormal = _mm_shuffle_ps(XP_ZXYW, XP_ZXYW, _MM_SHUFFLE(3, 0, 2, 1));
 
         m128 Rv = _mm_sub_ps(Radius, V0);
         m128 NRv = _mm_sub_ps(NRadius, V0);
 
         // Positive (>0) mask
         m128 Pmsk = _mm_cmpgt_ps(TNormal, _mm_set1_ps(0.0));
-        //m128 Xmsk = _mm_xor_ps(NRv, Rv);
-        // Select parts of Rv according to TNormal > 0, otherwise use NRV
-        //m128 VMax = _mm_xor_ps(_mm_and_ps(Pmsk, Xmsk), Rv); // Gregory, pp. 347 - 348
-        // Select parts of NRv according to TNormal < 0, otherwise use Rv
-        //m128 VMin = _mm_xor_ps(_mm_and_ps(Pmsk, Xmsk), NRv);
         m128 VMax = _mm_blendv_ps(NRv, Rv, Pmsk);
         m128 VMin = _mm_blendv_ps(Rv, NRv, Pmsk);
 
@@ -154,10 +148,10 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
     // rad1 = F0z*Hx + F0x*Hz
     // rad2 = F0y*Hx + F0x*Hy
     //
-    m128 F0_ZZYW = _mm_shuffle_ps(F0, F0, _MM_SHUFFLE(3, 1, 2, 2));//_MM_SHUFFLE(2, 2, 1, 3));
-    m128 F0_YXXW = _mm_shuffle_ps(F0, F0, _MM_SHUFFLE(3, 0, 0, 1));//_MM_SHUFFLE(1, 0, 0, 3));
-    m128 H_YXXW = _mm_shuffle_ps(Radius, Radius, _MM_SHUFFLE(3, 0, 0, 1));//_MM_SHUFFLE(1, 0, 0, 3));
-    m128 H_ZZYW = _mm_shuffle_ps(Radius, Radius, _MM_SHUFFLE(3, 1, 2, 2));//_MM_SHUFFLE(2, 2, 1, 3));
+    m128 F0_ZZYW = _mm_shuffle_ps(F0, F0, _MM_SHUFFLE(3, 1, 2, 2));
+    m128 F0_YXXW = _mm_shuffle_ps(F0, F0, _MM_SHUFFLE(3, 0, 0, 1));
+    m128 H_YXXW = _mm_shuffle_ps(Radius, Radius, _MM_SHUFFLE(3, 0, 0, 1));
+    m128 H_ZZYW = _mm_shuffle_ps(Radius, Radius, _MM_SHUFFLE(3, 1, 2, 2));
     m128 R_123 = _mm_add_ps(_mm_mul_ps(F0_ZZYW, H_YXXW), _mm_mul_ps(F0_YXXW, H_ZZYW));
     m128 NR_123 = _mm_xor_ps(R_123, F32SgnMsk);
     // p2_1 = e0z.v2y - e0y.v2z
@@ -168,21 +162,18 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
 	// p0 = e0x*v0z - e0z*v0x
 	// p0 = e0y*v1x - e0x*v1y
 
-    m128 E0_ZXYW = _mm_shuffle_ps(E0, E0, _MM_SHUFFLE(3, 1, 0, 2));//_MM_SHUFFLE(2, 0, 1, 3));
-    m128 E0_YZXW = _mm_shuffle_ps(E0, E0, _MM_SHUFFLE(3, 0, 2, 1));//_MM_SHUFFLE(1, 2, 0, 3));
-    m128 V0YZV1X = _mm_shuffle_ps(V0, V1, _MM_SHUFFLE(3, 4, 2, 1));//_MM_SHUFFLE(1, 2, 4, 3));
-    m128 V0ZXV1Y = _mm_shuffle_ps(V0, V1, _MM_SHUFFLE(3, 5, 0, 2));//_MM_SHUFFLE(2, 0, 5, 3));
+    m128 E0_ZXYW = _mm_shuffle_ps(E0, E0, _MM_SHUFFLE(3, 1, 0, 2));
+    m128 E0_YZXW = _mm_shuffle_ps(E0, E0, _MM_SHUFFLE(3, 0, 2, 1));
+    m128 V0YZV1X = _mm_shuffle_ps(V0, V1, _MM_SHUFFLE(3, 4, 2, 1));
+    m128 V0ZXV1Y = _mm_shuffle_ps(V0, V1, _MM_SHUFFLE(3, 5, 0, 2));
 
     m128 P0_123 = _mm_sub_ps(_mm_mul_ps(E0_ZXYW, V0YZV1X), _mm_mul_ps(E0_YZXW, V0ZXV1Y));
 
-    //m128 E0_ZZYW = _mm_shuffle_ps(E0, E0, _MM_SHUFFLE(3, 1, 2, 2));//_MM_SHUFFLE(2, 2, 1, 3));
-    //m128 E0_YXXW = _mm_shuffle_ps(E0, E0, _MM_SHUFFLE(3, 1, 1, 0));//_MM_SHUFFLE(0, 1, 1, 3));
-    m128 V2_YZXW = _mm_shuffle_ps(V2, V2, _MM_SHUFFLE(3, 0, 2, 1));//_MM_SHUFFLE(1, 2, 0, 3));
-    m128 V2_ZXYW = _mm_shuffle_ps(V2, V2, _MM_SHUFFLE(3, 1, 0, 2));//_MM_SHUFFLE(2, 0, 1, 3));
+    m128 V2_YZXW = _mm_shuffle_ps(V2, V2, _MM_SHUFFLE(3, 0, 2, 1));
+    m128 V2_ZXYW = _mm_shuffle_ps(V2, V2, _MM_SHUFFLE(3, 1, 0, 2));
 
 
     m128 P2_123 = _mm_sub_ps(_mm_mul_ps(E0_ZXYW, V2_YZXW), _mm_mul_ps(E0_YZXW, V2_ZXYW));
-
 
 
     // Get min, max between 
@@ -203,22 +194,22 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
     // p2_2 = e1x.v2z - e1z.v2x
     // p2_3 = e1y.v1x - e1x.v1y
 
-    m128 E1_ZXYW = _mm_shuffle_ps(E1, E1, _MM_SHUFFLE(3, 1, 0, 2));//_MM_SHUFFLE(2, 0, 1, 3));
-    m128 E1_YZXW = _mm_shuffle_ps(E1, E1, _MM_SHUFFLE(3, 0, 2, 1));//_MM_SHUFFLE(1, 2, 0, 3));
-    m128 V0_YZXW = _mm_shuffle_ps(V0, V0, _MM_SHUFFLE(3, 0, 2, 1));//_MM_SHUFFLE(1, 2, 0, 3));
-    m128 V0_ZXYW = _mm_shuffle_ps(V0, V0, _MM_SHUFFLE(3, 1, 0, 2));//_MM_SHUFFLE(2, 0, 1, 3));
+    m128 E1_ZXYW = _mm_shuffle_ps(E1, E1, _MM_SHUFFLE(3, 1, 0, 2));
+    m128 E1_YZXW = _mm_shuffle_ps(E1, E1, _MM_SHUFFLE(3, 0, 2, 1));
+    m128 V0_YZXW = _mm_shuffle_ps(V0, V0, _MM_SHUFFLE(3, 0, 2, 1));
+    m128 V0_ZXYW = _mm_shuffle_ps(V0, V0, _MM_SHUFFLE(3, 1, 0, 2));
     P0_123 = _mm_sub_ps(_mm_mul_ps(E1_ZXYW, V0_YZXW), _mm_mul_ps(E1_YZXW, V0_ZXYW));
 
-    m128 V2YV2XV1X = _mm_shuffle_ps(V2, V1, _MM_SHUFFLE(3, 4, 2, 1));//_MM_SHUFFLE(1, 2, 4, 3));
-    m128 V2ZV2XV1Y = _mm_shuffle_ps(V2, V1, _MM_SHUFFLE(3, 5, 0, 2));//_MM_SHUFFLE(2, 0, 5, 3));
+    m128 V2YV2XV1X = _mm_shuffle_ps(V2, V1, _MM_SHUFFLE(3, 4, 2, 1));
+    m128 V2ZV2XV1Y = _mm_shuffle_ps(V2, V1, _MM_SHUFFLE(3, 5, 0, 2));
     P2_123 = _mm_sub_ps(_mm_mul_ps(E1_ZXYW, V2YV2XV1X), _mm_mul_ps(E1_YZXW, V2ZV2XV1Y));
 
 
     // rad0 = F1z.Hy + F1y.Hz
     // rad1 = F1z.Hx + F1x.Hz
     // rad2 = F1y.Hx + F1x.Hy
-    m128 F1_ZZYW = _mm_shuffle_ps(F1, F1, _MM_SHUFFLE(3, 1, 2, 2));//_MM_SHUFFLE(2, 2, 1, 3));
-    m128 F1_YXXW = _mm_shuffle_ps(F1, F1, _MM_SHUFFLE(3, 0, 0, 1));//_MM_SHUFFLE(1, 0, 0, 3));
+    m128 F1_ZZYW = _mm_shuffle_ps(F1, F1, _MM_SHUFFLE(3, 1, 2, 2));
+    m128 F1_YXXW = _mm_shuffle_ps(F1, F1, _MM_SHUFFLE(3, 0, 0, 1));
 
     R_123 = _mm_add_ps(_mm_mul_ps(F1_ZZYW, H_YXXW), _mm_mul_ps(F1_YXXW, H_ZZYW));
     NR_123 = _mm_xor_ps(F32SgnMsk, R_123);
@@ -243,19 +234,19 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
     // rad0 = F2z.Hy + F2y.Hz
     // rad1 = F2z.Hx + F2x.Hz
     // rad2 = F2y.Hx + F2x.Hy
-    m128 E2_ZXYW = _mm_shuffle_ps(E2, E2, _MM_SHUFFLE(3, 1, 0, 2));//_MM_SHUFFLE(2, 0, 1, 3));
-    m128 E2_YZXW = _mm_shuffle_ps(E2, E2, _MM_SHUFFLE(3, 0, 2, 1));//_MM_SHUFFLE(1, 2, 0, 3));
+    m128 E2_ZXYW = _mm_shuffle_ps(E2, E2, _MM_SHUFFLE(3, 1, 0, 2));
+    m128 E2_YZXW = _mm_shuffle_ps(E2, E2, _MM_SHUFFLE(3, 0, 2, 1));
     P0_123 = _mm_sub_ps(_mm_mul_ps(E2_ZXYW, V0YZV1X), _mm_mul_ps(E2_YZXW, V0ZXV1Y));
 
-    m128 V1YZV2X = _mm_shuffle_ps(V1, V2, _MM_SHUFFLE(3, 4, 2, 1));//_MM_SHUFFLE(1, 2, 4, 3));
-    m128 V1ZXV2Y = _mm_shuffle_ps(V1, V2, _MM_SHUFFLE(3, 5, 0, 2));//_MM_SHUFFLE(2, 0, 5, 3));
+    m128 V1YZV2X = _mm_shuffle_ps(V1, V2, _MM_SHUFFLE(3, 4, 2, 1));
+    m128 V1ZXV2Y = _mm_shuffle_ps(V1, V2, _MM_SHUFFLE(3, 5, 0, 2));
     P2_123 = _mm_sub_ps(_mm_mul_ps(E2_ZXYW, V1YZV2X), _mm_mul_ps(E2_YZXW, V1ZXV2Y));
 
     P_Min = _mm_min_ps(P0_123, P2_123);
     P_Max = _mm_max_ps(P0_123, P2_123);
 
-    m128 F2_ZZYW = _mm_shuffle_ps(F2, F2, _MM_SHUFFLE(3, 1, 2, 2));//_MM_SHUFFLE(2, 2, 1, 3));
-    m128 F2_YXXW = _mm_shuffle_ps(F2, F2, _MM_SHUFFLE(3, 0, 0, 1));//_MM_SHUFFLE(1, 0, 0, 3));
+    m128 F2_ZZYW = _mm_shuffle_ps(F2, F2, _MM_SHUFFLE(3, 1, 2, 2));
+    m128 F2_YXXW = _mm_shuffle_ps(F2, F2, _MM_SHUFFLE(3, 0, 0, 1));
     R_123 = _mm_add_ps(_mm_mul_ps(F2_ZZYW, H_YXXW), _mm_mul_ps(F2_YXXW, H_ZZYW));
     NR_123 = _mm_xor_ps(F32SgnMsk, R_123);
     
@@ -585,7 +576,6 @@ ImportGltfToSvo(u32 MaxDepth, const char* const GLTFPath)
         GlobalTriangleIndex.reserve(TriangleData->TriangleCount);
         BuildTriangleIndex(MaxDepth, ScaleExponent, TriangleData, GlobalTriangleIndex);
 
-        // TODO(Liam): Figure out max scale exponent from max/min in data
         svo* Svo = CreateSparseVoxelOctree(ScaleExponent, MaxDepth, &IntersectorFunction);
 
         free(TriangleData);
