@@ -7,7 +7,7 @@
 #include "sabre_math.h"
 #include "sabre_svo.h"
 
-static constexpr u16 SVO_NODE_CHILD_PTR_MSK = 0x7FFFU;
+static constexpr u16 CHILD_PTR_MSK = 0x7FFFU;
 
 
 enum svo_oct
@@ -110,7 +110,7 @@ PushFarPtr(far_ptr FarPtr, svo_block* Blk)
 static inline node_ref
 GetTreeRootNodeRef(const svo* const Tree)
 {
-    return { Tree->RootBlock, &Tree->RootBlock->Entries[0] };
+    return node_ref{ Tree->RootBlock, &Tree->RootBlock->Entries[0] };
 }
 
 static inline far_ptr*
@@ -118,7 +118,7 @@ GetFarPointer(svo_node* Node, svo_block* Blk)
 {
     if (HasFarChildren(Node))
     {
-        u16 FarPtrIndex = Node->ChildPtr & SVO_NODE_CHILD_PTR_MSK;
+        u16 FarPtrIndex = Node->ChildPtr & CHILD_PTR_MSK;
 
         return &Blk->FarPtrs[FarPtrIndex];
     }
@@ -218,13 +218,67 @@ GetNodeChildOffset(svo_node* Parent, svo_oct ChildOct)
 
 
 static node_ref
+GetNodeChild(node_ref ParentRef, svo_oct ChildOct)
+{
+    // Offset value from 0 - 7 of the particular child we are
+    // interested in from the first child.
+    u32 ChildOffset = GetNodeChildOffset(ParentRef.Node, ChildOct);
+
+    // How many blocks (forwards or backwards) we need to go
+    // from the parent block to reach the block containing the
+    // child.
+    i32 BlksToJump = 0;
+
+    u32 FirstChildIndex = 0;
+
+    if (HasFarChildren(ParentRef.Node))
+    {
+        u32 FarPtrIndex = ParentRef.Node->ChildPtr & CHILD_PTR_MSK;
+        far_ptr* FarPtr = &ParentRef.Blk->FarPtrs[FarPtrIndex];
+        FirstChildIndex = FarPtr->NodeOffset;
+
+        i32 BlksFromParent = (i32)FarPtr->BlkIndex - (i32)ParentRef.Blk->Index;
+        i32 BlksFromFirst = (i32)((FirstChildIndex + ChildOffset) / SVO_ENTRIES_PER_BLOCK);
+
+        BlksToJump = BlksFromParent + BlksFromFirst;
+    }
+    else
+    {
+        FirstChildIndex = ParentRef.Node->ChildPtr & CHILD_PTR_MSK;
+        i32 BlksFromFirst = (i32)((FirstChildIndex + ChildOffset) / SVO_ENTRIES_PER_BLOCK);
+
+        BlksToJump = BlksFromFirst;
+    }
+
+    svo_block* ChildBlk = ParentRef.Blk;
+    i32 BlksJumped = 0;
+    while (BlksJumped != BlksToJump)
+    {
+        if (BlksToJump < 0)
+        {
+            ChildBlk = ChildBlk->Prev;
+            --BlksJumped;
+        }
+        else
+        {
+            ChildBlk = ChildBlk->Next;
+            ++BlksJumped;
+        }
+    }
+
+    u32 ChildIndex = (FirstChildIndex + ChildOffset) % SVO_ENTRIES_PER_BLOCK;
+
+    return node_ref{ ChildBlk, &ChildBlk->Entries[ChildIndex] };
+}
+
+static node_ref
 GetNodeChildWithBlock(svo_node* Parent, svo_block* ParentBlk, svo_oct ChildOct)
 {
     node_ref Result = { };
 
     u32 ChildOffset = GetNodeChildOffset(Parent, ChildOct);
 
-    u32 ChildPtrBase = Parent->ChildPtr & SVO_NODE_CHILD_PTR_MSK;
+    u32 ChildPtrBase = Parent->ChildPtr & CHILD_PTR_MSK;
 
     if (HasFarChildren(Parent))
     {
@@ -308,7 +362,7 @@ LinkParentAndChildNodes(node_ref ParentRef, node_ref ChildRef)
     u16 ChildOffset = (u16)(ChildRef.Node - ChildRef.Blk->Entries);
 
     // Extract first 15 bits
-    u16 ChildPtrBits = ChildOffset & SVO_NODE_CHILD_PTR_MSK;
+    u16 ChildPtrBits = ChildOffset & CHILD_PTR_MSK;
 
     // If the child node is in the same block as the parent node, all we need to do
     // is set the parent's child ptr to the child offset from the beginning of
@@ -338,7 +392,7 @@ SetNodeChildPointer(svo_node* Child, svo_block* ChildBlk, svo_block* ParentBlk, 
     u16 ChildOffset = (u16)(Child - ChildBlk->Entries);
 
     // Extract first 15 bits
-    u16 ChildPtrBits = ChildOffset & SVO_NODE_CHILD_PTR_MSK;
+    u16 ChildPtrBits = ChildOffset & CHILD_PTR_MSK;
 
     // If the child node is in the same block as the parent node, all we need to do
     // is set the parent's child ptr to the child offset from the beginning of
@@ -719,28 +773,18 @@ InsertChild(node_ref* ParentRef, svo_oct ChildOct, svo* Tree, svo_voxel_type Typ
 
         if (ChildOct == Oct && Type == VOXEL_PARENT)
         {
-            svo_node* NewChild = AllocateNode(Tree->LastBlock);
+            InsertedChildRef = AllocateNewNode(Tree->LastBlock, Tree);
 
-            if (nullptr == NewChild)
+            if (false == InsertedNewChild)
             {
-                AllocateAndLinkNewBlock(Tree->LastBlock, Tree);
-                NewChild = AllocateNode(Tree->LastBlock);
+                FirstChildRef = InsertedChildRef;
             }
-
-            if (nullptr == FirstChildRef.Node)
-            {
-                FirstChildRef.Node = NewChild;
-                FirstChildRef.Blk = Tree->LastBlock;
-            }
-
-            InsertedChildRef.Node = NewChild;
-            InsertedChildRef.Blk = Tree->LastBlock;
 
             InsertedNewChild = true;
         }
         else
         {
-            node_ref Child = GetNodeChildWithBlock(ParentRef->Node, ParentRef->Blk, Oct);
+            node_ref Child = GetNodeChild(*ParentRef, ChildOct);
             node_ref MovedChildRef = ReAllocateNode(Child, Tree);
 
             if (nullptr == FirstChildRef.Node)
@@ -772,20 +816,19 @@ InsertChild(node_ref* ParentRef, svo_oct ChildOct, svo* Tree, svo_voxel_type Typ
 }
 
 static node_ref
-InsertChild(svo_node* Parent, svo_oct ChildOct, svo_block* ParentBlk, svo* Tree, svo_voxel_type Type)
+InsertChild_OLD(node_ref ParentRef, svo_oct ChildOct, svo* Tree, svo_voxel_type Type)
 {
-    svo_node PCopy = *Parent;
+    svo_node PCopy = *ParentRef.Node;
     SetOctantOccupied(ChildOct, Type, &PCopy);
     
     // Gather siblings of the newborn child
     u32 NonLeafChildMsk = PCopy.OccupiedMask & (~PCopy.LeafMask);
     u32 ChildCount = CountSetBits(NonLeafChildMsk);
 
-    svo_block* FirstChildBlk = nullptr;
-    svo_block* CurrentChildBlk = Tree->LastBlock;
-    svo_node* FirstChild = nullptr;
+    node_ref FirstChildRef = { nullptr, nullptr };
+    node_ref CreatedNode = { nullptr, nullptr };
 
-    node_ref CreatedNode = { };
+    bool HaveCreatedChild = false;
 
     // Process each child (max 8) of the parent node, including the one
     // we just inserted.
@@ -798,51 +841,53 @@ InsertChild(svo_node* Parent, svo_oct ChildOct, svo_block* ParentBlk, svo* Tree,
         // we need to allocate a child svo_node for this octant.
         if (ChildOct == Oct && Type == VOXEL_PARENT)
         {
-            svo_node* NewChild = AllocateNode(Tree->LastBlock);
+            node_ref NewChildRef = AllocateNewNode(Tree->LastBlock, Tree);
 
-            if (nullptr == NewChild)
+            if (! HaveCreatedChild)
             {
-                CurrentChildBlk = AllocateAndLinkNewBlock(Tree->LastBlock, Tree);
-                NewChild = AllocateNode(CurrentChildBlk);
+                FirstChildRef = NewChildRef;
             }
 
-            if (nullptr == FirstChild)
-            {
-                FirstChild = NewChild;
-                FirstChildBlk = CurrentChildBlk;
-            }
-
-            CreatedNode.Node = NewChild;
-            CreatedNode.Blk = CurrentChildBlk;
+            HaveCreatedChild = true;
+            CreatedNode = NewChildRef;
         }
         else
         {
-            node_ref ChildRef = GetNodeChildWithBlock(Parent, ParentBlk, Oct);
-            CurrentChildBlk = ChildRef.Blk;
-            svo_node* Child = ChildRef.Node;
-            node_ref MovedChild = ReAllocateNode(Child, CurrentChildBlk, Tree);
-            if (nullptr == FirstChild)
+            node_ref ChildRef = GetNodeChild(ParentRef, Oct);
+            node_ref MovedChild = ReAllocateNode(ChildRef, Tree);
+
+            if (! HaveCreatedChild)
             {
-                FirstChild = MovedChild.Node;
-                FirstChildBlk = MovedChild.Blk;
+                FirstChildRef = MovedChild;
             }
+
+            HaveCreatedChild = true;
         }
 
         // Clear the processed oct from the mask
         NonLeafChildMsk &= ~(1U << Oct);
     }
 
-    if (Type == VOXEL_PARENT) assert(FirstChild);
+    if (Type == VOXEL_PARENT) assert(FirstChildRef.Node);
 
-    *Parent = PCopy;
-    if (nullptr != FirstChild)
+    *ParentRef.Node = PCopy;
+    if (HaveCreatedChild)
     {
-        SetNodeChildPointer(FirstChild, FirstChildBlk, ParentBlk, Parent);
+        LinkParentAndChildNodes(ParentRef, FirstChildRef);
     }
 
     // TODO(Liam): Returns nullptrs when Type == VOXEL_LEAF. Should we break this
     // into a separate function for inserting leaf voxels?
-    return CreatedNode;
+    //return CreatedNode;
+    if (HaveCreatedChild)
+    {
+        return CreatedNode;
+    }
+    else
+    {
+        return ParentRef;
+    }
+
 }
 
 
@@ -885,24 +930,21 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
     svo_oct CurrentOct = GetOctantForPosition(InsertP, ParentCentreP);
 
     bool AllocatedParent = false;
-
-    /*svo_node* ParentNode = &Tree->RootBlock->Entries[0];
-    svo_block* ParentBlk = Tree->RootBlock;*/
-
-    node_ref ParentRef = GetTreeRootNodeRef(Tree);//{ ParentBlk, ParentNode };
+    node_ref ParentRef = GetTreeRootNodeRef(Tree);
 
     // Need to bias the voxel scale in case of upscaled
     // trees.
-    u32 EditScale = VoxelScale << Tree->Bias;
+    u32 EditScale = (VoxelScale << Tree->Bias);
 
     // Beginning at the root scale, descend the tree until we get
     // to the desired scale, or we hit a leaf octant (which means
     // we can't go any further).
+#if 0
     for (u32 Scale = RootScale; Scale >= EditScale; Scale >>= 1)
     {
         // Check if we've reached the desired scale; if so, set
         // the current octant as a leaf and break out.
-        if (Scale <= EditScale)
+        if (Scale >> 1 <= EditScale)
         {
             if (AllocatedParent)
             {
@@ -910,8 +952,8 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
             }
             else
             {
-                //InsertChild(ParentNode, CurrentOct, ParentBlk, Tree, VOXEL_LEAF);
-                InsertChild(&ParentRef, CurrentOct, Tree, VOXEL_LEAF);
+                InsertChild_OLD(ParentRef.Node, CurrentOct, ParentRef.Blk, Tree, VOXEL_LEAF);
+                //InsertChild(&ParentRef, CurrentOct, Tree, VOXEL_LEAF);
             }
 
             return;
@@ -952,17 +994,68 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
             AllocatedParent = true;
         }
     }
+#endif
+
+    //InsertChild_OLD(ParentRef, CurrentOct, Tree, VOXEL_LEAF);
+    //InsertChild(&ParentRef, CurrentOct, Tree, VOXEL_LEAF);
+
+
+    u32 CurrentScale = RootScale >> 1;
+    while (CurrentScale > EditScale)
+    {
+        CurrentScale >>= 1;
+
+        if (IsOctantOccupied(ParentRef.Node, CurrentOct))
+        {
+            if (IsOctantLeaf(ParentRef.Node, CurrentOct))
+            {
+                return;
+            }
+            else
+            {
+                ParentCentreP = GetOctantCentre(CurrentOct, CurrentScale, ParentCentreP);
+                CurrentOct = GetOctantForPosition(InsertP, ParentCentreP);
+                ParentRef = GetNodeChild(ParentRef, CurrentOct);
+
+                continue;
+            }
+        }
+        else
+        {
+            // If the current octant isn't occupied, we will need to build a new subtree
+            // containing our inserted voxel.
+
+            // First, mark this octant as a subdivision container
+            //node_ref ParentNodeRef = InsertChild(ParentNode, CurrentOct, ParentBlk, Tree, VOXEL_PARENT);
+            /*node_ref ParentNodeRef = InsertChild(Parent
+            ParentNode = ParentNodeRef.Node;
+            ParentBlk = ParentNodeRef.Blk;*/
+            ParentCentreP = GetOctantCentre(CurrentOct, CurrentScale, ParentCentreP);
+            CurrentOct = GetOctantForPosition(InsertP, ParentCentreP);
+            ParentRef = InsertChild_OLD(ParentRef, CurrentOct, Tree, VOXEL_PARENT);
+            AllocatedParent = true;
+        }
+    }
+
+    if (AllocatedParent)
+    {
+        SetOctantOccupied(CurrentOct, VOXEL_LEAF, ParentRef.Node);
+    }
+    else
+    {
+        InsertChild_OLD(ParentRef, CurrentOct, Tree, VOXEL_LEAF);
+    }
 }
 
 static node_ref
-DeleteLeafChild(svo_oct ChildOct, svo* const Tree, node_ref* const ParentRefOut)
+DeleteLeafChild(svo_oct ChildOct, svo* const Tree, node_ref ParentRef)
 {
     // Splits a former leaf node into 7 child leaves
     // and one non-leaf child.
 
     // TODO(Liam): Gracefully handle case where the
     // parent is not a leaf.
-    assert(IsOctantLeaf(ParentRefOut->Node, ChildOct));
+    assert(IsOctantLeaf(ParentRef.Node, ChildOct));
 
     /*node_ref NewChildRef = InsertChild(ParentRefOut->Node,
                                        ChildOct,
@@ -970,7 +1063,7 @@ DeleteLeafChild(svo_oct ChildOct, svo* const Tree, node_ref* const ParentRefOut)
                                        Tree,
                                        VOXEL_PARENT);*/
 
-    node_ref NewChildRef = InsertChild(ParentRefOut, ChildOct, Tree, VOXEL_PARENT);
+    node_ref NewChildRef = InsertChild_OLD(ParentRef, ChildOct, Tree, VOXEL_PARENT);
 
     // Mask of all octants except the intended
     // child.
@@ -979,7 +1072,7 @@ DeleteLeafChild(svo_oct ChildOct, svo* const Tree, node_ref* const ParentRefOut)
     // Clear this oct's bit from the parent leaf
     // mask. If this octant was a leaf, it will
     // already be occupied.
-    ParentRefOut->Node->LeafMask &= LeavesMsk;
+    ParentRef.Node->LeafMask &= LeavesMsk;
 
     // Set all octants occupied in the newly
     // allocated child.
@@ -1001,13 +1094,13 @@ DeleteVoxel(svo* Tree, vec3 VoxelP)
 
     // Always go down to leaf scale (cheat at mem. mgmt!)
     u32 MaxScale = GetTreeMaxScaleBiased(Tree);
-    u32 MinScale = GetTreeMinScaleBiased(Tree) << 1;
+    u32 MinScale = GetTreeMinScaleBiased(Tree);
 
-    node_ref ParentNodeRef = { Tree->RootBlock, &Tree->RootBlock->Entries[0] };
 
     vec3 ParentCentre = vec3(MaxScale >> 1U);
     svo_oct CurrentOct = GetOctantForPosition(DeleteP, ParentCentre);
 
+    node_ref ParentNodeRef = GetTreeRootNodeRef(Tree);
     bool CreatedChild = false;
 
     // For configurations where MaxDepth > ScaleExponent, this will always
@@ -1020,35 +1113,37 @@ DeleteVoxel(svo* Tree, vec3 VoxelP)
     // Descend the tree until we get to the minium scale.
     while (CurrentScale > MinScale)
     {
-        CurrentScale >>= 1;
-
         // If we had previously created a child node, we need to
         // continue building the tree until we reach the min scale.
-        if (CreatedChild && CurrentScale > (MinScale))
+        if (CreatedChild && CurrentScale > (MinScale << 1))
         {
-            svo_node* NewParent = AllocateNode(Tree->LastBlock);    
+            /*svo_node* NewParent = AllocateNode(Tree->LastBlock);    
             svo_block* NewParentBlk = Tree->LastBlock;
             if (nullptr == NewParent)
             {
                 NewParentBlk = AllocateAndLinkNewBlock(Tree->LastBlock, Tree);
                 NewParent = AllocateNode(NewParentBlk);
-            }
+            }*/
+
+            node_ref NewParentRef = AllocateNewNode(Tree->LastBlock, Tree);
 
             u32 OctMsk = ~(1U << (u32)CurrentOct);
-            NewParent->OccupiedMask = 0xFF;   // All octants occupied
-            NewParent->LeafMask = (u8)OctMsk; // All octants except current leaves
+            NewParentRef.Node->OccupiedMask = 0xFF;   // All octants occupied
+            NewParentRef.Node->LeafMask = (u8)OctMsk; // All octants except current leaves
 
-            node_ref NewParentRef = { NewParentBlk, NewParent };
+            //node_ref NewParentRef = { NewParentBlk, NewParent };
             //NewParent->ChildPtr = ComputeChildPointer(&NewParentRef, &ParentNodeRef);
-            LinkParentAndChildNodes(NewParentRef, ParentNodeRef);
+            //LinkParentAndChildNodes(NewParentRef, ParentNodeRef);
+            LinkParentAndChildNodes(ParentNodeRef, NewParentRef);
 
             //SetNodeChildPointer(NewParent, NewParentBlk, ParentNodeRef.Blk, ParentNodeRef.Node);
-            ParentNodeRef.Node = NewParent;
-            ParentNodeRef.Blk = NewParentBlk;
+            /*ParentNodeRef.Node = NewParent;
+            ParentNodeRef.Blk = NewParentBlk;*/
+            ParentNodeRef = NewParentRef;
         }
         else if (IsOctantOccupied(ParentNodeRef.Node, CurrentOct))
         {
-            if (CurrentScale <= (MinScale))
+            if (CurrentScale <= (MinScale << 1))
             {
                 u32 ClearMsk = ~(1U << (u32)CurrentOct);
                 ParentNodeRef.Node->LeafMask &= ClearMsk;
@@ -1059,7 +1154,7 @@ DeleteVoxel(svo* Tree, vec3 VoxelP)
 
             if (IsOctantLeaf(ParentNodeRef.Node, CurrentOct))
             {
-                node_ref ChildRef = DeleteLeafChild(CurrentOct, Tree, &ParentNodeRef);
+                node_ref ChildRef = DeleteLeafChild(CurrentOct, Tree, ParentNodeRef);
 
                 ParentNodeRef = ChildRef;
                 CreatedChild = true;
@@ -1067,7 +1162,7 @@ DeleteVoxel(svo* Tree, vec3 VoxelP)
             else
             {
                 // Traverse deeper into the tree
-                ParentNodeRef = GetNodeChildWithBlock(ParentNodeRef.Node, ParentNodeRef.Blk, CurrentOct);
+                ParentNodeRef = GetNodeChild(ParentNodeRef, CurrentOct);
             }
         }
         else
@@ -1075,9 +1170,9 @@ DeleteVoxel(svo* Tree, vec3 VoxelP)
             return;
         }
 
+        CurrentScale >>= 1;
         ParentCentre = GetOctantCentre(CurrentOct, CurrentScale, ParentCentre);
         CurrentOct = GetOctantForPosition(DeleteP, ParentCentre);
-
     }
 }
 

@@ -17,7 +17,7 @@
 #include "sabre_data.h"
 #include "sabre_render.h"
 
-static constexpr u32 SABRE_MAX_TREE_DEPTH = 7;
+static constexpr u32 SABRE_MAX_TREE_DEPTH = 4;
 static constexpr u32 SABRE_SCALE_EXPONENT = 5;
 
 static constexpr u32 DisplayWidth = 512;
@@ -190,10 +190,10 @@ main(int ArgCount, const char** const Args)
     fclose(SvoInFile);*/
 
     svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
-    //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
-    //InsertVoxel(WorldSvo, vec3(0, 9, 0), 16);
-    //InsertVoxel(WorldSvo, vec3(20, 20, 20), 16);
     InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
+    //InsertVoxel(WorldSvo, vec3(0, 17, 0), 16);
+    //InsertVoxel(WorldSvo, vec3(20, 20, 20), 16);
+    //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
     DeleteVoxel(WorldSvo, vec3(0, 0, 0));
 #else
     svo* WorldSvo = ImportGltfToSvo(SABRE_MAX_TREE_DEPTH, "data/TestModels/serapis.glb");
