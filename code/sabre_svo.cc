@@ -306,6 +306,7 @@ LinkParentAndChildNodes(node_ref ParentRef, node_ref ChildRef)
         // Allocate a new far pointer in the parent
         // TODO(Liam): Error handling
         far_ptr* FarPtr = AllocateFarPtr(ParentRef.Blk);
+        assert(nullptr != FarPtr);
         FarPtr->BlkIndex = (u32)ChildRef.Blk->Index;
         FarPtr->NodeOffset = ChildPtrBits;
 
@@ -373,6 +374,7 @@ AllocateNewNode(svo_block* const ParentBlk, svo* const Tree)
     {
         svo_block* NewBlk = AllocateAndLinkNewBlock(Tree->LastBlock, Tree);
         svo_node* NewNode = &NewBlk->Entries[NewBlk->NextFreeSlot];
+        ++NewBlk->NextFreeSlot;
 
         return node_ref{ NewBlk, NewNode };
     }
@@ -422,6 +424,8 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
     // TODO(Liam): Try to eliminate the need for a +1 bias; we would like to *not* have
     // the bias lie about what the actual difference in levels is!
     vec3 Radius = vec3(Scale >> 1);
+
+    const node_ref ParentRef = node_ref{ ParentBlk, Parent };
     
     for (u32 Oct = 0; Oct < 8; ++Oct)
     {
@@ -443,19 +447,7 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
 
                 // Allocate a new child node for this octant.
                 // First, attempt to allocate within the same block
-                /*svo_node* Child = AllocateNode(Tree->LastBlock);
-
-                if (nullptr == Child)
-                {
-                    svo_block* NewBlk = AllocateAndLinkNewBlock(Tree->LastBlock, Tree);
-                    Child = AllocateNode(NewBlk);
-                    CurrentBlk = NewBlk;
-                }*/
-
-                node_ref ChildRef = AllocateNewNode(Tree->LastBlock, Tree);
-                svo_node* Child = ChildRef.Node;
-
-                const node_ref ParentRef = { ParentBlk, Parent };
+                const node_ref ChildRef = AllocateNewNode(Tree->LastBlock, Tree);
 
                 // If the parent's child pointer has already been set, we do not
                 // need to set it again. Child pointers should only point to the
@@ -465,9 +457,9 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
                     LinkParentAndChildNodes(ParentRef, ChildRef);
                 }
 
-                if (Child)
+                if (ChildRef.Node)
                 {
-                    Children[LastChildIndex] = { (svo_oct)Oct, OctCentre, Child, Tree->LastBlock };
+                    Children[LastChildIndex] = { (svo_oct)Oct, OctCentre, ChildRef.Node, ChildRef.Blk };
                     ++LastChildIndex;
                 }
             }

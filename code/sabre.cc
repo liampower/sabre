@@ -10,7 +10,6 @@
 #include <glad/glad.h>
 #include <glfw/glfw3.h>
 
-
 #include "sabre.h"
 #include "sabre_math.h"
 #include "sabre_svo.h"
@@ -31,12 +30,12 @@ extern "C" {
 
 struct camera
 {
-    f32    Velocity;
+    f32  Velocity;
 
-    vec3   Up;
-    vec3   Right;
-    vec3   Forward;
-    vec3   Position;
+    vec3 Up;
+    vec3 Right;
+    vec3 Forward;
+    vec3 Position;
 };
 
 static void
@@ -102,11 +101,11 @@ static inline svo*
 CreateCubeSphereTestScene(void)
 {
     svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
-    InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
-    InsertVoxel(WorldSvo, vec3(0, 17, 0), 16);
+    //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
+    //InsertVoxel(WorldSvo, vec3(0, 17, 0), 16);
     //InsertVoxel(WorldSvo, vec3(20, 20, 20), 16);
     //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
-    DeleteVoxel(WorldSvo, vec3(0, 0, 0));
+    //DeleteVoxel(WorldSvo, vec3(0, 0, 0));
 
     return WorldSvo;
 }

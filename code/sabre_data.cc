@@ -127,6 +127,7 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
     uint OccupiedNonLeafOcts = OccBits & (~LeafBits);
     uint SetBitsBehindOctIdx = (1 << Oct) - 1;
 
+
     uint ChildOffset = bitCount(OccupiedNonLeafOcts & SetBitsBehindOctIdx); 
 
     if (! bool(ParentNode & SVO_FAR_PTR_BIT_MASK))
@@ -437,7 +438,7 @@ vec3 Raycast(in ray R)
             else
             {
                 // HERE
-                //if (Scale == 1) return vec3(1, 0, 1);
+                if (Scale == 1) return vec3(1, 0, 1);
                 //return Oct2Cr(CurrentOct);
                 break;
             }
