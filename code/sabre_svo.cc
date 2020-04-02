@@ -107,11 +107,13 @@ PushFarPtr(far_ptr FarPtr, svo_block* Blk)
     return AllocatedFarPtr;
 }
 
+
 static inline node_ref
 GetTreeRootNodeRef(const svo* const Tree)
 {
     return node_ref{ Tree->RootBlock, &Tree->RootBlock->Entries[0] };
 }
+
 
 static inline far_ptr*
 GetFarPointer(svo_node* Node, svo_block* Blk)
@@ -144,13 +146,13 @@ GetFreeSlotCount(svo_block* const Blk)
 static inline bool
 IsOctantOccupied(svo_node* ContainingNode, svo_oct Oct)
 {
-    return ContainingNode->OccupiedMask & (1U << (u32)Oct);
+    return ContainingNode->OccupiedMask & (1U << Oct);
 }
 
 static inline bool
 IsOctantLeaf(svo_node* ContainingNode, svo_oct Oct)
 {
-    return ContainingNode->LeafMask & (1U << (u32)Oct);
+    return ContainingNode->LeafMask & (1U << Oct);
 }
 
 static inline void
@@ -177,7 +179,8 @@ SetOctreeScaleBias(svo* const Tree)
 {
     if (Tree->MaxDepth > Tree->ScaleExponent)
     {
-        Tree->Bias = (Tree->MaxDepth - Tree->ScaleExponent) + 1;
+        // PROBLEM IS HERE
+        Tree->Bias = (Tree->MaxDepth - Tree->ScaleExponent);
         Tree->InvBias = (1.0f / (f32)(1U << Tree->Bias));
     }
     else
@@ -323,7 +326,7 @@ GetOctantCentre(svo_oct Octant, u32 Scale, vec3 ParentCentreP)
     assert(Scale > 0);
     u32 Oct = (u32) Octant;
 
-    f32 Rad = (f32)(Scale >> 1U);
+    f32 Rad = (f32)(Scale) * 0.5f;
     f32 X = (Oct & 1U) ? 1.0f : -1.0f;
     f32 Y = (Oct & 2U) ? 1.0f : -1.0f;
     f32 Z = (Oct & 4U) ? 1.0f : -1.0f;
@@ -423,10 +426,10 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
 
     // TODO(Liam): Try to eliminate the need for a +1 bias; we would like to *not* have
     // the bias lie about what the actual difference in levels is!
-    vec3 Radius = vec3(Scale >> 1);
+    uvec3 Radius = uvec3(Scale >> 1);
 
     const node_ref ParentRef = node_ref{ ParentBlk, Parent };
-    
+
     for (u32 Oct = 0; Oct < 8; ++Oct)
     {
         // Multiplying by the InvBias here transforms the octant cubes back 
@@ -457,11 +460,11 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
                     LinkParentAndChildNodes(ParentRef, ChildRef);
                 }
 
-                if (ChildRef.Node)
-                {
-                    Children[LastChildIndex] = { (svo_oct)Oct, OctCentre, ChildRef.Node, ChildRef.Blk };
-                    ++LastChildIndex;
-                }
+                assert(nullptr != ChildRef.Node);
+                assert(nullptr != ChildRef.Blk);
+
+                Children[LastChildIndex] = { (svo_oct)Oct, OctCentre, ChildRef.Node, ChildRef.Blk };
+                ++LastChildIndex;
             }
             else
             {
@@ -848,9 +851,7 @@ DeleteVoxel(svo* Tree, vec3 VoxelP)
 
             if (IsOctantLeaf(ParentNodeRef.Node, CurrentOct))
             {
-                node_ref ChildRef = DeleteLeafChild(CurrentOct, Tree, ParentNodeRef);
-
-                ParentNodeRef = ChildRef;
+                ParentNodeRef = DeleteLeafChild(CurrentOct, Tree, ParentNodeRef);
                 CreatedChild = true;
             }
             else
@@ -869,6 +870,7 @@ DeleteVoxel(svo* Tree, vec3 VoxelP)
         CurrentOct = GetOctantForPosition(DeleteP, ParentCentre);
     }
 }
+
 
 extern "C" void
 OutputSvoToFile(const svo* const Svo, FILE* FileOut)

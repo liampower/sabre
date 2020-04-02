@@ -181,8 +181,12 @@ SetRenderUniformData(const svo* const Tree, sbr_render_data* const RenderData)
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "BlockCountUniform"), Tree->UsedBlockCount);
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "EntriesPerBlockUniform"), SVO_ENTRIES_PER_BLOCK);
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "FarPtrsPerBlockUniform"), SVO_FAR_PTRS_PER_BLOCK);
-    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "BiasUniform"), Tree->Bias);
-    glUniform1f(glGetUniformLocation(RenderData->RenderShader, "InvBiasUniform"), Tree->InvBias);
+    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "BiasUniform"), Tree->Bias + 1);
+    glUniform1f(glGetUniformLocation(RenderData->RenderShader, "InvBiasUniform"), Tree->InvBias * 0.5);
+
+    printf("Inv Bias: %f\n", (f64)Tree->InvBias);
+    printf("Bias Scale: %u\n", 1U << Tree->Bias);
+    printf("Bias: %u\n", Tree->Bias);
 }
 
 static inline gl_uint

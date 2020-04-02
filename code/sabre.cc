@@ -101,11 +101,11 @@ static inline svo*
 CreateCubeSphereTestScene(void)
 {
     svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
-    //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
-    //InsertVoxel(WorldSvo, vec3(0, 17, 0), 16);
+    InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
+    InsertVoxel(WorldSvo, vec3(0, 17, 0), 16);
     //InsertVoxel(WorldSvo, vec3(20, 20, 20), 16);
     //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
-    //DeleteVoxel(WorldSvo, vec3(0, 0, 0));
+    DeleteVoxel(WorldSvo, vec3(0, 0, 0));
 
     return WorldSvo;
 }
