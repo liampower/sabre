@@ -94,7 +94,7 @@ FindLowestSetBit(u32 Msk)
 static inline bool
 HasFarChildren(svo_node* Node)
 {
-    return Node->ChildPtr & FAR_PTR_BIT_MSK;
+    return (Node->ChildPtr & FAR_PTR_BIT_MSK) != 0;
 }
 
 static inline far_ptr*
