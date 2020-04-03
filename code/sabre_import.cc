@@ -293,8 +293,6 @@ LoadMeshTriangles(cgltf_mesh* Mesh)
 
                     if (cgltf_attribute_type_position == Attrib->type)
                     {
-                        //std::vector<pos_attrib> PosList;
-
                         cgltf_accessor* Accessor = Attrib->data;
                         u32 PosCount = Accessor->count;
                         assert(cgltf_num_components(Accessor->type) == 3);
@@ -393,7 +391,7 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
         f32 InvBias = 1.0f;
         if (MaxDepth > ScaleExponent)
         {
-            Bias = (MaxDepth - ScaleExponent) + 1;
+            Bias = (MaxDepth - ScaleExponent);
             InvBias = 1.0f / (1 << Bias);
         }
 
@@ -464,7 +462,7 @@ static bool
 IntersectorFunction(vec3 vMin, vec3 vMax, const svo* const Tree)
 {
     vec3 Halfsize = (vMax - vMin) * 0.5f;
-    uvec3 Centre = uvec3((vMin + Halfsize) * (1 << Tree->Bias));
+    uvec3 Centre = uvec3((vMin + Halfsize) * (1 << Tree->Bias.Scale));
     
     u32 MortonCode = EncodeMorton3(Centre.X, Centre.Y, Centre.Z);
     /*u32 Xmsk = (1 << (Centre.X % 64));
@@ -586,6 +584,8 @@ ImportGltfToSvo(u32 MaxDepth, const char* const GLTFPath)
     else
     {
         // TODO(Liam): Handle failure case
+
+        if (Data) cgltf_free(Data);
         return nullptr;
     }
 }

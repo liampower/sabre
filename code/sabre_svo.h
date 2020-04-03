@@ -39,6 +39,13 @@ union alignas(4) svo_node
     u32 Packed;
 };
 
+
+struct svo_bias
+{
+    float    InvScale;
+    uint32_t Scale;
+};
+
 struct svo_block
 {
     usize      NextFreeSlot;
@@ -70,9 +77,10 @@ struct svo
     // the entire tree scale so that the smallest extant
     // of any child region is 1. Remember to divide by this
     // value when doing any space-operations!
-    u32 Bias;
+    //u32 Bias;
 
-    f32 InvBias;
+    svo_bias Bias;
+    //f32 InvBias;
 
     // Last block of nodes in this tree
     // NOTE(Liam): Warning! This field is volatile and unsafe
@@ -94,6 +102,9 @@ InsertVoxel(svo* Svo, vec3 P, u32 VoxelScale);
 
 extern "C" void
 DeleteVoxel(svo* Tree, vec3 P);
+
+extern "C" svo_bias
+ComputeScaleBias(uint32_t MaxDepth, uint32_t ScaleExponent);
 
 extern "C" void
 DeleteSparseVoxelOctree(svo* Tree);

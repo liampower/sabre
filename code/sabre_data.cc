@@ -430,16 +430,12 @@ vec3 Raycast(in ray R)
                     }
                     else
                     {
-                        // NOT HERE
                         break;
                     }
                 }
             }
             else
             {
-                // HERE
-                if (Scale == 1) return vec3(1, 0, 1);
-                //return Oct2Cr(CurrentOct);
                 break;
             }
         }

@@ -61,7 +61,7 @@ FindHighestSetBit(u32 Msk)
 static inline u32
 GetTreeMaxScaleBiased(const svo* const Tree)
 {
-    return (1U << Tree->ScaleExponent) << Tree->Bias;
+    return (1U << Tree->ScaleExponent) << Tree->Bias.Scale;
 }
 
 static inline u32
@@ -174,6 +174,23 @@ SetOctantOccupied(svo_oct SubOctant, svo_voxel_type Type, svo_node* OutEntry)
 }
 
 
+extern "C" svo_bias
+ComputeScaleBias(uint32_t MaxDepth, uint32_t ScaleExponent)
+{
+    if (MaxDepth > ScaleExponent)
+    {
+        uint32_t Bias = (MaxDepth - ScaleExponent);
+        float InvBias = 1.0f / ((float)(1U << Bias));
+
+        return svo_bias{ InvBias, Bias };
+    }
+    else
+    {
+        return svo_bias{ 1.0f, 0 };
+    }
+}
+
+#if 0
 static void
 SetOctreeScaleBias(svo* const Tree)
 {
@@ -189,6 +206,7 @@ SetOctreeScaleBias(svo* const Tree)
         Tree->InvBias = 1.0f;
     }
 }
+#endif
 
 static inline svo_node*
 PushNode(svo_block* Blk, svo_node Node)
@@ -326,7 +344,7 @@ GetOctantCentre(svo_oct Octant, u32 Scale, vec3 ParentCentreP)
     assert(Scale > 0);
     u32 Oct = (u32) Octant;
 
-    f32 Rad = (f32)(Scale) * 0.5f;
+    f32 Rad = (f32)(Scale >> 1U);
     f32 X = (Oct & 1U) ? 1.0f : -1.0f;
     f32 Y = (Oct & 2U) ? 1.0f : -1.0f;
     f32 Z = (Oct & 4U) ? 1.0f : -1.0f;
@@ -436,8 +454,8 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
         // into "real" space from the scaled space we operate in when
         // constructing the tree.
         vec3 OctCentre = GetOctantCentre((svo_oct)Oct, Scale, Centre);
-        vec3 OctMin = (OctCentre - Radius) * Tree->InvBias;
-        vec3 OctMax = (OctCentre + Radius) * Tree->InvBias;
+        vec3 OctMin = (OctCentre - Radius) * Tree->Bias.InvScale;
+        vec3 OctMax = (OctCentre + Radius) * Tree->Bias.InvScale;
 
         if (SurfaceFn(OctMin, OctMax, Tree))
         {
@@ -515,10 +533,11 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
         // Begin building tree
         u32 RootScale = (1U << ScaleExponent);
         
-        SetOctreeScaleBias(Tree);
+        //SetOctreeScaleBias(Tree);
+        Tree->Bias = ComputeScaleBias(MaxDepth, ScaleExponent);
 
         // Scale up by the bias
-        RootScale <<= Tree->Bias;
+        RootScale <<= Tree->Bias.Scale;
 
         printf("ROOTSCALE %u\n", RootScale);
 
@@ -690,7 +709,8 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
 
        // Re-scale the tree if the requested voxel scale is smaller than
        // the tree minimum scale.
-       SetOctreeScaleBias(Tree);
+       //SetOctreeScaleBias(Tree);
+       Tree->Bias = ComputeScaleBias(Tree->MaxDepth, Tree->ScaleExponent);
     }
 
     // Obtain the original root scale of the tree, though
@@ -699,7 +719,7 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
     u32 RootScale = GetTreeMaxScaleBiased(Tree);
 
     // Inserted voxel position, scaled by the tree bias.
-    vec3 InsertP = P * (1U << Tree->Bias);
+    vec3 InsertP = P * (1U << Tree->Bias.Scale);
 
     //RootScale = 1U << (Tree->ScaleExponent) << Tree->Bias;
     const vec3 TreeMax = vec3(RootScale);
@@ -719,7 +739,7 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
 
     // Need to bias the voxel scale in case of upscaled
     // trees.
-    u32 EditScale = (VoxelScale << Tree->Bias);
+    u32 EditScale = (VoxelScale << Tree->Bias.Scale);
 
     // Beginning at the root scale, descend the tree until we get
     // to the desired scale, or we hit a leaf octant (which means
@@ -802,7 +822,7 @@ extern "C" void
 DeleteVoxel(svo* Tree, vec3 VoxelP)
 {
     // Scale the voxel position by the tree bias
-    vec3 DeleteP = VoxelP * (1U << Tree->Bias);
+    vec3 DeleteP = VoxelP * (1U << Tree->Bias.Scale);
 
     // Always go down to leaf scale (cheat at mem. mgmt!)
     u32 MaxScale = GetTreeMaxScaleBiased(Tree);

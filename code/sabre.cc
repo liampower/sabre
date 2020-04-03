@@ -16,7 +16,7 @@
 #include "sabre_data.h"
 #include "sabre_render.h"
 
-static constexpr u32 SABRE_MAX_TREE_DEPTH = 4;
+static constexpr u32 SABRE_MAX_TREE_DEPTH = 8;
 static constexpr u32 SABRE_SCALE_EXPONENT = 5;
 
 static constexpr u32 DisplayWidth = 512;
@@ -222,7 +222,14 @@ main(int ArgCount, const char** const Args)
     glViewport(0, 0, FramebufferWidth, FramebufferHeight);
     glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-    svo* WorldSvo = CreateCubeSphereTestScene();
+    svo* WorldSvo = CreateImportedMeshTestScene("data/TestModels/serapis.glb");
+    if (nullptr == WorldSvo)
+    {
+        fprintf(stderr, "Failed to load World SVO\n");
+        glfwTerminate();
+        
+        return EXIT_FAILURE;
+    }
 
     // Initialise the render data
     sbr_view_data ViewData = { };
