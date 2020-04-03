@@ -158,19 +158,18 @@ IsOctantLeaf(svo_node* ContainingNode, svo_oct Oct)
 static inline void
 SetOctantOccupied(svo_oct SubOctant, svo_voxel_type Type, svo_node* OutEntry)
 {
-   u32 ValidBit = 1U << SubOctant; 
-   u32 LeafBit = 1U << SubOctant;
+    u32 OctMsk = 1U << SubOctant;
 
-   OutEntry->OccupiedMask |= ValidBit;
+    OutEntry->OccupiedMask |= OctMsk;
 
-   if (VOXEL_LEAF == Type)
-   {
-       OutEntry->LeafMask |= LeafBit;
-   }
-   else
-   {
-       OutEntry->LeafMask &= ~LeafBit;
-   }
+    if (VOXEL_LEAF == Type)
+    {
+       OutEntry->LeafMask |= OctMsk;
+    }
+    else
+    {
+       OutEntry->LeafMask &= ~OctMsk;
+    }
 }
 
 
