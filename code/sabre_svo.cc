@@ -189,23 +189,6 @@ ComputeScaleBias(uint32_t MaxDepth, uint32_t ScaleExponent)
     }
 }
 
-#if 0
-static void
-SetOctreeScaleBias(svo* const Tree)
-{
-    if (Tree->MaxDepth > Tree->ScaleExponent)
-    {
-        // PROBLEM IS HERE
-        Tree->Bias = (Tree->MaxDepth - Tree->ScaleExponent);
-        Tree->InvBias = (1.0f / (f32)(1U << Tree->Bias));
-    }
-    else
-    {
-        Tree->Bias = 0;
-        Tree->InvBias = 1.0f;
-    }
-}
-#endif
 
 static inline svo_node*
 PushNode(svo_block* Blk, svo_node Node)
@@ -532,7 +515,6 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
         // Begin building tree
         u32 RootScale = (1U << ScaleExponent);
         
-        //SetOctreeScaleBias(Tree);
         Tree->Bias = ComputeScaleBias(MaxDepth, ScaleExponent);
 
         // Scale up by the bias
@@ -708,7 +690,6 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
 
        // Re-scale the tree if the requested voxel scale is smaller than
        // the tree minimum scale.
-       //SetOctreeScaleBias(Tree);
        Tree->Bias = ComputeScaleBias(Tree->MaxDepth, Tree->ScaleExponent);
     }
 
