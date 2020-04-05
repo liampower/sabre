@@ -1,28 +1,16 @@
 #ifndef SABRE_SVO_H
 #define SABRE_SVO_H
 
+#include "sabre.h"
 #include "sabre_math.h"
 
-constexpr u32 SVO_ENTRIES_PER_BLOCK  = 8192;
-constexpr u32 SVO_FAR_PTRS_PER_BLOCK = 8192;
-constexpr u32 SVO_FAR_PTR_BIT_MASK   = 0x8000;
+static constexpr u32 SVO_ENTRIES_PER_BLOCK  = 8192;
+static constexpr u32 SVO_FAR_PTRS_PER_BLOCK = 8192;
 
 static_assert(SVO_FAR_PTRS_PER_BLOCK >= SVO_ENTRIES_PER_BLOCK, "Far Ptrs Per Blk must be >= Entries per Blk");
 
 
 struct svo_block;
-
-enum svo_oct
-{
-    OCT_C000 = 0,
-    OCT_C001 = 1,
-    OCT_C010 = 2,
-    OCT_C011 = 3,
-    OCT_C100 = 4,
-    OCT_C101 = 5,
-    OCT_C110 = 6,
-    OCT_C111 = 7
-};
 
 struct far_ptr
 {
@@ -49,6 +37,13 @@ union alignas(4) svo_node
     };
 
     u32 Packed;
+};
+
+
+struct svo_bias
+{
+    float    InvScale;
+    uint32_t Scale;
 };
 
 struct svo_block
@@ -82,9 +77,10 @@ struct svo
     // the entire tree scale so that the smallest extant
     // of any child region is 1. Remember to divide by this
     // value when doing any space-operations!
-    u32 Bias;
+    //u32 Bias;
 
-    f32 InvBias;
+    svo_bias Bias;
+    //f32 InvBias;
 
     // Last block of nodes in this tree
     // NOTE(Liam): Warning! This field is volatile and unsafe
@@ -107,6 +103,9 @@ InsertVoxel(svo* Svo, vec3 P, u32 VoxelScale);
 extern "C" void
 DeleteVoxel(svo* Tree, vec3 P);
 
+extern "C" svo_bias
+ComputeScaleBias(uint32_t MaxDepth, uint32_t ScaleExponent);
+
 extern "C" void
 DeleteSparseVoxelOctree(svo* Tree);
 
@@ -123,6 +122,12 @@ OutputSvoToFile(const svo* const Svo, FILE* FileOut);
 
 extern "C" svo*
 LoadSvoFromFile(FILE* FileIn);
+
+extern "C" unsigned int
+GetSvoUsedBlockCount(const svo* const Svo);
+
+extern "C" unsigned int
+GetSvoDepth(const svo* const Svo);
 
 static inline void
 DEBUGPrintVec3(vec3 V)

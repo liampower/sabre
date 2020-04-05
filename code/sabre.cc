@@ -2,7 +2,6 @@
 #include <imgui/imgui_impl_glfw.h>
 #include <imgui/imgui_impl_opengl3.h>
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -11,55 +10,33 @@
 #include <glad/glad.h>
 #include <glfw/glfw3.h>
 
-
 #include "sabre.h"
 #include "sabre_math.h"
 #include "sabre_svo.h"
 #include "sabre_data.h"
+#include "sabre_render.h"
 
-#define SABRE_MAX_TREE_DEPTH 9
-#define SABRE_SCALE_EXPONENT 5
-#define SABRE_WORK_SIZE_X 512
-#define SABRE_WORK_SIZE_Y 512
-
-#define OUTPUT_SHADER_ASM 0
-
-
-typedef GLuint gl_uint;
-typedef GLint  gl_int;
+static constexpr u32 SABRE_MAX_TREE_DEPTH = 8;
+static constexpr u32 SABRE_SCALE_EXPONENT = 5;
 
 static constexpr u32 DisplayWidth = 512;
 static constexpr u32 DisplayHeight = 512;
 static constexpr const char* const DisplayTitle = "Sabre";
-
 
 // NOTE(Liam): Forces use of nVidia GPU on hybrid graphics systems.
 extern "C" {
     _declspec(dllexport) int NvOptimusEnablement = 0x00000001;
 }
 
-// NOTE(Liam): Vertices of a full-screen quad
-// which we render to using a compute shader.
-static const f32 ScreenQuadVerts[12] = {
-    -1.0f, -1.0f,
-    -1.0f,  1.0f,
-     1.0f,  1.0f,
-
-     1.0f,  1.0f,
-     1.0f, -1.0f,
-    -1.0f, -1.0f,
-};
-
 struct camera
 {
-    f32    Velocity;
+    f32  Velocity;
 
-    vec3   Up;
-    vec3   Right;
-    vec3   Forward;
-    vec3   Position;
+    vec3 Up;
+    vec3 Right;
+    vec3 Forward;
+    vec3 Position;
 };
-
 
 static void
 HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei Length, const GLchar* Msg, const void*)
@@ -72,27 +49,6 @@ HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei L
     {
         //fprintf(stderr, "[OpenGL Info] %s\n", Msg);
     }
-}
-
-
-static void
-OutputShaderAssembly(gl_uint ShaderID)
-{
-    int Length = 0;
-    glGetProgramiv(ShaderID, GL_PROGRAM_BINARY_LENGTH, &Length);
-    printf("size: %d\n", Length);
-    unsigned char* Data = (unsigned char*)malloc(Length);
-    GLsizei DataLength = 0;
-
-    FILE* F = fopen("logs/cs_asm.nv", "wb");
-
-    GLenum BinFormats[64];
-    glGetProgramBinary(ShaderID, Length, &DataLength, BinFormats, Data);
-
-    fwrite(Data, sizeof(unsigned char), DataLength, F);
-
-    fclose(F);
-    free(Data);
 }
 
 static inline f32
@@ -121,8 +77,6 @@ CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const)
 
     f32 DistanceSqToCube = R * R;
 
-    //printf("MIN (%f, %f, %f), MAX (%f, %f, %f)", Min.X, Min.Y, Min.Z, Max.X, Max.Y, Max.Z);
-
     // STACKOVER
     if (S.X < Min.X) DistanceSqToCube -= Squared(S.X - Min.X);
     else if (S.X > Max.X) DistanceSqToCube -= Squared(S.X - Max.X);
@@ -135,193 +89,90 @@ CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const)
 
     if (DistanceSqToCube > 0)
     {
-        //printf("MIN (%f, %f, %f), MAX (%f, %f, %f)", Min.X, Min.Y, Min.Z, Max.X, Max.Y, Max.Z);
-        //printf("        TRUE\n");
         return true;
     }
     else
     {
-        //printf("        FALSE\n");
         return false;
     }
 }
 
-
-static gl_uint
-CompileComputeShader(const char* const ComputeShaderCode)
+static inline svo*
+CreateCubeSphereTestScene(void)
 {
-    gl_uint ShaderID = glCreateShader(GL_COMPUTE_SHADER);
-    gl_uint ProgramID = glCreateProgram();
-    gl_int  Success = 0;
+    svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
+    InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
+    InsertVoxel(WorldSvo, vec3(0, 17, 0), 16);
+    //InsertVoxel(WorldSvo, vec3(20, 20, 20), 16);
+    //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
+    DeleteVoxel(WorldSvo, vec3(0, 0, 0));
 
-    glShaderSource(ShaderID, 1, &ComputeShaderCode, nullptr);
-    glCompileShader(ShaderID);
-    glGetShaderiv(ShaderID, GL_COMPILE_STATUS, &Success);
-
-    if (0 == Success)
-    {
-        char Log[512] = { 0 };
-        glGetShaderInfoLog(ShaderID, 512, nullptr, Log);
-        fprintf(stdout, "Failed to compile compute shader\nLog is: %s\n", Log);
-
-        return 0;
-    }
-
-    glAttachShader(ProgramID, ShaderID);
-    glLinkProgram(ProgramID);
-
-    Success = 0;
-    glGetProgramiv(ProgramID, GL_LINK_STATUS, &Success);
-
-    if (0 == Success)
-    {
-        fprintf(stderr, "Failed to link compute shader program\n");
-        return 0;
-    }
-
-    glDeleteShader(ShaderID);
-
-    return ProgramID;
-}
-
-static gl_uint
-CompileShader(const char* VertSrc, const char* FragSrc)
-{
-    gl_uint VertShader = 0;
-    gl_uint FragShader = 0;
-    gl_uint Program    = 0;
-    gl_int  Success    = 0;
-
-    VertShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(VertShader, 1, &VertSrc, nullptr);
-    glCompileShader(VertShader);
-    glGetShaderiv(VertShader, GL_COMPILE_STATUS, &Success);
-    
-    if (0 == Success)
-    {
-        char Log[512] = { 0 };
-        glGetShaderInfoLog(VertShader, 512, nullptr, Log);
-        fprintf(stderr, "Failed to compile vertex shader\n%s", Log);
-        return 0;
-    }
-
-    Success = false;
-    FragShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(FragShader, 1, &FragSrc, nullptr);
-    glCompileShader(FragShader);
-    glGetShaderiv(FragShader, GL_COMPILE_STATUS, &Success);
-
-    if (0 == Success)
-    {
-        char Log[512] = { 0 };
-        glGetShaderInfoLog(FragShader, 512, nullptr, Log);
-        fprintf(stderr, "Failed to compile fragment shader\n%s", Log);
-        return 0;
-    }
-
-    Success = false;
-    Program = glCreateProgram();
-    glAttachShader(Program, VertShader);
-    glAttachShader(Program, FragShader);
-    glLinkProgram(Program);
-    glGetProgramiv(Program, GL_LINK_STATUS, &Success);
-
-    if (0 == Success)
-    {
-        fprintf(stderr, "Failed to link shader program\n");
-        return 0;
-    }
-
-    glDeleteShader(VertShader);
-    glDeleteShader(FragShader);
-
-    return Program;
+    return WorldSvo;
 }
 
 
-// TODO(Liam): Replace with a more performant design so that we don't have to keep
-// calling this for every node!
-static gl_uint
-PackSvoNodeToGLUint(svo_node* Node)
+static inline svo*
+CreateImportedMeshTestScene(const char* const GLBFileName)
 {
-    gl_uint Packed = 0;
-
-    Packed |= ((u32)Node->ChildPtr << 16);
-    Packed |= ((u32)Node->OccupiedMask << 8);
-    Packed |= ((u32)Node->LeafMask);
-
-    return Packed;
+    return ImportGltfToSvo(SABRE_MAX_TREE_DEPTH, GLBFileName);
 }
 
-
-static gl_uint
-UploadOctreeBlockData(const svo* const Svo)
+static inline svo*
+CreateLoadedMeshTestScene(const char* const SvoMeshFileName)
 {
-    gl_uint SvoBuffer, FarPtrBuffer;
+    FILE* SvoInFile;
+    errno_t Result = fopen_s(&SvoInFile, SvoMeshFileName, "rb");
 
-    // TODO(Liam): Look into combining these allocations
-    glGenBuffers(1, &SvoBuffer);
-    glGenBuffers(1, &FarPtrBuffer);
-
-    // FIXME(Liam): BIG cleanup here needed - may need to bite the bullet
-    // and just have the nodes be typedef'd into U32s anyway.
-    static_assert(sizeof(svo_node) == sizeof(GLuint), "Node size must == GLuint size!");
-
-    if (SvoBuffer && FarPtrBuffer)
+    if (0 == Result)
     {
-        usize SvoBlockDataSize = sizeof(svo_node) * SVO_ENTRIES_PER_BLOCK;
-        // TODO(Liam): Waste here on the last block
-        usize MaxSvoDataSize = SvoBlockDataSize * Svo->UsedBlockCount;
+        svo* WorldSvo = LoadSvoFromFile(SvoInFile);
 
-        usize FarPtrBlockDataSize = sizeof(far_ptr) * SVO_FAR_PTRS_PER_BLOCK;
-        usize MaxFarPtrDataSize = FarPtrBlockDataSize * Svo->UsedBlockCount;
-
-        // Allocate space for the far ptr buffer
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, FarPtrBuffer);
-        glBufferData(GL_SHADER_STORAGE_BUFFER, MaxFarPtrDataSize, nullptr, GL_DYNAMIC_COPY);
-        far_ptr* GPUFarPtrBuffer = (far_ptr*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
-
-        // Allocate space for the node data buffer
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoBuffer);
-        glBufferData(GL_SHADER_STORAGE_BUFFER, MaxSvoDataSize, nullptr, GL_DYNAMIC_COPY);
-        GLuint* GPUSvoBuffer = (GLuint*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
-
-        // Reset SSBO buffer binding
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-
-
-        // TODO(Liam): Don't send all the blocks to the renderer! Use only a subset.
-        svo_block* CurrentBlk = Svo->RootBlock;
-        usize NextSvoDataOffset = 0;
-        usize NextFarPtrDataOffset = 0;
-
-        while (CurrentBlk)
+        if (nullptr == WorldSvo)
         {
-            assert(NextSvoDataOffset + (CurrentBlk->NextFreeSlot*sizeof(svo_node)) <= MaxSvoDataSize);
-
-            memcpy(GPUSvoBuffer + NextSvoDataOffset, CurrentBlk->Entries, CurrentBlk->NextFreeSlot * sizeof(svo_node));
-            NextSvoDataOffset += CurrentBlk->NextFreeSlot;
-
-            memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SVO_FAR_PTRS_PER_BLOCK * sizeof(far_ptr)); 
-            NextFarPtrDataOffset += SVO_FAR_PTRS_PER_BLOCK;//CurrentBlk->NextFarPtrSlot;
-
-            CurrentBlk = CurrentBlk->Next;
+            fprintf(stderr, "Failed to load SVO file\n");
         }
 
-        // Unmap both buffers
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, FarPtrBuffer);
-        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+        fclose(SvoInFile);
 
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoBuffer);
-        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
-        
-        // Associate buffers with shader slots
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, SvoBuffer);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, FarPtrBuffer);
+        return WorldSvo;
+
     }
-
-    return SvoBuffer;
+    else
+    {
+        return nullptr;
+    }
 }
+
+
+static void
+InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, camera* Cam, svo* const Svo)
+{
+    // Need to unproject the mouse X and Y into the scene.
+#if 0
+    vec3 ViewDir = Normalize(/* ??? */);
+
+    for (u32 Step = 0; Step < MAX_HAND_STEPS; ++Step)
+    {
+        // World position of the "hand" point
+        vec3 HandPos = CameraPos + ViewDir*Step;
+
+    }
+#endif
+
+
+    vec3 InsertP = Cam->Position + 1.5f*Cam->Forward;//vec3(CameraPos.X, CameraPos.Y, CameraPos.Z - 1.0f);
+    DEBUGPrintVec3(InsertP);
+    InsertVoxel(Svo, InsertP, 16);
+}
+
+static void
+DeleteVoxelAtMousePoint(f64 MouseX, f64 MouseY, camera* Cam, svo* const Svo)
+{
+    vec3 DeleteP = Cam->Position + 1.5f*Cam->Forward;//vec3(CameraPos.X, CameraPos.Y, CameraPos.Z - 1.0f);
+    
+    DeleteVoxel(Svo, DeleteP);
+}
+
 
 extern int
 main(int ArgCount, const char** const Args)
@@ -333,15 +184,11 @@ main(int ArgCount, const char** const Args)
         return EXIT_FAILURE;
     }
 
-
-    //return 0;
-
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_SAMPLES, 4); // NOTE: 4x MSAA
+    //glfwWindowHint(GLFW_SAMPLES, 4); // NOTE: 4x MSAA
     glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
-
     
     GLFWwindow* Window = glfwCreateWindow(DisplayWidth, DisplayHeight, DisplayTitle, nullptr, nullptr);
     glfwMakeContextCurrent(Window);
@@ -359,12 +206,10 @@ main(int ArgCount, const char** const Args)
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
-    //ImGui::StyleColorsClassic();
 
     // Setup Platform/Renderer bindings
     ImGui_ImplGlfw_InitForOpenGL(Window, true);
     ImGui_ImplOpenGL3_Init("#version 430 core");
-
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_DEPTH_CLAMP);
@@ -378,110 +223,29 @@ main(int ArgCount, const char** const Args)
     glViewport(0, 0, FramebufferWidth, FramebufferHeight);
     glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-    gl_uint ComputeShader = CompileComputeShader(RaycasterComputeKernel);
-    gl_uint MainShader = CompileShader(MainVertexCode, MainFragmentCode);
-
-#if OUTPUT_SHADER_ASM
-    OutputShaderAssembly(ComputeShader);
-#endif
-
-    if (0 == MainShader)
-    {
-        fprintf(stderr, "Failed to compile shader\n");
-
-        glfwTerminate();
-        return EXIT_FAILURE;
-    }
-
-    if (0 == ComputeShader)
-    {
-        fprintf(stderr, "Failed to compile compute shader\n");
-
-        glfwTerminate();
-        return EXIT_FAILURE;
-    }
-
-#if 0
-    FILE* SvoInFile = fopen("data/Scenes/serapis.9.svo", "rb");
-    svo* WorldSvo = LoadSvoFromFile(SvoInFile);
+    svo* WorldSvo = CreateImportedMeshTestScene("data/TestModels/serapis.glb");
     if (nullptr == WorldSvo)
     {
-        fprintf(stderr, "Failed to load SVO file\n");
+        fprintf(stderr, "Failed to load World SVO\n");
         glfwTerminate();
-        fclose(SvoInFile);
+        
         return EXIT_FAILURE;
     }
-    fclose(SvoInFile);
 
-    svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
-    //InsertVoxel(WorldSvo, vec3(20, 20, 20), 2);
-    //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
-    //DeleteVoxel(WorldSvo, vec3(0, 4, 0));
-#endif
-    svo* WorldSvo = ImportGltfToSvo(SABRE_MAX_TREE_DEPTH, "data/TestModels/serapis.glb");
+    // Initialise the render data
+    sbr_view_data ViewData = { };
+    ViewData.ScreenWidth = 512;
+    ViewData.ScreenHeight = 512;
 
-    printf("BlkCount: %u\n", WorldSvo->UsedBlockCount);
-    printf("Bias: %u\n", WorldSvo->Bias);
-    printf("Inv Bias: %f\n", (f64)WorldSvo->InvBias);
-    printf("Max Depth: %d\n", WorldSvo->MaxDepth);
-    printf("Scale exponent: %d\n", WorldSvo->ScaleExponent);
-    gl_uint SvoShaderBuffer = UploadOctreeBlockData(WorldSvo);
-
-    if (0 == SvoShaderBuffer)
+    sbr_render_data* RenderData = CreateSvoRenderData(WorldSvo, &ViewData);
+    if (nullptr == RenderData)
     {
-        fprintf(stderr, "Failed to upload octree block data\n");
+        fprintf(stderr, "Failed to initialise render data\n");
 
         glfwTerminate();
         return EXIT_FAILURE;
     }
 
-    glUseProgram(ComputeShader);
-
-    gl_uint OutputTexture;
-    glGenTextures(1, &OutputTexture);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, OutputTexture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, DisplayWidth, DisplayHeight, 0, GL_RGBA, GL_FLOAT, nullptr);
-    glUniform1i(glGetUniformLocation(ComputeShader, "OutputImgUniform"), 0);
-    glBindImageTexture(0, OutputTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-
-    glUniform1ui(glGetUniformLocation(ComputeShader, "MaxDepthUniform"), WorldSvo->MaxDepth);
-    glUniform1ui(glGetUniformLocation(ComputeShader, "ScaleExponentUniform"), WorldSvo->ScaleExponent);
-    glUniform1ui(glGetUniformLocation(ComputeShader, "BlockCountUniform"), WorldSvo->UsedBlockCount);
-    glUniform1ui(glGetUniformLocation(ComputeShader, "EntriesPerBlockUniform"), SVO_ENTRIES_PER_BLOCK);
-    glUniform1ui(glGetUniformLocation(ComputeShader, "FarPtrsPerBlockUniform"), SVO_FAR_PTRS_PER_BLOCK);
-    glUniform1ui(glGetUniformLocation(ComputeShader, "BiasUniform"), WorldSvo->Bias);
-    glUniform1f(glGetUniformLocation(ComputeShader, "InvBiasUniform"), WorldSvo->InvBias);
-
-    gl_int ViewMatrixUniformLocation = glGetUniformLocation(ComputeShader, "ViewMatrixUniform");
-
-    glUseProgram(MainShader);
-    glUniform1i(glGetUniformLocation(MainShader, "RenderedTextureUniform"), 0);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoShaderBuffer);
-
-
-    gl_uint VAO, VBO;
-    {
-        glGenBuffers(1, &VBO);
-        glGenVertexArrays(1, &VAO);
-
-        assert(VAO);
-        assert(VBO);
-
-        glBindVertexArray(VAO);
-
-        glBindBuffer(GL_ARRAY_BUFFER, VBO);
-        glBufferData(GL_ARRAY_BUFFER, 12*sizeof(f32), ScreenQuadVerts, GL_STATIC_DRAW);
-
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
-        glEnableVertexAttribArray(0);
-
-        glBindVertexArray(0);
-    }
 
     camera Cam = { };
     Cam.Forward = vec3(0, 0, -1);
@@ -498,11 +262,13 @@ main(int ArgCount, const char** const Args)
     // NOTE: Camera yaw and pitch
     f32 Yaw, Pitch;
 
-
-
     f64 DeltaTime = 0.0;
     f64 FrameStartTime = 0.0;
     f64 FrameEndTime = 0.0;
+
+    f64 LastMouseLTime = 0.0;
+    f64 LastMouseRTime = 0.0;
+
     while (GLFW_FALSE == glfwWindowShouldClose(Window))
     {
         FrameStartTime = glfwGetTime();
@@ -512,11 +278,9 @@ main(int ArgCount, const char** const Args)
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         
-        //ImGui::ShowDemoWindow();
-
         if (ImGui::BeginMainMenuBar())
         {
-            ImGui::Text("%fms CPU  %d BLKS  %d LVLS", 1000.0*DeltaTime, WorldSvo->UsedBlockCount, WorldSvo->MaxDepth);
+            ImGui::Text("%fms CPU  %d BLKS  %d LVLS", 1000.0*DeltaTime, GetSvoUsedBlockCount(WorldSvo), GetSvoDepth(WorldSvo));
             ImGui::EndMainMenuBar();
         }
 
@@ -573,6 +337,22 @@ main(int ArgCount, const char** const Args)
             f64 MouseX, MouseY;
             glfwGetCursorPos(Window, &MouseX, &MouseY);
 
+            f64 CurrentTime = glfwGetTime();
+            if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_RIGHT) && ((CurrentTime - LastMouseRTime)) >= 1)
+            {
+                InsertVoxelAtMousePoint(MouseX, MouseY, &Cam, WorldSvo);
+                UpdateSvoRenderData(WorldSvo, RenderData);
+                LastMouseRTime = CurrentTime;
+            }
+            
+            //printf("%f\n", (CurrentTime - LastMouseLTime)*1000.0);
+            if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_LEFT) && ((CurrentTime - LastMouseLTime)) >= 1)
+            {
+                DeleteVoxelAtMousePoint(MouseX, MouseY, &Cam, WorldSvo);
+                UpdateSvoRenderData(WorldSvo, RenderData);
+                LastMouseLTime = CurrentTime;
+            }
+
             const f32 DX = (f32)(MouseX - LastMouseX);
             const f32 DY = (f32)(MouseY - LastMouseY);
 
@@ -588,30 +368,17 @@ main(int ArgCount, const char** const Args)
             Cam.Forward = Normalize(Rotate((YawRotation * PitchRotation), Cam.Forward));
         }
 
-
         f32 CameraMatrix[3][3] = {
             { Cam.Right.X, Cam.Right.Y, Cam.Right.Z },
             { Cam.Up.X, Cam.Up.Y, Cam.Up.Z },
             { -Cam.Forward.X, -Cam.Forward.Y, -Cam.Forward.Z },
         };
 
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoShaderBuffer);
-        glUseProgram(ComputeShader);
-        glUniformMatrix3fv(ViewMatrixUniformLocation, 1, GL_TRUE, *CameraMatrix);
         f32 F[3] = { Cam.Position.X, Cam.Position.Y, Cam.Position.Z };
-        glUniform3fv(glGetUniformLocation(ComputeShader, "ViewPosUniform"), 1, F);
-        glDispatchCompute(SABRE_WORK_SIZE_X/8, SABRE_WORK_SIZE_Y/8, 1);
+        ViewData.CamTransform = (float*)CameraMatrix;
+        ViewData.CamPos = F;
 
-        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-
-        glUseProgram(MainShader);
-        glBindVertexArray(VAO);
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, OutputTexture);
-
-        glBindBuffer(GL_ARRAY_BUFFER, VBO);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
+        DrawSvoRenderData(RenderData, &ViewData);
 
         ImGui::Render();
 
@@ -622,21 +389,13 @@ main(int ArgCount, const char** const Args)
         DeltaTime = FrameEndTime - FrameStartTime;
     }
 
-    glUseProgram(0);
-
-    glDeleteProgram(MainShader);
-    glDeleteProgram(ComputeShader);
-
-    glDeleteBuffers(1, &SvoShaderBuffer);
-
-    glDeleteVertexArrays(1, &VAO);
-    glDeleteBuffers(1, &VBO);
-
     DeleteSparseVoxelOctree(WorldSvo);
+    DeleteSvoRenderData(RenderData);
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
+
     glfwTerminate();
 
     return EXIT_SUCCESS;

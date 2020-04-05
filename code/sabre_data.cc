@@ -127,6 +127,7 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
     uint OccupiedNonLeafOcts = OccBits & (~LeafBits);
     uint SetBitsBehindOctIdx = (1 << Oct) - 1;
 
+
     uint ChildOffset = bitCount(OccupiedNonLeafOcts & SetBitsBehindOctIdx); 
 
     if (! bool(ParentNode & SVO_FAR_PTR_BIT_MASK))
@@ -355,6 +356,7 @@ vec3 Raycast(in ray R)
             // the intersection. Investigate an epsilon value that lets us eliminate
             // these spots. The epsilon should probably be the same as the step value
             // we use below.
+
             if (CurrentIntersection.tMin <= CurrentIntersection.tMax)
             {
                 // Ray hit this voxel
@@ -365,6 +367,7 @@ vec3 Raycast(in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
+                        //return vec3(1, 0, 0);
                         vec3 N = abs(BoxNormal(NodeMin, NodeMax, sign(R.Dir)));
                         return 0.2 + dot(N, R.Dir) * vec3(1, 1, 1);
                     }
@@ -388,7 +391,6 @@ vec3 Raycast(in ray R)
                     }
                 }
 
-
                 // Octant not occupied, need to handle advance/pop
                 uint NextOct = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
 
@@ -410,14 +412,9 @@ vec3 Raycast(in ray R)
                     // Find the highest differing bit
                     uvec3 HDB = findMSB(NodeCentreBits ^ RayPBits);
 
-                    uvec3 M0 = uvec3(0);
-                    /*M = (HDB.x > M && HDB.x < ScaleExponentUniform + BiasUniform) ? HDB.x : M;
-                    M = (HDB.y > M && HDB.y < ScaleExponentUniform + BiasUniform) ? HDB.y : M;
-                    M = (HDB.z > M && HDB.z < ScaleExponentUniform + BiasUniform) ? HDB.z : M;*/
+                    uint M = MaxComponentU(mix(uvec3(0), HDB, lessThan(HDB, uvec3(ScaleExponentUniform + BiasUniform))));
 
-                    uint M = MaxComponentU(mix(M0, HDB, lessThan(HDB, uvec3(ScaleExponentUniform + BiasUniform))));
-
-                    uint NextDepth = ((ScaleExponentUniform + BiasUniform) - M.x);
+                    uint NextDepth = ((ScaleExponentUniform + BiasUniform) - M);
 
                     if (NextDepth >= CurrentDepth) return vec3(0.12);
 
