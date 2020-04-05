@@ -161,6 +161,7 @@ InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, vec3 CameraPos, svo* const Svo)
 
 
     vec3 InsertP = vec3(CameraPos.X, CameraPos.Y, CameraPos.Z - 1.0f);
+    DEBUGPrintVec3(InsertP);
     InsertVoxel(Svo, InsertP, 16);
 }
 
@@ -265,6 +266,9 @@ main(int ArgCount, const char** const Args)
     f64 FrameStartTime = 0.0;
     f64 FrameEndTime = 0.0;
 
+    f64 LastMouseLTime = 0.0;
+    f64 LastMouseRTime = 0.0;
+
     while (GLFW_FALSE == glfwWindowShouldClose(Window))
     {
         FrameStartTime = glfwGetTime();
@@ -333,16 +337,20 @@ main(int ArgCount, const char** const Args)
             f64 MouseX, MouseY;
             glfwGetCursorPos(Window, &MouseX, &MouseY);
 
-            if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_LEFT))
+            f64 CurrentTime = glfwGetTime();
+            if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_RIGHT) && ((CurrentTime - LastMouseRTime)) >= 1)
             {
                 InsertVoxelAtMousePoint(MouseX, MouseY, Cam.Position, WorldSvo);
                 UpdateSvoRenderData(WorldSvo, RenderData);
+                LastMouseRTime = CurrentTime;
             }
             
-            if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_RIGHT))
+            //printf("%f\n", (CurrentTime - LastMouseLTime)*1000.0);
+            if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_LEFT) && ((CurrentTime - LastMouseLTime)) >= 1)
             {
                 DeleteVoxelAtMousePoint(MouseX, MouseY, Cam.Position, WorldSvo);
                 UpdateSvoRenderData(WorldSvo, RenderData);
+                LastMouseLTime = CurrentTime;
             }
 
             const f32 DX = (f32)(MouseX - LastMouseX);
