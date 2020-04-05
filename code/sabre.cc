@@ -145,7 +145,7 @@ CreateLoadedMeshTestScene(const char* const SvoMeshFileName)
 
 
 static void
-InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, vec3 CameraPos, svo* const Svo)
+InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, camera* Cam, svo* const Svo)
 {
     // Need to unproject the mouse X and Y into the scene.
 #if 0
@@ -160,15 +160,15 @@ InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, vec3 CameraPos, svo* const Svo)
 #endif
 
 
-    vec3 InsertP = vec3(CameraPos.X, CameraPos.Y, CameraPos.Z - 1.0f);
+    vec3 InsertP = Cam->Position + 1.5f*Cam->Forward;//vec3(CameraPos.X, CameraPos.Y, CameraPos.Z - 1.0f);
     DEBUGPrintVec3(InsertP);
     InsertVoxel(Svo, InsertP, 16);
 }
 
 static void
-DeleteVoxelAtMousePoint(f64 MouseX, f64 MouseY, vec3 CameraPos, svo* const Svo)
+DeleteVoxelAtMousePoint(f64 MouseX, f64 MouseY, camera* Cam, svo* const Svo)
 {
-    vec3 DeleteP = vec3(CameraPos.X, CameraPos.Y, CameraPos.Z - 1.0f);
+    vec3 DeleteP = Cam->Position + 1.5f*Cam->Forward;//vec3(CameraPos.X, CameraPos.Y, CameraPos.Z - 1.0f);
     
     DeleteVoxel(Svo, DeleteP);
 }
@@ -340,7 +340,7 @@ main(int ArgCount, const char** const Args)
             f64 CurrentTime = glfwGetTime();
             if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_RIGHT) && ((CurrentTime - LastMouseRTime)) >= 1)
             {
-                InsertVoxelAtMousePoint(MouseX, MouseY, Cam.Position, WorldSvo);
+                InsertVoxelAtMousePoint(MouseX, MouseY, &Cam, WorldSvo);
                 UpdateSvoRenderData(WorldSvo, RenderData);
                 LastMouseRTime = CurrentTime;
             }
@@ -348,7 +348,7 @@ main(int ArgCount, const char** const Args)
             //printf("%f\n", (CurrentTime - LastMouseLTime)*1000.0);
             if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_LEFT) && ((CurrentTime - LastMouseLTime)) >= 1)
             {
-                DeleteVoxelAtMousePoint(MouseX, MouseY, Cam.Position, WorldSvo);
+                DeleteVoxelAtMousePoint(MouseX, MouseY, &Cam, WorldSvo);
                 UpdateSvoRenderData(WorldSvo, RenderData);
                 LastMouseLTime = CurrentTime;
             }
