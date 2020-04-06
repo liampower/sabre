@@ -46,6 +46,14 @@ struct svo_bias
     uint32_t Scale;
 };
 
+
+struct svo_normals_buffer
+{
+    uint32_t NormalsCount;
+    vec3*    NormalsData;
+};
+
+
 struct svo_block
 {
     usize      NextFreeSlot;

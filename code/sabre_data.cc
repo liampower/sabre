@@ -78,6 +78,7 @@ struct far_ptr
 layout (local_size_x = 8, local_size_y = 8) in;
 
 layout (rgba32f, binding = 0) uniform image2D OutputImgUniform;
+layout (rgba32f, binding = 1)  uniform image1D NormalsDataUniform;
 
 uniform uint MaxDepthUniform;
 uniform uint BlockCountUniform;
@@ -119,7 +120,7 @@ uint MaxComponentU(uvec3 V)
     return max(max(V.x, V.y), V.z);
 }
 
-uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
+uint GetNodeChildIndex(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
 {
     uint ChildPtr = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
     uint OccBits = (ParentNode & SVO_NODE_OCCUPIED_MASK) >> 8; 
@@ -127,15 +128,14 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
     uint OccupiedNonLeafOcts = OccBits & (~LeafBits);
     uint SetBitsBehindOctIdx = (1 << Oct) - 1;
 
-
     uint ChildOffset = bitCount(OccupiedNonLeafOcts & SetBitsBehindOctIdx); 
 
     if (! bool(ParentNode & SVO_FAR_PTR_BIT_MASK))
     {
-        uint Child = SvoInputBuffer.Nodes[ParentBlkIndex*EntriesPerBlockUniform + ChildPtr + ChildOffset];
+        uint ChildIndex = ParentBlkIndex*EntriesPerBlockUniform + ChildPtr + ChildOffset;
         ParentBlkIndex += (ChildPtr + ChildOffset) / (EntriesPerBlockUniform);
 
-        return Child;
+        return ChildIndex;
     }
     else
     {
@@ -153,9 +153,9 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
         // Skip any blocks required to get to the actual child node
         ParentBlkIndex += (FarPtr.NodeOffset + ChildOffset) / EntriesPerBlockUniform;
 
-        uint Child = SvoInputBuffer.Nodes[ChildBlkStart + FarPtr.NodeOffset + ChildOffset];
+        uint ChildIndex = ChildBlkStart + FarPtr.NodeOffset + ChildOffset;
 
-        return Child;
+        return ChildIndex;
     }
 }
 
@@ -367,15 +367,20 @@ vec3 Raycast(in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
-                        //return vec3(1, 0, 0);
-                        vec3 N = abs(BoxNormal(NodeMin, NodeMax, sign(R.Dir)));
-                        return 0.2 + dot(N, R.Dir) * vec3(1, 1, 1);
+                        return vec3(1, 0, 0);
+                        /*const vec3 CR = vec3(1, 1, 1);
+                        float LookupIndex = (BlkIndex*
+                        //vec3 N = abs(BoxNormal(NodeMin, NodeMax, sign(R.Dir)));
+                        //return 0.2 + dot(N, R.Dir) * vec3(1, 1, 1);
+                        vec3 N = texelFetch(NormalsDataUniform, LookupIndex, 0, 0);
+
+                        return dot(N, R.Dir) * CR;*/
                     }
                     else
                     {
                         // Voxel has children --- execute push
                         // NOTE(Liam): BlkIndex (potentially) updated here
-                        ParentNode = GetNodeChild(ParentNode, CurrentOct, BlkIndex /*out*/);
+                        ParentNode = SvoInputBuffer.Nodes[GetNodeChildIndex(ParentNode, CurrentOct, BlkIndex /*out*/)];
                         CurrentOct = GetOctant(RayP, NodeCentre*InvBiasUniform);
                         ParentCentre = NodeCentre;
                         Scale >>= 1;

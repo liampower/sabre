@@ -246,7 +246,6 @@ main(int ArgCount, const char** const Args)
         return EXIT_FAILURE;
     }
 
-
     camera Cam = { };
     Cam.Forward = vec3(0, 0, -1);
     Cam.Right = vec3(1, 0, 0);

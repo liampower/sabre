@@ -6,13 +6,20 @@
 #include "sabre_render.h"
 #include "sabre_data.h"
 
-static constexpr uint SABRE_WORK_SIZE_X = 512;
-static constexpr uint SABRE_WORK_SIZE_Y = 512;
+static constexpr uint WORK_SIZE_X = 512;
+static constexpr uint WORK_SIZE_Y = 512;
+
 
 typedef GLuint gl_uint;
 typedef GLint  gl_int;
 typedef GLsizei gl_sizei;
 typedef GLenum gl_enum;
+
+enum cs_bindings : gl_uint
+{
+    BINDING_RENDERIMG = 0,
+    BINDING_NORMALS = 1
+};
 
 // Holds the contextual data required to render a SVO voxel
 // scene with OpenGL.
@@ -29,6 +36,9 @@ struct sbr_render_data
 
     gl_int ViewMatUniformLocation; // Location of view matrix uniform
     gl_int ViewPosUniformLocation; // Location of view position uniform
+
+    gl_uint ColourDataTexture;
+    gl_uint NormalDataTexutre;
 };
 
 
@@ -78,6 +88,28 @@ UploadCanvasVertices(void)
     return Result;
 }
 
+static gl_uint
+CreateNormalsTexture(svo_normals_buffer* Buffer)
+{
+    gl_uint TextureID;
+    glCreateTextures(GL_TEXTURE_1D, 1, &TextureID);
+
+    if (TextureID)
+    {
+        glBindTexture(GL_TEXTURE_1D, TextureID);
+        
+        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+        u32 Width = Buffer->NormalsCount;
+
+        glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB32F, Width, 0, GL_RGB, GL_FLOAT, Buffer->NormalsData);
+    }
+
+    return TextureID;
+}
 
 static gl_uint
 CompileComputeShader(const char* const ComputeShaderCode)
@@ -201,7 +233,8 @@ CreateRenderImage(int ImgWidth, int ImgHeight)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, ImgWidth, ImgHeight, 0, GL_RGBA, GL_FLOAT, nullptr);
-    glBindImageTexture(0, OutputTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+
+    glBindImageTexture(BINDING_RENDERIMG, OutputTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
     
     return OutputTexture;
 }
@@ -285,7 +318,7 @@ DrawSvoRenderData(const sbr_render_data* const RenderData, const sbr_view_data* 
     glUseProgram(RenderData->RenderShader);
     glUniformMatrix3fv(RenderData->ViewMatUniformLocation, 1, GL_TRUE, ViewData->CamTransform);
     glUniform3fv(RenderData->ViewPosUniformLocation, 1, ViewData->CamPos);
-    glDispatchCompute(SABRE_WORK_SIZE_X/8, SABRE_WORK_SIZE_Y/8, 1);
+    glDispatchCompute(WORK_SIZE_X/8, WORK_SIZE_Y/8, 1);
 
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
