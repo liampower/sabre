@@ -16,7 +16,7 @@
 #include "sabre_data.h"
 #include "sabre_render.h"
 
-static constexpr u32 SABRE_MAX_TREE_DEPTH = 8;
+static constexpr u32 SABRE_MAX_TREE_DEPTH = 4;
 static constexpr u32 SABRE_SCALE_EXPONENT = 5;
 
 static constexpr u32 DisplayWidth = 512;
@@ -69,7 +69,7 @@ OutputGraphicsDeviceInfo(void)
 // max corners.
 //
 // Tree parameter ignored here.
-static inline bool
+static svo_surface_state
 CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const)
 {
     const vec3 S = vec3(16);
@@ -87,25 +87,50 @@ CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const)
     if (S.Z < Min.Z) DistanceSqToCube -= Squared(S.Z - Min.Z);
     else if (S.Z > Max.Z) DistanceSqToCube -= Squared(S.Z - Max.Z);
 
-    if (DistanceSqToCube > 0)
+    f32 BoxR = Length((Max - Min) * 0.5f);
+    // If true: centre is always > min and < max (within bounds)
+
+    if (DistanceSqToCube <= 0) return SURFACE_OUTSIDE;
+    if (DistanceSqToCube == (R*R))
     {
-        return true;
+        // Two possibilities: sphere is wholly contained in box or box is wholly contained in sphere
+
+        if (BoxR <= R)
+        {
+            return SURFACE_INSIDE;
+        }
+        else
+        {
+            return SURFACE_INTERSECTED;
+        }
     }
     else
     {
-        return false;
+        return SURFACE_OUTSIDE;
     }
+}
+
+static vec3
+SphereNormal(vec3 VoxelCentre, const svo* const)
+{
+    const vec3 S = vec3(16);
+    const f32 R = 8;
+
+    return Normalize(VoxelCentre - S);
 }
 
 static inline svo*
 CreateCubeSphereTestScene(void)
 {
-    svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
-    InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
-    InsertVoxel(WorldSvo, vec3(0, 17, 0), 16);
+    svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT,
+                                            SABRE_MAX_TREE_DEPTH,
+                                            &CubeSphereIntersection,
+                                            &SphereNormal);
+    //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
+    //InsertVoxel(WorldSvo, vec3(0, 17, 0), 16);
     //InsertVoxel(WorldSvo, vec3(20, 20, 20), 16);
     //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
-    DeleteVoxel(WorldSvo, vec3(0, 0, 0));
+    //DeleteVoxel(WorldSvo, vec3(0, 0, 0));
 
     return WorldSvo;
 }
@@ -160,7 +185,7 @@ InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, camera* Cam, svo* const Svo)
 #endif
 
 
-    vec3 InsertP = Cam->Position + 1.5f*Cam->Forward;//vec3(CameraPos.X, CameraPos.Y, CameraPos.Z - 1.0f);
+    vec3 InsertP = Cam->Position + 1.5f*Cam->Forward;
     DEBUGPrintVec3(InsertP);
     InsertVoxel(Svo, InsertP, 16);
 }
@@ -168,7 +193,7 @@ InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, camera* Cam, svo* const Svo)
 static void
 DeleteVoxelAtMousePoint(f64 MouseX, f64 MouseY, camera* Cam, svo* const Svo)
 {
-    vec3 DeleteP = Cam->Position + 1.5f*Cam->Forward;//vec3(CameraPos.X, CameraPos.Y, CameraPos.Z - 1.0f);
+    vec3 DeleteP = Cam->Position + 1.5f*Cam->Forward;
     
     DeleteVoxel(Svo, DeleteP);
 }
@@ -223,7 +248,7 @@ main(int ArgCount, const char** const Args)
     glViewport(0, 0, FramebufferWidth, FramebufferHeight);
     glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-    svo* WorldSvo = CreateImportedMeshTestScene("data/TestModels/serapis.glb");
+    svo* WorldSvo = CreateCubeSphereTestScene();
     if (nullptr == WorldSvo)
     {
         fprintf(stderr, "Failed to load World SVO\n");
@@ -344,7 +369,6 @@ main(int ArgCount, const char** const Args)
                 LastMouseRTime = CurrentTime;
             }
             
-            //printf("%f\n", (CurrentTime - LastMouseLTime)*1000.0);
             if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_LEFT) && ((CurrentTime - LastMouseLTime)) >= 1)
             {
                 DeleteVoxelAtMousePoint(MouseX, MouseY, &Cam, WorldSvo);

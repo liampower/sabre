@@ -4,13 +4,19 @@
 #include "sabre.h"
 #include "sabre_math.h"
 
-static constexpr u32 SVO_ENTRIES_PER_BLOCK  = 8192;
-static constexpr u32 SVO_FAR_PTRS_PER_BLOCK = 8192;
+static constexpr u32 SVO_NODES_PER_BLK = 8192;
+static constexpr u32 SVO_FAR_PTRS_PER_BLK = 8192;
 
-static_assert(SVO_FAR_PTRS_PER_BLOCK >= SVO_ENTRIES_PER_BLOCK, "Far Ptrs Per Blk must be >= Entries per Blk");
-
+static_assert(SVO_FAR_PTRS_PER_BLK >= SVO_NODES_PER_BLK, "Far Ptrs Per Blk must be >= Entries per Blk");
 
 struct svo_block;
+
+enum svo_surface_state
+{
+    SURFACE_INTERSECTED,
+    SURFACE_INSIDE,
+    SURFACE_OUTSIDE
+};
 
 struct far_ptr
 {
@@ -61,8 +67,8 @@ struct svo_block
     u32        Index;
     svo_block* Prev;
     svo_block* Next;
-    svo_node   Entries[SVO_ENTRIES_PER_BLOCK];
-    far_ptr    FarPtrs[SVO_FAR_PTRS_PER_BLOCK];
+    svo_node   Entries[SVO_NODES_PER_BLK];
+    far_ptr    FarPtrs[SVO_FAR_PTRS_PER_BLK];
 };
 
 struct svo
@@ -102,7 +108,8 @@ struct svo
     svo_block* RootBlock;
 };
 
-typedef bool (*intersector_fn)(vec3, vec3, const svo* const);
+typedef svo_surface_state (*intersector_fn)(vec3, vec3, const svo* const);
+typedef vec3 (*normal_fn)(vec3, const svo* const);
 
 
 extern "C" void
@@ -123,7 +130,8 @@ ImportGltfToSvo(u32 MaxDepth, const char* const GLTFPath);
 extern "C" svo*
 CreateSparseVoxelOctree(u32 ScaleExponent,
                         u32 MaxDepth,
-                        intersector_fn Surface);
+                        intersector_fn Surface,
+                        normal_fn NormalFn);
 
 extern "C" void
 OutputSvoToFile(const svo* const Svo, FILE* FileOut);

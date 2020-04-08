@@ -211,8 +211,8 @@ SetRenderUniformData(const svo* const Tree, sbr_render_data* const RenderData)
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "MaxDepthUniform"), Tree->MaxDepth);
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "ScaleExponentUniform"), Tree->ScaleExponent);
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "BlockCountUniform"), Tree->UsedBlockCount);
-    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "EntriesPerBlockUniform"), SVO_ENTRIES_PER_BLOCK);
-    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "FarPtrsPerBlockUniform"), SVO_FAR_PTRS_PER_BLOCK);
+    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "EntriesPerBlockUniform"), SVO_NODES_PER_BLK);
+    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "FarPtrsPerBlockUniform"), SVO_FAR_PTRS_PER_BLK);
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "BiasUniform"), Tree->Bias.Scale + 1);
     glUniform1f(glGetUniformLocation(RenderData->RenderShader, "InvBiasUniform"), Tree->Bias.InvScale * 0.5);
 
@@ -255,11 +255,11 @@ UploadOctreeBlockData(const svo* const Svo)
 
     if (SvoBuffer && FarPtrBuffer)
     {
-        usize SvoBlockDataSize = sizeof(svo_node) * SVO_ENTRIES_PER_BLOCK;
+        usize SvoBlockDataSize = sizeof(svo_node) * SVO_NODES_PER_BLK;
         // TODO(Liam): Waste here on the last block
         usize MaxSvoDataSize = SvoBlockDataSize * Svo->UsedBlockCount;
 
-        usize FarPtrBlockDataSize = sizeof(far_ptr) * SVO_FAR_PTRS_PER_BLOCK;
+        usize FarPtrBlockDataSize = sizeof(far_ptr) * SVO_FAR_PTRS_PER_BLK;
         usize MaxFarPtrDataSize = FarPtrBlockDataSize * Svo->UsedBlockCount;
 
         // Allocate space for the far ptr buffer
@@ -288,8 +288,8 @@ UploadOctreeBlockData(const svo* const Svo)
             memcpy(GPUSvoBuffer + NextSvoDataOffset, CurrentBlk->Entries, CurrentBlk->NextFreeSlot * sizeof(svo_node));
             NextSvoDataOffset += CurrentBlk->NextFreeSlot;
 
-            memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SVO_FAR_PTRS_PER_BLOCK * sizeof(far_ptr)); 
-            NextFarPtrDataOffset += SVO_FAR_PTRS_PER_BLOCK;//CurrentBlk->NextFarPtrSlot;
+            memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SVO_FAR_PTRS_PER_BLK * sizeof(far_ptr)); 
+            NextFarPtrDataOffset += SVO_FAR_PTRS_PER_BLK;//CurrentBlk->NextFarPtrSlot;
 
             CurrentBlk = CurrentBlk->Next;
         }
@@ -335,6 +335,7 @@ DrawSvoRenderData(const sbr_render_data* const RenderData, const sbr_view_data* 
 extern "C" sbr_render_data*
 CreateSvoRenderData(const svo* const Tree, const sbr_view_data* const ViewData)
 {
+    // TODO(Liam): Error checking
     sbr_render_data* RenderData = (sbr_render_data*) calloc(1, sizeof(sbr_render_data));
 
     RenderData->RenderShader = CompileComputeShader(RaycasterComputeKernel);
@@ -413,11 +414,11 @@ DeleteSvoRenderData(sbr_render_data* RenderData)
 extern "C" void
 UpdateSvoRenderData(const svo* const Svo, sbr_render_data* const RenderDataOut)
 {
-    usize SvoBlockDataSize = sizeof(svo_node) * SVO_ENTRIES_PER_BLOCK;
+    usize SvoBlockDataSize = sizeof(svo_node) * SVO_NODES_PER_BLK;
     // TODO(Liam): Waste here on the last block
     usize MaxSvoDataSize = SvoBlockDataSize * Svo->UsedBlockCount;
 
-    usize FarPtrBlockDataSize = sizeof(far_ptr) * SVO_FAR_PTRS_PER_BLOCK;
+    usize FarPtrBlockDataSize = sizeof(far_ptr) * SVO_FAR_PTRS_PER_BLK;
     usize MaxFarPtrDataSize = FarPtrBlockDataSize * Svo->UsedBlockCount;
 
     // Allocate space for the far ptr buffer
@@ -433,7 +434,6 @@ UpdateSvoRenderData(const svo* const Svo, sbr_render_data* const RenderDataOut)
     // Reset SSBO buffer binding
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
-
     // TODO(Liam): Don't send all the blocks to the renderer! Use only a subset.
     svo_block* CurrentBlk = Svo->RootBlock;
     usize NextSvoDataOffset = 0;
@@ -446,8 +446,8 @@ UpdateSvoRenderData(const svo* const Svo, sbr_render_data* const RenderDataOut)
         memcpy(GPUSvoBuffer + NextSvoDataOffset, CurrentBlk->Entries, CurrentBlk->NextFreeSlot * sizeof(svo_node));
         NextSvoDataOffset += CurrentBlk->NextFreeSlot;
 
-        memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SVO_FAR_PTRS_PER_BLOCK * sizeof(far_ptr)); 
-        NextFarPtrDataOffset += SVO_FAR_PTRS_PER_BLOCK;
+        memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SVO_FAR_PTRS_PER_BLK * sizeof(far_ptr)); 
+        NextFarPtrDataOffset += SVO_FAR_PTRS_PER_BLK;
 
         CurrentBlk = CurrentBlk->Next;
     }

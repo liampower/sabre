@@ -458,23 +458,22 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
 }
 
 
-static bool
+static svo_surface_state
 IntersectorFunction(vec3 vMin, vec3 vMax, const svo* const Tree)
 {
     vec3 Halfsize = (vMax - vMin) * 0.5f;
     uvec3 Centre = uvec3((vMin + Halfsize) * (1 << Tree->Bias.Scale));
     
     u32 MortonCode = EncodeMorton3(Centre.X, Centre.Y, Centre.Z);
-    /*u32 Xmsk = (1 << (Centre.X % 64));
-    u32 Ymsk = (1 << (Centre.Y % 64));
-    u32 Zmsk = (1 << (Centre.Z % 64));
 
-    u32 IndexX = Centre.X / 64;
-    u32 IndexY = Centre.Y / 64;
-    u32 IndexZ = Centre.Z / 64;*/
-
-    return GlobalTriangleIndex.find(MortonCode) != GlobalTriangleIndex.end();
-    //return ((TriangleBitmapX[IndexX] & Xmsk) && (TriangleBitmapY[IndexY] & Ymsk) && (TriangleBitmapZ[IndexZ] & Zmsk));
+    if (GlobalTriangleIndex.find(MortonCode) != GlobalTriangleIndex.end())
+    {
+        return SURFACE_INTERSECTED;
+    }
+    else
+    {
+        return SURFACE_OUTSIDE;
+    }
 }
 
 static inline f32
@@ -574,7 +573,7 @@ ImportGltfToSvo(u32 MaxDepth, const char* const GLTFPath)
         GlobalTriangleIndex.reserve(TriangleData->TriangleCount);
         BuildTriangleIndex(MaxDepth, ScaleExponent, TriangleData, GlobalTriangleIndex);
 
-        svo* Svo = CreateSparseVoxelOctree(ScaleExponent, MaxDepth, &IntersectorFunction);
+        svo* Svo = CreateSparseVoxelOctree(ScaleExponent, MaxDepth, &IntersectorFunction, nullptr);
 
         free(TriangleData);
         cgltf_free(Data);

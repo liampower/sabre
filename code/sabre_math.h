@@ -622,6 +622,12 @@ Length(vec3 V)
 }
 
 static inline float
+LengthSq(vec3 V)
+{
+    return (V.X*V.X + V.Y*V.Y + V.Z*V.Z);
+}
+
+static inline float
 MaxComponent(vec3 V)
 {
     return Max(Max(V.X, V.Y), V.Z);
