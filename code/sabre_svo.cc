@@ -407,8 +407,6 @@ AllocateNode(svo_block* const Blk)
     }
 }
 
-static std::vector<vec3> DEBUGNormalsV;
-
 static void
 BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth, u32 Scale, svo_block* ParentBlk, vec3 Centre, intersector_fn SurfaceFn, normal_fn NormalFn)
 {
@@ -470,19 +468,11 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
             else
             {
                 SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, Parent);
-
-                // Generate normals data for leaf voxels.
-                vec3 Normal = NormalFn(OctCentre, Tree);
-                DEBUGNormalsV.push_back(Normal);
             }
         }
         else if (SURFACE_INSIDE == SurfaceState)
         {
             SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, Parent);
-            // Generate normals data for leaf voxels.
-            vec3 Normal = NormalFn(OctCentre, Tree);
-            DEBUGNormalsV.push_back(Normal);
-
         }
     }
 

@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <assert.h>
+#include <vector>
 
 #include <glad/glad.h>
 #include <glfw/glfw3.h>
@@ -37,6 +38,9 @@ struct camera
     vec3 Forward;
     vec3 Position;
 };
+
+
+static std::vector<vec3> DEBUGNormals;
 
 static void
 HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei Length, const GLchar* Msg, const void*)
@@ -87,27 +91,15 @@ CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const)
     if (S.Z < Min.Z) DistanceSqToCube -= Squared(S.Z - Min.Z);
     else if (S.Z > Max.Z) DistanceSqToCube -= Squared(S.Z - Max.Z);
 
-    f32 BoxR = Length((Max - Min) * 0.5f);
+    //f32 BoxR = Length((Max - Min) * 0.5f);
     // If true: centre is always > min and < max (within bounds)
 
-    if (DistanceSqToCube <= 0) return SURFACE_OUTSIDE;
-    if (DistanceSqToCube == (R*R))
-    {
-        // Two possibilities: sphere is wholly contained in box or box is wholly contained in sphere
+    vec3 BoxCtr = Min + ((Max - Min) * 0.5f);
+    vec3 Normal = Normalize(BoxCtr - S);
+    DEBUGNormals.push_back(Normal);
 
-        if (BoxR <= R)
-        {
-            return SURFACE_INSIDE;
-        }
-        else
-        {
-            return SURFACE_INTERSECTED;
-        }
-    }
-    else
-    {
-        return SURFACE_OUTSIDE;
-    }
+    if (DistanceSqToCube >= 0) return SURFACE_INTERSECTED;
+    else return SURFACE_OUTSIDE;
 }
 
 static vec3
@@ -262,7 +254,12 @@ main(int ArgCount, const char** const Args)
     ViewData.ScreenWidth = 512;
     ViewData.ScreenHeight = 512;
 
-    sbr_render_data* RenderData = CreateSvoRenderData(WorldSvo, &ViewData);
+
+    svo_normals_buffer NormalsBuffer = { };
+    NormalsBuffer.NormalsCount = DEBUGNormals.size();
+    NormalsBuffer.NormalsData = DEBUGNormals.data();
+
+    sbr_render_data* RenderData = CreateSvoRenderData(WorldSvo, &ViewData, &NormalsBuffer);
     if (nullptr == RenderData)
     {
         fprintf(stderr, "Failed to initialise render data\n");

@@ -78,18 +78,20 @@ struct far_ptr
 layout (local_size_x = 8, local_size_y = 8) in;
 
 layout (rgba32f, binding = 0) uniform image2D OutputImgUniform;
-layout (rgba32f, binding = 1)  uniform image1D NormalsDataUniform;
 
 uniform uint MaxDepthUniform;
 uniform uint BlockCountUniform;
 uniform uint ScaleExponentUniform;
 uniform uint EntriesPerBlockUniform;
 uniform uint FarPtrsPerBlockUniform;
+
 uniform uint BiasUniform;
 uniform float InvBiasUniform;
 
 uniform vec3 ViewPosUniform;
 uniform mat3 ViewMatrixUniform;
+
+uniform sampler1D NormalsDataUniform;
 
 const uvec3 OCT_BITS = uvec3(1, 2, 4);
 const vec3 OCT_BITS_F32 = vec3(1.0, 2.0, 4.0);
@@ -367,7 +369,13 @@ vec3 Raycast(in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
-                        return vec3(1, 0, 0);
+                        const vec3 CR = vec3(1, 1, 1);
+                        //return vec3(1, 0, 0);
+                        uint LookupIndex = GetNodeChildIndex(ParentNode, CurrentOct, BlkIndex);
+                        vec3 N = texture(NormalsDataUniform, LookupIndex).xyz;
+                        return N;
+
+                        //return dot(N, R.Dir) * CR;
                         /*const vec3 CR = vec3(1, 1, 1);
                         float LookupIndex = (BlkIndex*
                         //vec3 N = abs(BoxNormal(NodeMin, NodeMax, sign(R.Dir)));

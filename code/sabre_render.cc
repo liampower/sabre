@@ -89,7 +89,7 @@ UploadCanvasVertices(void)
 }
 
 static gl_uint
-CreateNormalsTexture(svo_normals_buffer* Buffer)
+CreateNormalsTexture(const svo_normals_buffer* const Buffer)
 {
     gl_uint TextureID;
     glCreateTextures(GL_TEXTURE_1D, 1, &TextureID);
@@ -333,7 +333,7 @@ DrawSvoRenderData(const sbr_render_data* const RenderData, const sbr_view_data* 
 }
 
 extern "C" sbr_render_data*
-CreateSvoRenderData(const svo* const Tree, const sbr_view_data* const ViewData)
+CreateSvoRenderData(const svo* const Tree, const sbr_view_data* const ViewData, const svo_normals_buffer* const NormalsData)
 {
     // TODO(Liam): Error checking
     sbr_render_data* RenderData = (sbr_render_data*) calloc(1, sizeof(sbr_render_data));
@@ -374,6 +374,15 @@ CreateSvoRenderData(const svo* const Tree, const sbr_view_data* const ViewData)
     svo_buffers SvoBuffers = UploadOctreeBlockData(Tree);
     if (0 == SvoBuffers.SvoBuffer || 0 == SvoBuffers.FarPtrBuffer)
     {
+        DeleteSvoRenderData(RenderData);
+        return nullptr;
+    }
+
+    RenderData->NormalDataTexutre = CreateNormalsTexture(NormalsData);
+    if (0 == RenderData->NormalDataTexutre)
+    {
+        fprintf(stderr, "Failed to upload normal data\n");
+
         DeleteSvoRenderData(RenderData);
         return nullptr;
     }
