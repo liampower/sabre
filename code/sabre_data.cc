@@ -264,6 +264,7 @@ vec3 Oct2Cr(in uint Oct)
 struct st_frame
 {
     uint Node;
+    uint LeafIndex;
     int Scale;
     vec3 ParentCentre;
     uint BlkIndex;
@@ -311,6 +312,7 @@ vec3 Raycast(in ray R)
     int Step;
     uint CurrentOct;
     uint CurrentDepth;
+    uint LeafIndex = 0;
 
     // Check if the ray is within the octree at all
     if (CurrentIntersection.tMin <= CurrentIntersection.tMax && CurrentIntersection.tMax > 0)
@@ -339,6 +341,7 @@ vec3 Raycast(in ray R)
         Scale >>= 1;
 
         Stack[CurrentDepth] = st_frame(ParentNode, 
+                                       LeafIndex,
                                        Scale,
                                        ParentCentre,
                                        BlkIndex);
@@ -372,8 +375,11 @@ vec3 Raycast(in ray R)
                         const vec3 CR = vec3(1, 1, 1);
                         //return vec3(1, 0, 0);
                         uint LookupIndex = GetNodeChildIndex(ParentNode, CurrentOct, BlkIndex);
-                        vec3 N = texture(NormalsDataUniform, LookupIndex).xyz;
-                        return N;
+                        //LeafIndex += bitCount(ParentNode & SVO_NODE_CHILD_PTR_MASK);
+                       // return vec3(float(LeafIndex) / 16.0); 
+                        vec3 N = texture(NormalsDataUniform, LeafIndex).xyz;
+                        vec3 Ldir = normalize(NodeCentre - vec3(33, 33, 33));
+                        return dot(Ldir, N) * CR;
 
                         //return dot(N, R.Dir) * CR;
                         /*const vec3 CR = vec3(1, 1, 1);
@@ -393,8 +399,10 @@ vec3 Raycast(in ray R)
                         ParentCentre = NodeCentre;
                         Scale >>= 1;
                         ++CurrentDepth;
+                        LeafIndex += bitCount(ParentNode & SVO_NODE_LEAF_MASK);
 
                         Stack[CurrentDepth] = st_frame(ParentNode,
+                                                   LeafIndex,
                                                    Scale,
                                                    ParentCentre,
                                                    BlkIndex);
@@ -438,6 +446,7 @@ vec3 Raycast(in ray R)
                         ParentCentre = Stack[CurrentDepth].ParentCentre;
                         ParentNode = Stack[CurrentDepth].Node;
                         BlkIndex = Stack[CurrentDepth].BlkIndex;
+                        LeafIndex = Stack[CurrentDepth].LeafIndex;
 
                         CurrentOct = GetOctant(RayP, ParentCentre*InvBiasUniform);
                     }
