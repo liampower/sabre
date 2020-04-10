@@ -103,9 +103,16 @@ CreateNormalsTexture(const svo_normals_buffer* const Buffer)
         glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
-        u32 Width = Buffer->NormalsCount;
+        u32 Width = Min(Buffer->NormalsCount, GL_MAX_TEXTURE_SIZE);
 
-        glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB32F, Width, 0, GL_RGB, GL_FLOAT, Buffer->NormalsData);
+        glTexImage1D(GL_TEXTURE_1D,  // Target
+                     0,              // LOD
+                     GL_RGBA8_SNORM,  // Component storage format
+                     GL_MAX_TEXTURE_SIZE,          // Size
+                     0,              // Border
+                     GL_RGBA, // Component format
+                     GL_UNSIGNED_INT_8_8_8_8, // Component pack format
+                     Buffer->NormalsData); // Data
     }
 
     return TextureID;

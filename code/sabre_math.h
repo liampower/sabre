@@ -25,6 +25,19 @@
   #define aligned(N) __attribute__((aligned(N)))
 #endif
 
+static inline float
+Clamp(float X, float Lo, float Hi)
+{
+    if (X < Lo) return Lo;
+    if (X > Hi) return Hi;
+    else        return X;
+}
+
+static inline int
+Round(float X)
+{
+    return (int)roundf(X);
+}
 
 struct bvec3
 {
@@ -37,7 +50,6 @@ struct mat3
 {
     float M[3][3];
 };
-
 
 
 // {{{ Vectors

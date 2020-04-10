@@ -17,7 +17,7 @@
 #include "sabre_data.h"
 #include "sabre_render.h"
 
-static constexpr u32 SABRE_MAX_TREE_DEPTH = 4;
+static constexpr u32 SABRE_MAX_TREE_DEPTH = 6;
 static constexpr u32 SABRE_SCALE_EXPONENT = 5;
 
 static constexpr u32 DisplayWidth = 512;
@@ -40,7 +40,7 @@ struct camera
 };
 
 
-static std::vector<vec3> DEBUGNormals;
+static std::vector<uint32_t> DEBUGNormals;
 
 static void
 HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei Length, const GLchar* Msg, const void*)
@@ -69,6 +69,21 @@ OutputGraphicsDeviceInfo(void)
     printf("Graphics Renderer: %s\n", glGetString(GL_RENDERER));
 }
 
+
+static inline uint32_t
+PackVec3ToSnorm3(vec3 V)
+{
+    f32 Exp = 127.0f;
+
+    u32 Sx = (u32)Round(Clamp(V.X, -1.0f, 1.0f) * Exp);
+    u32 Sy = (u32)Round(Clamp(V.Y, -1.0f, 1.0f) * Exp);
+    u32 Sz = (u32)Round(Clamp(V.Z, -1.0f, 1.0f) * Exp);
+
+    uint32_t Out = (0xFFU | (Sz) | (Sy << 0x08U) | (Sx << 0x10U));
+
+    return Out;
+}
+
 // NOTE(Liam): Warning! Does not work if Min,Max are not the **actual** (dimension-wise) min and
 // max corners.
 //
@@ -94,21 +109,22 @@ CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const)
     //f32 BoxR = Length((Max - Min) * 0.5f);
     // If true: centre is always > min and < max (within bounds)
 
-    vec3 BoxCtr = Min + ((Max - Min) * 0.5f);
-    vec3 Normal = Normalize(BoxCtr - S);
-    DEBUGNormals.push_back(Normal);
 
-    if (DistanceSqToCube >= 0) return SURFACE_INTERSECTED;
+    if (DistanceSqToCube >= 0)
+    {
+        vec3 BoxCtr = Min + ((Max - Min) * 0.5f);
+        uint32_t Normal = PackVec3ToSnorm3(Normalize(BoxCtr - S));
+        DEBUGNormals.push_back(Normal);
+
+        return SURFACE_INTERSECTED;
+    }
     else return SURFACE_OUTSIDE;
 }
 
-static vec3
-SphereNormal(vec3 VoxelCentre, const svo* const)
+static inline vec3
+SphereNormal(vec3 C, const svo* const)
 {
-    const vec3 S = vec3(16);
-    const f32 R = 8;
-
-    return Normalize(VoxelCentre - S);
+    return vec3(0);
 }
 
 static inline svo*

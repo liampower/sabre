@@ -378,7 +378,8 @@ vec3 Raycast(in ray R)
                         //LeafIndex += bitCount(ParentNode & SVO_NODE_CHILD_PTR_MASK);
                        // return vec3(float(LeafIndex) / 16.0); 
                         vec3 N = texture(NormalsDataUniform, LeafIndex).xyz;
-                        vec3 Ldir = normalize(NodeCentre - vec3(33, 33, 33));
+                        vec3 Ldir = normalize(NodeCentre - (vec3(512, 0, 0) * InvBiasUniform));
+                        float D = dot(Ldir, N);
                         return dot(Ldir, N) * CR;
 
                         //return dot(N, R.Dir) * CR;

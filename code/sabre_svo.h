@@ -55,8 +55,8 @@ struct svo_bias
 
 struct svo_normals_buffer
 {
-    uint32_t NormalsCount;
-    vec3*    NormalsData;
+    uint32_t  NormalsCount;
+    uint32_t* NormalsData;
 };
 
 
