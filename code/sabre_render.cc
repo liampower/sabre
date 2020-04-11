@@ -107,11 +107,11 @@ CreateNormalsTexture(const svo_normals_buffer* const Buffer)
 
         glTexImage1D(GL_TEXTURE_1D,  // Target
                      0,              // LOD
-                     GL_RGBA8_SNORM,  // Component storage format
+                     GL_RGB,  // Component storage format
                      GL_MAX_TEXTURE_SIZE,          // Size
                      0,              // Border
                      GL_RGBA, // Component format
-                     GL_UNSIGNED_INT_8_8_8_8, // Component pack format
+                     GL_UNSIGNED_INT_2_10_10_10_REV, // Component pack format
                      Buffer->NormalsData); // Data
     }
 

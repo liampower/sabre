@@ -17,7 +17,7 @@
 #include "sabre_data.h"
 #include "sabre_render.h"
 
-static constexpr u32 SABRE_MAX_TREE_DEPTH = 6;
+static constexpr u32 SABRE_MAX_TREE_DEPTH = 7;
 static constexpr u32 SABRE_SCALE_EXPONENT = 5;
 
 static constexpr u32 DisplayWidth = 512;
@@ -69,17 +69,22 @@ OutputGraphicsDeviceInfo(void)
     printf("Graphics Renderer: %s\n", glGetString(GL_RENDERER));
 }
 
+static inline u32
+FloatBitsToU32(float F)
+{
+    return *(u32*)(&F);
+}
 
 static inline uint32_t
 PackVec3ToSnorm3(vec3 V)
 {
     f32 Exp = 127.0f;
 
-    u32 Sx = (u32)Round(Clamp(V.X, -1.0f, 1.0f) * Exp);
-    u32 Sy = (u32)Round(Clamp(V.Y, -1.0f, 1.0f) * Exp);
-    u32 Sz = (u32)Round(Clamp(V.Z, -1.0f, 1.0f) * Exp);
+    u32 Sx = FloatBitsToU32(V.X);//(u32)Round(Clamp(V.X, -1.0f, 1.0f) * Exp);
+    u32 Sy = FloatBitsToU32(V.Y);//(u32)Round(Clamp(V.Y, -1.0f, 1.0f) * Exp);
+    u32 Sz = FloatBitsToU32(V.Z);//(u32)Round(Clamp(V.Z, -1.0f, 1.0f) * Exp);
 
-    uint32_t Out = (0xFFU | (Sz) | (Sy << 0x08U) | (Sx << 0x10U));
+    u32 Out = (0x00U | (Sz) | (Sy << 10) | (Sx << 20));
 
     return Out;
 }
