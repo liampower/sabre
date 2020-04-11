@@ -187,30 +187,6 @@ bool IsAdvanceValid(in uint NewOct, in uint OldOct, in vec3 RaySgn)
     return any(equal(RaySgn, OctSgn));
 }
 
-vec3 GetNodeCentreP(in uint Oct, in uint Scale, in vec3 ParentP)
-{
-    // TODO(Liam): We can actually use a bitwise AND op on uvec3s
-    // so we don't have to work on scalars.
-
-    float X = 1.0;
-    float Y = 1.0;
-    float Z = 1.0;
-
-    // TODO(Liam): More speed here with step intrinsic?
-    
-    //  Use the bits of the input octant to compute the
-    //  X, Y and Z vectors. A zero-bit corresponds to -1
-    //  in some D direction, and a 1-bit corresponds to
-    //  1.0 in D.
-    if (0 == (Oct & 1)) X = -1.0;
-    if (0 == (Oct & 2)) Y = -1.0;
-    if (0 == (Oct & 4)) Z = -1.0;
-
-    uint Radius = Scale >> 1;
-
-    return ParentP + (vec3(X, Y, Z) * float(Radius));
-}
-
 
 uint GetNextOctant(in float tMax, in vec3 tValues, in uint CurrentOct)
 {
@@ -242,18 +218,6 @@ bool IsOctantOccupied(in uint Node, in uint Oct)
 bool IsOctantLeaf(in uint Node, in uint Oct)
 {
     return (Node & (1 << Oct)) != 0;
-}
-
-vec3 GetNodeCentre(in uint Oct, in uint Scale, in vec3 ParentCentre)
-{
-    float R = float(Scale >> 1);
-
-    vec3 P;
-    P.x = (0 == (Oct & 1)) ? -R : R;
-    P.y = (0 == (Oct & 2)) ? -R : R;
-    P.z = (0 == (Oct & 4)) ? -R : R;
-
-    return ParentCentre + P;
 }
 
 vec3 Oct2Cr(in uint Oct)
@@ -299,6 +263,8 @@ vec3 Raycast(in ray R)
 {
     // Scale up by the tree bias.
     int Scale = (1 << ScaleExponentUniform) << BiasUniform;
+
+    const float BiasScale = (1.0 / InvBiasUniform);
 
     uint BlkIndex = 0;
     
@@ -349,9 +315,13 @@ vec3 Raycast(in ray R)
         // Begin stepping along the ray
         for (Step = 0; Step < MAX_STEPS; ++Step)
         {
+            // Radius of the current octant's cube (half the current scale);
             vec3 Rad = vec3(Scale >> 1);
+
             // Get the centre position of this octant
-            vec3 NodeCentre = GetNodeCentreP(CurrentOct, Scale, ParentCentre);
+            vec3 OctSgn = mix(vec3(-1), vec3(1), bvec3(CurrentOct & OCT_BITS));
+            vec3 NodeCentre = ParentCentre + (OctSgn * Rad);
+
             vec3 NodeMin = (NodeCentre - Rad) * InvBiasUniform;
             vec3 NodeMax = (NodeCentre + Rad) * InvBiasUniform;
 
@@ -373,23 +343,10 @@ vec3 Raycast(in ray R)
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
                         const vec3 CR = vec3(1, 1, 1);
-                        //return vec3(1, 0, 0);
-                        uint LookupIndex = GetNodeChildIndex(ParentNode, CurrentOct, BlkIndex);
-                        //LeafIndex += bitCount(ParentNode & SVO_NODE_CHILD_PTR_MASK);
-                       // return vec3(float(LeafIndex) / 16.0); 
+
                         vec3 N = texture(NormalsDataUniform, LeafIndex).xyz;
                         vec3 Ldir = normalize(NodeCentre - (vec3(512, 0, 0) * InvBiasUniform));
-                        float D = dot(Ldir, N);
                         return dot(Ldir, N) * CR;
-
-                        //return dot(N, R.Dir) * CR;
-                        /*const vec3 CR = vec3(1, 1, 1);
-                        float LookupIndex = (BlkIndex*
-                        //vec3 N = abs(BoxNormal(NodeMin, NodeMax, sign(R.Dir)));
-                        //return 0.2 + dot(N, R.Dir) * vec3(1, 1, 1);
-                        vec3 N = texelFetch(NormalsDataUniform, LookupIndex, 0, 0);
-
-                        return dot(N, R.Dir) * CR;*/
                     }
                     else
                     {
@@ -416,7 +373,7 @@ vec3 Raycast(in ray R)
                 // Octant not occupied, need to handle advance/pop
                 uint NextOct = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
 
-                RayP = R.Origin + (CurrentIntersection.tMax + 0.000099) * R.Dir;
+                RayP = R.Origin + (CurrentIntersection.tMax + 0.015625) * R.Dir;
 
                 if (IsAdvanceValid(NextOct, CurrentOct, RaySgn))
                 {
@@ -426,7 +383,7 @@ vec3 Raycast(in ray R)
                 {
                     // Determined that NodeCentre is never < 0
                     uvec3 NodeCentreBits = uvec3(NodeCentre);
-                    uvec3 RayPBits = uvec3(RayP * (1.0 / InvBiasUniform));
+                    uvec3 RayPBits = uvec3(RayP * BiasScale);
 
                     // NOTE(Liam): It is **okay** to have negative values here
                     // because the HDB will end up being equal to ScaleExponentUniform.
@@ -438,9 +395,7 @@ vec3 Raycast(in ray R)
 
                     uint NextDepth = ((ScaleExponentUniform + BiasUniform) - M);
 
-                    if (NextDepth >= CurrentDepth) return vec3(0.12);
-
-                    if (NextDepth <= MAX_STEPS)
+                    if (NextDepth <= MAX_STEPS && NextDepth < CurrentDepth)
                     {
                         CurrentDepth = NextDepth;
                         Scale = Stack[CurrentDepth].Scale;

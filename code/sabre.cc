@@ -276,6 +276,9 @@ main(int ArgCount, const char** const Args)
     NormalsBuffer.NormalsData = DEBUGNormals.data();
 
     sbr_render_data* RenderData = CreateSvoRenderData(WorldSvo, &ViewData, &NormalsBuffer);
+    FILE* File = fopen("logs/cs.nvasm", "wb");
+    if (File) DEBUGOutputRenderShaderAssembly(RenderData, File);
+    fclose(File);
     if (nullptr == RenderData)
     {
         fprintf(stderr, "Failed to initialise render data\n");
@@ -289,7 +292,7 @@ main(int ArgCount, const char** const Args)
     Cam.Right = vec3(1, 0, 0);
     Cam.Up = vec3(0, 1, 0);
     Cam.Position = vec3(4, 4, 96);
-    Cam.Velocity = 1.4f;
+    Cam.Velocity = 0.4f;
 
     const vec3 WorldYAxis = vec3(0, 1, 0);
 
