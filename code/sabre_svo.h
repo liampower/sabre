@@ -91,10 +91,7 @@ struct svo
     // the entire tree scale so that the smallest extant
     // of any child region is 1. Remember to divide by this
     // value when doing any space-operations!
-    //u32 Bias;
-
     svo_bias Bias;
-    //f32 InvBias;
 
     // Last block of nodes in this tree
     // NOTE(Liam): Warning! This field is volatile and unsafe
@@ -109,7 +106,7 @@ struct svo
 };
 
 typedef svo_surface_state (*intersector_fn)(vec3, vec3, const svo* const);
-typedef vec3 (*normal_fn)(vec3, const svo* const);
+typedef uint32_t (*normal_fn)(vec3, const svo* const);
 
 
 extern "C" void

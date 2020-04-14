@@ -473,6 +473,7 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
         else if (SURFACE_INSIDE == SurfaceState)
         {
             SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, Parent);
+            NormalFn(OctCentre, Tree);
         }
     }
 

@@ -342,11 +342,11 @@ vec3 Raycast(in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
-                        const vec3 CR = vec3(1, 1, 1);
+                        const vec3 CR = vec3(1);
 
-                        vec3 N = texture(NormalsDataUniform, LeafIndex).xyz;
-                        vec3 Ldir = normalize(NodeCentre - (vec3(512, 0, 0) * InvBiasUniform));
-                        return dot(Ldir, N) * CR;
+                        vec3 N = texelFetch(NormalsDataUniform, int(LeafIndex), 0).xyz;
+                        vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(32, 0, 0));
+                        return vec3(dot(Ldir, N));// * CR;
                     }
                     else
                     {

@@ -17,7 +17,7 @@
 #include "sabre_data.h"
 #include "sabre_render.h"
 
-static constexpr u32 SABRE_MAX_TREE_DEPTH = 7;
+static constexpr u32 SABRE_MAX_TREE_DEPTH = 6;
 static constexpr u32 SABRE_SCALE_EXPONENT = 5;
 
 static constexpr u32 DisplayWidth = 512;
@@ -40,7 +40,7 @@ struct camera
 };
 
 
-static std::vector<uint32_t> DEBUGNormals;
+std::vector<uint32_t> DEBUGNormals = { };
 
 static void
 HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei Length, const GLchar* Msg, const void*)
@@ -80,11 +80,12 @@ PackVec3ToSnorm3(vec3 V)
 {
     f32 Exp = 127.0f;
 
-    u32 Sx = FloatBitsToU32(V.X);//(u32)Round(Clamp(V.X, -1.0f, 1.0f) * Exp);
-    u32 Sy = FloatBitsToU32(V.Y);//(u32)Round(Clamp(V.Y, -1.0f, 1.0f) * Exp);
-    u32 Sz = FloatBitsToU32(V.Z);//(u32)Round(Clamp(V.Z, -1.0f, 1.0f) * Exp);
+    i8 Sx = (i8)Round(Clamp(V.X, -1.0f, 1.0f) * Exp);
+    i8 Sy = (i8)Round(Clamp(V.Y, -1.0f, 1.0f) * Exp);
+    i8 Sz = (i8)Round(Clamp(V.Z, -1.0f, 1.0f) * Exp);
 
-    u32 Out = (0x00U | (Sz) | (Sy << 10) | (Sx << 20));
+    //uint32_t Out = (0xFF | (Sz) | (Sy << 0x08) | (Sx << 0x10));
+    uint32_t Out = ((u8)Sz) | ((u8)Sy << 0x08U) | ((u8)Sx << 16U);
 
     return Out;
 }
@@ -111,25 +112,28 @@ CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const)
     if (S.Z < Min.Z) DistanceSqToCube -= Squared(S.Z - Min.Z);
     else if (S.Z > Max.Z) DistanceSqToCube -= Squared(S.Z - Max.Z);
 
-    //f32 BoxR = Length((Max - Min) * 0.5f);
-    // If true: centre is always > min and < max (within bounds)
-
 
     if (DistanceSqToCube >= 0)
     {
-        vec3 BoxCtr = Min + ((Max - Min) * 0.5f);
+        // WRONG: DOESNT HAPPEN FOR JUST LEAVES
+        /*vec3 BoxCtr = Min + ((Max - Min) * 0.5f);
         uint32_t Normal = PackVec3ToSnorm3(Normalize(BoxCtr - S));
-        DEBUGNormals.push_back(Normal);
+        DEBUGNormals.push_back(Normal);*/
 
         return SURFACE_INTERSECTED;
     }
     else return SURFACE_OUTSIDE;
 }
 
-static inline vec3
+static inline uint32_t
 SphereNormal(vec3 C, const svo* const)
 {
-    return vec3(0);
+    const vec3 S = vec3(16);
+
+    uint32_t Normal = PackVec3ToSnorm3(Normalize(C - S));
+    DEBUGNormals.push_back(Normal);
+
+    return 0;
 }
 
 static inline svo*
@@ -225,7 +229,6 @@ main(int ArgCount, const char** const Args)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    //glfwWindowHint(GLFW_SAMPLES, 4); // NOTE: 4x MSAA
     glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
     
     GLFWwindow* Window = glfwCreateWindow(DisplayWidth, DisplayHeight, DisplayTitle, nullptr, nullptr);
@@ -261,7 +264,7 @@ main(int ArgCount, const char** const Args)
     glViewport(0, 0, FramebufferWidth, FramebufferHeight);
     glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-    svo* WorldSvo = CreateCubeSphereTestScene();
+    svo* WorldSvo = CreateImportedMeshTestScene("data/TestModels/serapis.glb");//CreateCubeSphereTestScene();
     if (nullptr == WorldSvo)
     {
         fprintf(stderr, "Failed to load World SVO\n");
@@ -275,15 +278,18 @@ main(int ArgCount, const char** const Args)
     ViewData.ScreenWidth = 512;
     ViewData.ScreenHeight = 512;
 
-
     svo_normals_buffer NormalsBuffer = { };
     NormalsBuffer.NormalsCount = DEBUGNormals.size();
     NormalsBuffer.NormalsData = DEBUGNormals.data();
 
     sbr_render_data* RenderData = CreateSvoRenderData(WorldSvo, &ViewData, &NormalsBuffer);
+
+#if 0
     FILE* File = fopen("logs/cs.nvasm", "wb");
     if (File) DEBUGOutputRenderShaderAssembly(RenderData, File);
     fclose(File);
+#endif
+
     if (nullptr == RenderData)
     {
         fprintf(stderr, "Failed to initialise render data\n");
