@@ -35,20 +35,6 @@ ComputeTriangleNormal(tri3* Triangle)
     return Normalize(Cross(E0, E1));
 }
 
-static inline uint32_t
-PackVec3ToSnorm3(vec3 V)
-{
-    f32 Exp = 127.0f;
-
-    i8 Sx = (i8)Round(Clamp(V.X, -1.0f, 1.0f) * Exp);
-    i8 Sy = (i8)Round(Clamp(V.Y, -1.0f, 1.0f) * Exp);
-    i8 Sz = (i8)Round(Clamp(V.Z, -1.0f, 1.0f) * Exp);
-
-    uint32_t Out = ((u8)Sz) | ((u8)Sy << 0x08U) | ((u8)Sx << 16U);
-
-    return Out;
-}
-
 static inline u32
 Part1By2(u32 X)
 {
@@ -301,15 +287,13 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
 static std::unordered_set<u32, u32_hash> GlobalTriangleIndex;
 static std::unordered_map<u32, vec3> GlobalNormalIndex;
 
-static inline uint32_t
+static inline vec3
 NormalSampler(vec3 C, const svo* const)
 {
     u32 MortonCode = EncodeMorton3(C.X, C.Y, C.Z);
 
-    uint32_t PackedNormal = PackVec3ToSnorm3(GlobalNormalIndex.at(MortonCode));
-    DEBUGNormals.push_back(PackedNormal);
 
-    return PackedNormal;
+    return GlobalNormalIndex.at(MortonCode);
 }
 
 static tri_buffer*
@@ -570,27 +554,6 @@ GetMeshMinDimension(const cgltf_primitive* const Prim)
 extern "C" svo*
 ImportGltfToSvo(u32 MaxDepth, const char* const GLTFPath)
 {
-    //                        W     Z     Y     X
-#if 0 
-    m128 Centre = _mm_set_ps(0.0f, 30.25f, 49.25, 52.25);
-    m128 Radius = _mm_set_ps(0.0f, 0.25f, 0.25f, 0.25f);
-
-    m128 Triangle[3];
-    Triangle[0] = _mm_set_ps(0.0f, 30.9630013f, 49.5660324f, 52.4217682f);
-    Triangle[1] = _mm_set_ps(0.0f, 30.3846645f, 49.7899361f, 52.1688766f);
-    Triangle[2] = _mm_set_ps(0.0f, 30.1548805f, 49.1613388f, 52.4547081f);
-
-    f32 Centre2[3] = { 52.25f, 49.25f, 30.25f };
-    f32 Radius2[3] = { 0.25f, 0.25f, 0.25f };
-    f32 Triangle2[3][3] = {
-        {52.4217682f, 49.5660324f, 30.9630013f},
-        {52.1688766f, 49.7899361f, 30.3846645f},
-        {52.4547081f, 49.1613388f, 30.1548805f}
-    };
-
-    bool A = TriangleAABBIntersection(Centre, Radius, Triangle);
-#endif
-
 	cgltf_options Options = { };
     cgltf_data* Data = nullptr;
 

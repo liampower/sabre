@@ -122,6 +122,13 @@ uint MaxComponentU(uvec3 V)
     return max(max(V.x, V.y), V.z);
 }
 
+vec3 GammaCorrect(vec3 C)
+{
+    const vec3 Gamma = vec3(1.0 / 2.2);
+
+    return pow(C, Gamma);
+}
+
 uint GetNodeChildIndex(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
 {
     uint ChildPtr = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
@@ -235,19 +242,6 @@ struct st_frame
 };
 
 
-vec3 BoxNormal(vec3 Min, vec3 Max, vec3 tMinV)
-{
-    vec3 C = (Min + Max) * 0.5;
-    vec3 P = tMinV - C;
-    vec3 D = (Min - Max) * 0.5 + 0.0001;
-
-    float Bias = 1.00001;
-    vec3 O = normalize(vec3(ivec3(P / abs(D) * Bias)));
-
-    return O;
-
-}
-
 // NOTE(Liam): Lessons learned in GPU optimisation:
 // * Functions are (mostly) fine. The compiler inlines nearly everything
 // * Even very trivial ifs can cause bad asm. Nearly always worth optimising these out
@@ -346,7 +340,11 @@ vec3 Raycast(in ray R)
 
                         vec3 N = texelFetch(NormalsDataUniform, int(LeafIndex), 0).xyz;
                         vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(32, 0, 0));
-                        return vec3(dot(Ldir, N));// * CR;
+                        LeafIndex += bitCount(ParentNode & SVO_NODE_LEAF_MASK);
+
+                        if (LeafIndex == 16) return vec3(1, 1, 0);
+
+                        return dot(N, Ldir) * CR;
                     }
                     else
                     {

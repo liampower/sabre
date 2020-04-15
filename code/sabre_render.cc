@@ -89,7 +89,7 @@ UploadCanvasVertices(void)
 }
 
 static gl_uint
-CreateNormalsTexture(const svo_normals_buffer* const Buffer)
+CreateNormalsTexture(usize NormalsCount, const u32* const PackedNormals)
 {
     gl_uint TextureID;
     glCreateTextures(GL_TEXTURE_1D, 1, &TextureID);
@@ -103,7 +103,7 @@ CreateNormalsTexture(const svo_normals_buffer* const Buffer)
         glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
-        u32 Width = Min(Buffer->NormalsCount, GL_MAX_TEXTURE_SIZE);
+        u32 Width = Min(NormalsCount, GL_MAX_TEXTURE_SIZE);
 
         glTexImage1D(GL_TEXTURE_1D,  // Target
                      0,              // LOD
@@ -112,7 +112,7 @@ CreateNormalsTexture(const svo_normals_buffer* const Buffer)
                      0,              // Border
                      GL_RGBA, // Component format
                      GL_BYTE, // Component pack format
-                     Buffer->NormalsData); // Data
+                     PackedNormals); // Data
     }
 
     return TextureID;
@@ -385,7 +385,7 @@ CreateSvoRenderData(const svo* const Tree, const sbr_view_data* const ViewData, 
         return nullptr;
     }
 
-    RenderData->NormalDataTexutre = CreateNormalsTexture(NormalsData);
+    RenderData->NormalDataTexutre = CreateNormalsTexture(Tree->Normals.size(), Tree->Normals.data());
     if (0 == RenderData->NormalDataTexutre)
     {
         fprintf(stderr, "Failed to upload normal data\n");

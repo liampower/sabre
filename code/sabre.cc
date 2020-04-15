@@ -40,8 +40,6 @@ struct camera
 };
 
 
-std::vector<uint32_t> DEBUGNormals = { };
-
 static void
 HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei Length, const GLchar* Msg, const void*)
 {
@@ -73,21 +71,6 @@ static inline u32
 FloatBitsToU32(float F)
 {
     return *(u32*)(&F);
-}
-
-static inline uint32_t
-PackVec3ToSnorm3(vec3 V)
-{
-    f32 Exp = 127.0f;
-
-    i8 Sx = (i8)Round(Clamp(V.X, -1.0f, 1.0f) * Exp);
-    i8 Sy = (i8)Round(Clamp(V.Y, -1.0f, 1.0f) * Exp);
-    i8 Sz = (i8)Round(Clamp(V.Z, -1.0f, 1.0f) * Exp);
-
-    //uint32_t Out = (0xFF | (Sz) | (Sy << 0x08) | (Sx << 0x10));
-    uint32_t Out = ((u8)Sz) | ((u8)Sy << 0x08U) | ((u8)Sx << 16U);
-
-    return Out;
 }
 
 // NOTE(Liam): Warning! Does not work if Min,Max are not the **actual** (dimension-wise) min and
@@ -125,15 +108,14 @@ CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const)
     else return SURFACE_OUTSIDE;
 }
 
-static inline uint32_t
+static inline vec3
 SphereNormal(vec3 C, const svo* const)
 {
     const vec3 S = vec3(16);
 
-    uint32_t Normal = PackVec3ToSnorm3(Normalize(C - S));
-    DEBUGNormals.push_back(Normal);
+    vec3 Normal = Normalize(C - S);
 
-    return 0;
+    return Normalize(C);//Normal;
 }
 
 static inline svo*
@@ -264,7 +246,11 @@ main(int ArgCount, const char** const Args)
     glViewport(0, 0, FramebufferWidth, FramebufferHeight);
     glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-    svo* WorldSvo = CreateImportedMeshTestScene("data/TestModels/serapis.glb");//CreateCubeSphereTestScene();
+#if 0
+    svo* WorldSvo = CreateImportedMeshTestScene("data/TestModels/serapis.glb");
+#else
+    svo* WorldSvo = CreateCubeSphereTestScene();
+#endif
     if (nullptr == WorldSvo)
     {
         fprintf(stderr, "Failed to load World SVO\n");
@@ -279,8 +265,6 @@ main(int ArgCount, const char** const Args)
     ViewData.ScreenHeight = 512;
 
     svo_normals_buffer NormalsBuffer = { };
-    NormalsBuffer.NormalsCount = DEBUGNormals.size();
-    NormalsBuffer.NormalsData = DEBUGNormals.data();
 
     sbr_render_data* RenderData = CreateSvoRenderData(WorldSvo, &ViewData, &NormalsBuffer);
 

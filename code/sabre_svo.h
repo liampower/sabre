@@ -1,6 +1,8 @@
 #ifndef SABRE_SVO_H
 #define SABRE_SVO_H
 
+#include <vector>
+
 #include "sabre.h"
 #include "sabre_math.h"
 
@@ -103,10 +105,13 @@ struct svo
 
     // First block of nodes in this tree
     svo_block* RootBlock;
+
+
+    std::vector<uint32_t> Normals;
 };
 
 typedef svo_surface_state (*intersector_fn)(vec3, vec3, const svo* const);
-typedef uint32_t (*normal_fn)(vec3, const svo* const);
+typedef vec3 (*normal_fn)(vec3, const svo* const);
 
 
 extern "C" void

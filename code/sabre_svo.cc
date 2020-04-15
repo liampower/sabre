@@ -46,6 +46,21 @@ CountSetBits(u32 Msk)
 #endif
 }
 
+static inline uint32_t
+PackVec3ToSnorm3(vec3 V)
+{
+    f32 Exp = 127.0f;
+
+    i8 Sx = (i8)Round(Clamp(V.X, -1.0f, 1.0f) * Exp);
+    i8 Sy = (i8)Round(Clamp(V.Y, -1.0f, 1.0f) * Exp);
+    i8 Sz = (i8)Round(Clamp(V.Z, -1.0f, 1.0f) * Exp);
+
+    //uint32_t Out = (0xFF | (Sz) | (Sy << 0x08) | (Sx << 0x10));
+    uint32_t Out = ((u8)Sz) | ((u8)Sy << 0x08U) | ((u8)Sx << 16U);
+
+    return Out;
+}
+
 static inline u32
 FindHighestSetBit(u32 Msk)
 {
@@ -468,12 +483,17 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
             else
             {
                 SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, Parent);
+                vec3 VoxelNormal = NormalFn(OctCentre, Tree);
+
+                Tree->Normals.push_back(PackVec3ToSnorm3(VoxelNormal));
             }
         }
         else if (SURFACE_INSIDE == SurfaceState)
         {
             SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, Parent);
-            NormalFn(OctCentre, Tree);
+            vec3 VoxelNormal = NormalFn(OctCentre, Tree);
+
+            Tree->Normals.push_back(PackVec3ToSnorm3(VoxelNormal));
         }
     }
 
