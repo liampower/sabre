@@ -336,15 +336,19 @@ vec3 Raycast(in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
-                        const vec3 CR = vec3(1);
+                        uint Lmsk = SVO_NODE_LEAF_MASK & ~(1 << CurrentOct);
+
+                        // PROBLEM: LeafIndex isn't absolute here; it's the offset from the root.
+ 
+                        LeafIndex += bitCount(ParentNode & Lmsk);
+
+                        return vec3(float(LeafIndex) / 64.0);
 
                         vec3 N = texelFetch(NormalsDataUniform, int(LeafIndex), 0).xyz;
                         vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(32, 0, 0));
-                        LeafIndex += bitCount(ParentNode & SVO_NODE_LEAF_MASK);
 
-                        if (LeafIndex == 16) return vec3(1, 1, 0);
 
-                        return dot(N, Ldir) * CR;
+                        return vec3(dot(N, Ldir));
                     }
                     else
                     {

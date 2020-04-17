@@ -11,6 +11,8 @@
 static constexpr u16 CHILD_PTR_MSK   = 0x7FFFU;
 static constexpr u32 FAR_PTR_BIT_MSK = 0x8000U;
 
+static int GLOBALLeafCount;
+
 enum svo_oct
 {
     OCT_C000 = 0,
@@ -486,6 +488,7 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
                 vec3 VoxelNormal = NormalFn(OctCentre, Tree);
 
                 Tree->Normals.push_back(PackVec3ToSnorm3(VoxelNormal));
+                ++GLOBALLeafCount;
             }
         }
         else if (SURFACE_INSIDE == SurfaceState)
@@ -494,6 +497,7 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
             vec3 VoxelNormal = NormalFn(OctCentre, Tree);
 
             Tree->Normals.push_back(PackVec3ToSnorm3(VoxelNormal));
+            ++GLOBALLeafCount;
         }
     }
 
@@ -565,6 +569,7 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
                                 SurfaceFn,
                                 NormalFn);
 
+    printf("Global leaf count: %d\n", GLOBALLeafCount);
         return Tree;
     }
     else
@@ -955,6 +960,7 @@ LoadSvoFromFile(FILE* FileIn)
         // Need to link prev block to this one
         Svo->LastBlock = CurrentBlk;
     }
+
 
     return Svo;
 }
