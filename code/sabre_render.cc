@@ -369,7 +369,7 @@ UploadLeafDataSparse(void)
         glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
         // Enable sparse texture storage
-		//glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_SPARSE_ARB, GL_TRUE);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_SPARSE_ARB, GL_TRUE);
 
         // Allocate a large texture buffer to hold all of the chunks in a sparse
         // buffer.
@@ -409,7 +409,7 @@ UploadLeafDataSparse(void)
 #endif
 
         int CellCount = 2;
-        glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA8_SNORM, CellCount*32, CellCount*32, CellCount*16);
+        glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA8_SNORM, 1024, 1024, 1024);
 
         for (auto It = Pages.begin(); It != Pages.end(); ++It)
         {
@@ -418,6 +418,7 @@ UploadLeafDataSparse(void)
             gl_int PageY = Element.first.Y*PageSizeY;
             gl_int PageZ = Element.first.Z*PageSizeZ;
 
+            glTexPageCommitmentARB(GL_TEXTURE_3D, 0, PageX, PageY, PageZ, PageSizeX, PageSizeY, PageSizeZ, GL_TRUE);
             glTexSubImage3D(GL_TEXTURE_3D, 0, PageX, PageY, PageZ, 32, 32, 16, GL_RGBA, GL_BYTE, Element.second.Data);
         }
 
