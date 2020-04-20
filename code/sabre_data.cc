@@ -394,6 +394,8 @@ vec3 Raycast(in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
+                        return texelFetch(MapDataUniform, ivec3(NodeCentre.xyz), 0).rgb;
+
                         if (all(greaterThan(NodeCentre, vec3(12, 12, 12)))) return vec3(1,1,0);
                         //if (any(equal(NodeCentre, vec3(12, 12, 12)))) return vec3(0.5)*vec3(equal(NodeCentre, vec3(12)));
                         if (NodeCentre.z == 12 && NodeCentre.x == 28 && NodeCentre.y == 28) return vec3(1, 0, 1);

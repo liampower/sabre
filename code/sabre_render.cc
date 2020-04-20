@@ -239,8 +239,8 @@ SetRenderUniformData(const svo* const Tree, sbr_render_data* const RenderData)
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "BlockCountUniform"), Tree->UsedBlockCount);
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "EntriesPerBlockUniform"), SVO_NODES_PER_BLK);
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "FarPtrsPerBlockUniform"), SVO_FAR_PTRS_PER_BLK);
-    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "BiasUniform"), Tree->Bias.Scale + 1);
-    glUniform1f(glGetUniformLocation(RenderData->RenderShader, "InvBiasUniform"), Tree->Bias.InvScale * 0.5);
+    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "BiasUniform"), Tree->Bias.Scale);
+    glUniform1f(glGetUniformLocation(RenderData->RenderShader, "InvBiasUniform"), Tree->Bias.InvScale);
     //glUniform1i(glGetUniformLocation(RenderData->RenderShader, "MapDataUniform"), RenderData->MapTexture);
 
     printf("Inv Bias: %f\n", (f64)Tree->Bias.InvScale);
@@ -399,12 +399,27 @@ UploadLeafDataSparse(void)
             glTexSubImage3D(GL_TEXTURE_3D, 0, PageX, PageY, PageZ, PageSizeX, PageSizeY, PageSizeZ, GL_RGBA, GL_BYTE, Element.second.Data);
         }*/
 
+#if 0
         u32* Data = (u32*)Pages.begin()->second.Data;
         u32* Data2 = (u32*)Pages.end()->second.Data;
         glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA8_SNORM, 2*32, 2*32, 2*16);
         glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 0, 32, 32, 16, GL_RGBA, GL_BYTE, Data);
-        glTexSubImage3D(GL_TEXTURE_3D, 0, 32, 32, 16, 32, 32, 16, GL_RGBA, GL_BYTE, Data);
+        glTexSubImage3D(GL_TEXTURE_3D, 0, 32, 32, 16, 32, 32, 16, GL_RGBA, GL_BYTE, Data2);
         //glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8_SNORM, 32, 32, 16, 0, GL_RGBA, GL_BYTE, Data);
+#endif
+
+        int CellCount = 2;
+        glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA8_SNORM, CellCount*32, CellCount*32, CellCount*16);
+
+        for (auto It = Pages.begin(); It != Pages.end(); ++It)
+        {
+            auto Element = *It;
+            gl_int PageX = Element.first.X*PageSizeX;
+            gl_int PageY = Element.first.Y*PageSizeY;
+            gl_int PageZ = Element.first.Z*PageSizeZ;
+
+            glTexSubImage3D(GL_TEXTURE_3D, 0, PageX, PageY, PageZ, 32, 32, 16, GL_RGBA, GL_BYTE, Element.second.Data);
+        }
 
         glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     }
