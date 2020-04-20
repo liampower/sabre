@@ -12,8 +12,6 @@
 static constexpr u16 CHILD_PTR_MSK   = 0x7FFFU;
 static constexpr u32 FAR_PTR_BIT_MSK = 0x8000U;
 
-static int GLOBALLeafCount;
-
 enum svo_oct
 {
     OCT_C000 = 0,
@@ -27,7 +25,6 @@ enum svo_oct
 };
 
 
-extern u32 EncodeMorton3(u32 X, u32 Y, u32 Z);
 enum svo_voxel_type
 {
     VOXEL_PARENT = 0U,
@@ -41,54 +38,7 @@ struct node_ref
 };
 
 
-u32 DEBUGHmap[128][1024];
-u32 DEBUGHmapHead[128];
-
-struct linear_cmp
-{
-    bool operator()(uvec3 A, uvec3 B)
-    {
-        return A.Z < B.Z;
-    }
-};
-
-std::map<uvec3, u32, linear_cmp> DEBUGLeafKeys0;
 std::vector<std::pair<uvec3, u32>> DEBUGLeafKeys;
-
-static inline u32
-ComputeFnvHash(u32 Key)
-{
-    const u32 PRIME = 16777619;
-
-    u32 Hash = 2166136261;
-
-    Hash ^= Key &  0x000000FF;
-    Hash *= PRIME;
-
-    Hash ^= (Key & 0x0000FF00) >> 8;
-    Hash *= PRIME;
-
-    Hash ^= (Key & 0x00FF0000) >> 16;
-    Hash *= PRIME;
-
-    Hash ^= (Key & 0xFF000000) >> 24;
-    Hash *= PRIME;
-
-    return Hash;
-}
-
-static inline u32
-ComputeFxHash(u32 Key)
-{
-    constexpr u32 ROTATE = 5;
-
-    //u32 Hash = 0x9e3779b9;
-    u32 Hash = Key << ROTATE | Key >> (32 - ROTATE);
-    Hash ^= Hash;
-    Hash *= 0x9e3779b9;
-
-    return Hash;
-}
 
 
 static inline u32
@@ -498,9 +448,6 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
 
     const node_ref ParentRef = node_ref{ ParentBlk, Parent };
 
-    auto LeafHead = Tree->Normals.end();
-    std::vector<u32> NormalStorage(0);
-
     for (u32 Oct = 0; Oct < 8; ++Oct)
     {
         // Multiplying by the InvBias here transforms the octant cubes back 
@@ -543,10 +490,7 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
                 SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, Parent);
                 vec3 VoxelNormal = NormalFn(OctCentre, Tree);
                 
-                Tree->Normals.push_back(PackVec3ToSnorm3(VoxelNormal));
-                NormalStorage.push_back(PackVec3ToSnorm3(VoxelNormal));
-                ++GLOBALLeafCount;
-                DEBUGLeafKeys.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(vec3(1, 1, 0))));
+                DEBUGLeafKeys.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelNormal)));
             }
         }
         else if (SURFACE_INSIDE == SurfaceState)
@@ -554,32 +498,9 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
             SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, Parent);
             vec3 VoxelNormal = NormalFn(OctCentre, Tree);
 
-            Tree->Normals.push_back(PackVec3ToSnorm3(VoxelNormal));
-            NormalStorage.push_back(PackVec3ToSnorm3(VoxelNormal));
-            ++GLOBALLeafCount;
-            DEBUGLeafKeys.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(vec3(1, 1, 0))));
+            DEBUGLeafKeys.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelNormal)));
         }
     }
-
-    // Compute the hash key for this parent
-    if (NormalStorage.size() > 0)
-    {
-        u32 HashKey = ComputeFnvHash(EncodeMorton3(Centre.X, Centre.Y, Centre.Z));//ComputeFnvHash(ParentRef.Node->ChildPtr << 16 | ParentRef.Blk->Index);
-        u32 BucketIndex = (HashKey % 128);
-
-        //DEBUGHmap[BucketIndex][0]++;
-
-        u32 O = 0;
-        u32 Next = DEBUGHmapHead[BucketIndex];
-        for (auto It = NormalStorage.begin(); It != NormalStorage.end(); ++It)
-        {
-            DEBUGHmap[BucketIndex][Next + O] = *It;
-            ++O;
-        }
-
-        DEBUGHmapHead[BucketIndex] += O;
-    }
-
 
     for (u32 ChildIndex = 0; ChildIndex < LastChildIndex; ++ChildIndex)
     {
@@ -649,7 +570,6 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
                                 SurfaceFn,
                                 NormalFn);
 
-    printf("Global leaf count: %d\n", GLOBALLeafCount);
         return Tree;
     }
     else

@@ -17,7 +17,7 @@
 #include "sabre_data.h"
 #include "sabre_render.h"
 
-static constexpr u32 SABRE_MAX_TREE_DEPTH = 4;
+static constexpr u32 SABRE_MAX_TREE_DEPTH = 8;
 static constexpr u32 SABRE_SCALE_EXPONENT = 5;
 
 static constexpr u32 DisplayWidth = 512;
@@ -95,7 +95,6 @@ CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const)
     if (S.Z < Min.Z) DistanceSqToCube -= Squared(S.Z - Min.Z);
     else if (S.Z > Max.Z) DistanceSqToCube -= Squared(S.Z - Max.Z);
 
-
     if (DistanceSqToCube >= 0)
     {
         // WRONG: DOESNT HAPPEN FOR JUST LEAVES
@@ -108,6 +107,7 @@ CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const)
     else return SURFACE_OUTSIDE;
 }
 
+
 static inline vec3
 SphereNormal(vec3 C, const svo* const)
 {
@@ -115,7 +115,7 @@ SphereNormal(vec3 C, const svo* const)
 
     vec3 Normal = Normalize(C - S);
 
-    return Normalize(C);//Normal;
+    return Normal;
 }
 
 static inline svo*
@@ -246,7 +246,7 @@ main(int ArgCount, const char** const Args)
     glViewport(0, 0, FramebufferWidth, FramebufferHeight);
     glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-#if 0
+#if 1
     svo* WorldSvo = CreateImportedMeshTestScene("data/TestModels/serapis.glb");
 #else
     svo* WorldSvo = CreateCubeSphereTestScene();

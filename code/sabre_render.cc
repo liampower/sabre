@@ -54,9 +54,6 @@ struct sbr_render_data
     gl_int ViewMatUniformLocation; // Location of view matrix uniform
     gl_int ViewPosUniformLocation; // Location of view position uniform
 
-    gl_uint ColourDataTexture;
-    gl_uint NormalDataTexutre;
-
     gl_uint MapTexture;
 };
 
@@ -105,36 +102,6 @@ UploadCanvasVertices(void)
     Result.VBO = VBO;
 
     return Result;
-}
-
-static gl_uint
-CreateNormalsTexture(usize NormalsCount, const u32* const PackedNormals)
-{
-    gl_uint TextureID;
-    glCreateTextures(GL_TEXTURE_1D, 1, &TextureID);
-
-    if (TextureID)
-    {
-        glBindTexture(GL_TEXTURE_1D, TextureID);
-        
-        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
-        u32 Width = Min(NormalsCount, GL_MAX_TEXTURE_SIZE);
-
-        glTexImage1D(GL_TEXTURE_1D,  // Target
-                     0,              // LOD
-                     GL_RGBA8_SNORM,  // Component storage format
-                     Width,          // Size
-                     0,              // Border
-                     GL_RGBA, // Component format
-                     GL_BYTE, // Component pack format
-                     PackedNormals); // Data
-    }
-
-    return TextureID;
 }
 
 static gl_uint
@@ -266,37 +233,6 @@ CreateRenderImage(int ImgWidth, int ImgHeight)
     return OutputTexture;
 }
 
-
-static gl_uint
-UploadAttributeData(int BlkCount, usize* DataLengths, const u32** const BlkData)
-{
-    gl_uint Texture;
-    glCreateTextures(GL_TEXTURE_1D_ARRAY, 1, &Texture);
-
-    if (Texture)
-    {
-        glBindTexture(GL_TEXTURE_1D_ARRAY, Texture);
-        glTexParameteri(GL_TEXTURE_1D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_1D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_1D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_1D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
-        glTexStorage2D(GL_TEXTURE_1D_ARRAY, 1, GL_RGBA8_SNORM, 1024, 128);
-
-        // Bucket count
-        int LayerCount = 128;
-
-        for (int LayerIndex = 0; LayerIndex < LayerCount; ++LayerIndex)
-        {
-            // Upload bucket data.
-            glTexSubImage2D(GL_TEXTURE_1D_ARRAY, 0, 0, LayerIndex, 256, 1, GL_RGBA, GL_BYTE, DEBUGHmap[LayerIndex]);
-        }
-
-
-    }
-
-    return Texture;
-}
 
 struct tex_page
 {
@@ -570,15 +506,6 @@ CreateSvoRenderData(const svo* const Tree, const sbr_view_data* const ViewData, 
     svo_buffers SvoBuffers = UploadOctreeBlockData(Tree);
     if (0 == SvoBuffers.SvoBuffer || 0 == SvoBuffers.FarPtrBuffer)
     {
-        DeleteSvoRenderData(RenderData);
-        return nullptr;
-    }
-
-    RenderData->NormalDataTexutre = UploadAttributeData(0, nullptr, nullptr);
-    if (0 == RenderData->NormalDataTexutre)
-    {
-        fprintf(stderr, "Failed to upload normal data\n");
-
         DeleteSvoRenderData(RenderData);
         return nullptr;
     }
