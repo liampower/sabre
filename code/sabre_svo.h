@@ -6,8 +6,8 @@
 #include "sabre.h"
 #include "sabre_math.h"
 
-static constexpr u32 SVO_NODES_PER_BLK = 8192;
-static constexpr u32 SVO_FAR_PTRS_PER_BLK = 8192;
+static constexpr u32 SVO_NODES_PER_BLK = 4096;
+static constexpr u32 SVO_FAR_PTRS_PER_BLK = 4096;
 
 static_assert(SVO_FAR_PTRS_PER_BLK >= SVO_NODES_PER_BLK, "Far Ptrs Per Blk must be >= Entries per Blk");
 

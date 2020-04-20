@@ -91,7 +91,9 @@ uniform float InvBiasUniform;
 uniform vec3 ViewPosUniform;
 uniform mat3 ViewMatrixUniform;
 
-uniform sampler1D NormalsDataUniform;
+//uniform sampler1D NormalsDataUniform;
+uniform sampler1DArray NormalsDataUniform;
+uniform sampler3D MapDataUniform;
 
 const uvec3 OCT_BITS = uvec3(1, 2, 4);
 const vec3 OCT_BITS_F32 = vec3(1.0, 2.0, 4.0);
@@ -127,6 +129,41 @@ vec3 GammaCorrect(vec3 C)
     const vec3 Gamma = vec3(1.0 / 2.2);
 
     return pow(C, Gamma);
+}
+
+uint ComputeLeafHash(uvec3 LeafCentre)
+{
+    // Morton-encode
+    const uvec3 Sh = uvec3(0, 1, 2);
+
+    LeafCentre &= 0X000003ff;
+    LeafCentre = (LeafCentre ^ (LeafCentre << 16)) & 0Xff0000ff;
+    LeafCentre = (LeafCentre ^ (LeafCentre <<  8)) & 0X0300f00f;
+    LeafCentre = (LeafCentre ^ (LeafCentre <<  4)) & 0X030c30c3;
+    LeafCentre = (LeafCentre ^ (LeafCentre <<  2)) & 0X09249249;
+
+    LeafCentre << Sh;
+
+    uint Key = LeafCentre.x + LeafCentre.y + LeafCentre.z;
+
+    // FNV hash
+    const uint PRIME = 16777619;
+
+    uint Hash = 2166136261;
+
+    Hash ^= Key &  0x000000FF;
+    Hash *= PRIME;
+
+    Hash ^= (Key & 0x0000FF00) >> 8;
+    Hash *= PRIME;
+
+    Hash ^= (Key & 0x00FF0000) >> 16;
+    Hash *= PRIME;
+
+    Hash ^= (Key & 0xFF000000) >> 24;
+    Hash *= PRIME;
+
+    return Hash;
 }
 
 uint GetNodeChildIndex(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
@@ -252,6 +289,27 @@ struct st_frame
 // * No h.w. instruction for `sign` - deceptively slow, especially with conversions
 // * Vector min/max map directly to asm instructions
 
+uint ComputeFnvHash(uint Key)
+{
+    const uint PRIME = 16777619;
+
+    uint Hash = 2166136261;
+
+    Hash ^= Key &  0x000000FF;
+    Hash *= PRIME;
+
+    Hash ^= (Key & 0x0000FF00) >> 8;
+    Hash *= PRIME;
+
+    Hash ^= (Key & 0x00FF0000) >> 16;
+    Hash *= PRIME;
+
+    Hash ^= (Key & 0xFF000000) >> 24;
+    Hash *= PRIME;
+
+    return Hash;
+}
+
 
 vec3 Raycast(in ray R)
 {
@@ -336,19 +394,26 @@ vec3 Raycast(in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
-                        uint Lmsk = SVO_NODE_LEAF_MASK & ~(1 << CurrentOct);
+                        if (all(greaterThan(NodeCentre, vec3(12, 12, 12)))) return vec3(1,1,0);
+                        //if (any(equal(NodeCentre, vec3(12, 12, 12)))) return vec3(0.5)*vec3(equal(NodeCentre, vec3(12)));
+                        if (NodeCentre.z == 12 && NodeCentre.x == 28 && NodeCentre.y == 28) return vec3(1, 0, 1);
+                        return vec3(1, 0, 0);
+                        //uint Lmsk = SVO_NODE_LEAF_MASK & ~(1 << CurrentOct);
 
                         // PROBLEM: LeafIndex isn't absolute here; it's the offset from the root.
  
-                        LeafIndex += bitCount(ParentNode & Lmsk);
+                        //LeafIndex += bitCount(ParentNode & Lmsk);
 
-                        return vec3(float(LeafIndex) / 64.0);
+                        //uint Hash = ComputeLeafHash(uvec3(NodeCentre));
+                        //return vec3(float(Hash) / -1U);
+                       // return vec3(float(LeafIndex) / 64.0);
 
-                        vec3 N = texelFetch(NormalsDataUniform, int(LeafIndex), 0).xyz;
-                        vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(32, 0, 0));
+                        /*vec3 N = texelFetch(NormalsDataUniform, int(LeafIndex), 0).xyz;
+                        vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(32, 0, 0));*/
 
 
-                        return vec3(dot(N, Ldir));
+
+                        //return vec3(dot(N, Ldir));
                     }
                     else
                     {

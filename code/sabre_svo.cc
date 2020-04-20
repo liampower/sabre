@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <intrin.h>
 #include <vector>
+#include <map>
 
 #include "sabre.h"
 #include "sabre_math.h"
@@ -25,6 +26,8 @@ enum svo_oct
     OCT_C111 = 7
 };
 
+
+extern u32 EncodeMorton3(u32 X, u32 Y, u32 Z);
 enum svo_voxel_type
 {
     VOXEL_PARENT = 0U,
@@ -36,6 +39,56 @@ struct node_ref
     svo_block* Blk;
     svo_node*  Node;
 };
+
+
+u32 DEBUGHmap[128][1024];
+u32 DEBUGHmapHead[128];
+
+struct linear_cmp
+{
+    bool operator()(uvec3 A, uvec3 B)
+    {
+        return A.Z < B.Z;
+    }
+};
+
+std::map<uvec3, u32, linear_cmp> DEBUGLeafKeys0;
+std::vector<std::pair<uvec3, u32>> DEBUGLeafKeys;
+
+static inline u32
+ComputeFnvHash(u32 Key)
+{
+    const u32 PRIME = 16777619;
+
+    u32 Hash = 2166136261;
+
+    Hash ^= Key &  0x000000FF;
+    Hash *= PRIME;
+
+    Hash ^= (Key & 0x0000FF00) >> 8;
+    Hash *= PRIME;
+
+    Hash ^= (Key & 0x00FF0000) >> 16;
+    Hash *= PRIME;
+
+    Hash ^= (Key & 0xFF000000) >> 24;
+    Hash *= PRIME;
+
+    return Hash;
+}
+
+static inline u32
+ComputeFxHash(u32 Key)
+{
+    constexpr u32 ROTATE = 5;
+
+    //u32 Hash = 0x9e3779b9;
+    u32 Hash = Key << ROTATE | Key >> (32 - ROTATE);
+    Hash ^= Hash;
+    Hash *= 0x9e3779b9;
+
+    return Hash;
+}
 
 
 static inline u32
@@ -445,21 +498,24 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
 
     const node_ref ParentRef = node_ref{ ParentBlk, Parent };
 
+    auto LeafHead = Tree->Normals.end();
+    std::vector<u32> NormalStorage(0);
+
     for (u32 Oct = 0; Oct < 8; ++Oct)
     {
         // Multiplying by the InvBias here transforms the octant cubes back 
         // into "real" space from the scaled space we operate in when
         // constructing the tree.
         vec3 OctCentre = GetOctantCentre((svo_oct)Oct, Scale, Centre);
-        vec3 OctMin = (OctCentre - Radius) * Tree->Bias.InvScale;
-        vec3 OctMax = (OctCentre + Radius) * Tree->Bias.InvScale;
+        vec3 OctMin = (OctCentre - vec3(Radius)) * Tree->Bias.InvScale;
+        vec3 OctMax = (OctCentre + vec3(Radius)) * Tree->Bias.InvScale;
 
         svo_surface_state SurfaceState = SurfaceFn(OctMin, OctMax, Tree);
         if (SURFACE_INTERSECTED == SurfaceState)
         {
             // Check if the NEXT depth is less than the tree max
             // depth.
-            if (Depth < Tree->MaxDepth)
+            if (Depth + 1 < Tree->MaxDepth)
             {
                 // Need to subdivide
                 SetOctantOccupied((svo_oct)Oct, VOXEL_PARENT, Parent);
@@ -486,9 +542,11 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
             {
                 SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, Parent);
                 vec3 VoxelNormal = NormalFn(OctCentre, Tree);
-
+                
                 Tree->Normals.push_back(PackVec3ToSnorm3(VoxelNormal));
+                NormalStorage.push_back(PackVec3ToSnorm3(VoxelNormal));
                 ++GLOBALLeafCount;
+                DEBUGLeafKeys.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(vec3(1, 1, 0))));
             }
         }
         else if (SURFACE_INSIDE == SurfaceState)
@@ -497,9 +555,31 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
             vec3 VoxelNormal = NormalFn(OctCentre, Tree);
 
             Tree->Normals.push_back(PackVec3ToSnorm3(VoxelNormal));
+            NormalStorage.push_back(PackVec3ToSnorm3(VoxelNormal));
             ++GLOBALLeafCount;
+            DEBUGLeafKeys.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(vec3(1, 1, 0))));
         }
     }
+
+    // Compute the hash key for this parent
+    if (NormalStorage.size() > 0)
+    {
+        u32 HashKey = ComputeFnvHash(EncodeMorton3(Centre.X, Centre.Y, Centre.Z));//ComputeFnvHash(ParentRef.Node->ChildPtr << 16 | ParentRef.Blk->Index);
+        u32 BucketIndex = (HashKey % 128);
+
+        //DEBUGHmap[BucketIndex][0]++;
+
+        u32 O = 0;
+        u32 Next = DEBUGHmapHead[BucketIndex];
+        for (auto It = NormalStorage.begin(); It != NormalStorage.end(); ++It)
+        {
+            DEBUGHmap[BucketIndex][Next + O] = *It;
+            ++O;
+        }
+
+        DEBUGHmapHead[BucketIndex] += O;
+    }
+
 
     for (u32 ChildIndex = 0; ChildIndex < LastChildIndex; ++ChildIndex)
     {

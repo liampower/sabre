@@ -1,5 +1,7 @@
 #include <glad/glad.h>
 #include <assert.h>
+#include <map>
+#include <unordered_map>
 
 #include "sabre.h"
 #include "sabre_svo.h"
@@ -8,6 +10,21 @@
 
 static constexpr uint WORK_SIZE_X = 512;
 static constexpr uint WORK_SIZE_Y = 512;
+
+extern u32 DEBUGHmap[128][1024];
+extern u32 DEBUGHmapHead[128];
+
+struct linear_cmp;
+
+struct uvec3_hash
+{
+public:
+    size_t operator()(const uvec3& Element) const{
+        return Element.X + Element.Y + Element.Z;
+    }
+};
+
+extern std::vector<std::pair<uvec3, u32>> DEBUGLeafKeys;
 
 
 typedef GLuint gl_uint;
@@ -39,6 +56,8 @@ struct sbr_render_data
 
     gl_uint ColourDataTexture;
     gl_uint NormalDataTexutre;
+
+    gl_uint MapTexture;
 };
 
 
@@ -222,6 +241,7 @@ SetRenderUniformData(const svo* const Tree, sbr_render_data* const RenderData)
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "FarPtrsPerBlockUniform"), SVO_FAR_PTRS_PER_BLK);
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "BiasUniform"), Tree->Bias.Scale + 1);
     glUniform1f(glGetUniformLocation(RenderData->RenderShader, "InvBiasUniform"), Tree->Bias.InvScale * 0.5);
+    //glUniform1i(glGetUniformLocation(RenderData->RenderShader, "MapDataUniform"), RenderData->MapTexture);
 
     printf("Inv Bias: %f\n", (f64)Tree->Bias.InvScale);
     printf("Bias Scale: %u\n", 1U << Tree->Bias.Scale);
@@ -244,6 +264,152 @@ CreateRenderImage(int ImgWidth, int ImgHeight)
     glBindImageTexture(BINDING_RENDERIMG, OutputTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
     
     return OutputTexture;
+}
+
+
+static gl_uint
+UploadAttributeData(int BlkCount, usize* DataLengths, const u32** const BlkData)
+{
+    gl_uint Texture;
+    glCreateTextures(GL_TEXTURE_1D_ARRAY, 1, &Texture);
+
+    if (Texture)
+    {
+        glBindTexture(GL_TEXTURE_1D_ARRAY, Texture);
+        glTexParameteri(GL_TEXTURE_1D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_1D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_1D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_1D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+        glTexStorage2D(GL_TEXTURE_1D_ARRAY, 1, GL_RGBA8_SNORM, 1024, 128);
+
+        // Bucket count
+        int LayerCount = 128;
+
+        for (int LayerIndex = 0; LayerIndex < LayerCount; ++LayerIndex)
+        {
+            // Upload bucket data.
+            glTexSubImage2D(GL_TEXTURE_1D_ARRAY, 0, 0, LayerIndex, 256, 1, GL_RGBA, GL_BYTE, DEBUGHmap[LayerIndex]);
+        }
+
+
+    }
+
+    return Texture;
+}
+
+struct tex_page
+{
+    uvec3 Address;
+	int Capacity;
+    u32 Data[16][32][32];
+};
+
+static std::unordered_map<uvec3, tex_page, uvec3_hash>
+PartitionLeafDataToBuckets(const std::vector<std::pair<uvec3, u32>>& LeafData)
+{
+    std::unordered_map<uvec3, tex_page, uvec3_hash> Pages;
+    const uvec3 PageSize = uvec3(32, 32, 16);
+
+    for (auto It = LeafData.begin(); It != LeafData.end(); ++It)
+    {
+        auto Element = *It;
+
+        // Subtexture coords
+        uvec3 Bucket = Element.first / PageSize;
+
+        // Key already exists
+        if (Pages.find(Bucket) != Pages.end())
+        {
+            tex_page* Page = &Pages.find(Bucket)->second;
+            uvec3 PageCoords = Element.first % PageSize;
+
+            Page->Data[PageCoords.Z][PageCoords.Y][PageCoords.X] = Element.second;
+            ++Page->Capacity;
+        }
+        else
+        {
+            tex_page Page = { };
+            Page.Capacity = 1;
+            Page.Address = Bucket;
+
+            uvec3 PageCoords = Element.first % PageSize;
+
+            Page.Data[PageCoords.Z][PageCoords.Y][PageCoords.X] = Element.second;
+
+            Pages.insert(std::make_pair(Bucket, Page));
+        }
+    }
+
+    return Pages;
+}
+
+static gl_uint
+UploadLeafDataSparse(void)
+{
+    gl_uint MapTexture;
+    glCreateTextures(GL_TEXTURE_3D, 1, &MapTexture);
+
+    if (MapTexture)
+    {
+        glBindTexture(GL_TEXTURE_3D, MapTexture);
+
+        std::unordered_map<uvec3, tex_page, uvec3_hash> Pages = PartitionLeafDataToBuckets(DEBUGLeafKeys);
+        // Read the page sizes
+        gl_int PageSizeX, PageSizeY, PageSizeZ;
+		glGetInternalformativ(GL_TEXTURE_3D, GL_RGBA8_SNORM, GL_VIRTUAL_PAGE_SIZE_X_ARB, 1, &PageSizeX);
+		glGetInternalformativ(GL_TEXTURE_3D, GL_RGBA8_SNORM, GL_VIRTUAL_PAGE_SIZE_Y_ARB, 1, &PageSizeY);
+		glGetInternalformativ(GL_TEXTURE_3D, GL_RGBA8_SNORM, GL_VIRTUAL_PAGE_SIZE_Z_ARB, 1, &PageSizeZ);
+        assert(PageSizeX > 0 && PageSizeY > 0 && PageSizeZ > 0);
+        fprintf(stderr, "Page size: %d %d %d\n", PageSizeX, PageSizeY, PageSizeZ);
+
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+        // Enable sparse texture storage
+		//glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_SPARSE_ARB, GL_TRUE);
+
+        // Allocate a large texture buffer to hold all of the chunks in a sparse
+        // buffer.
+        //glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA8_SNORM, 128, 128, 128);
+
+        // Need to write data into sparse blocks depending on what the leaf data was.
+        // Block size: 32*32*32
+
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        //glTexPageCommitmentARB(GL_TEXTURE_3D, 0, 0, 0, 0, PageSizeX, PageSizeY, PageSizeZ, GL_TRUE);
+        //glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 0, 32, 32, 16, GL_RGBA, GL_BYTE, Data);
+
+        //glTexPageCommitmentARB(GL_TEXTURE_3D, 0, 32, 32, 16, PageSizeX, PageSizeY, PageSizeZ, GL_TRUE);
+        //glTexSubImage3D(GL_TEXTURE_3D, 0, 32, 32, 16, 32, 32, 16, GL_RGBA, GL_BYTE, Data);
+
+        PageSizeX = 32;
+        PageSizeY = 32;
+        PageSizeZ = 16;
+        /*for (auto It = Pages.begin(); It != Pages.end(); ++It)
+        {
+            auto Element = *It;
+            gl_int PageX = Element.first.X*PageSizeX;
+            gl_int PageY = Element.first.Y*PageSizeY;
+            gl_int PageZ = Element.first.Z*PageSizeZ;
+
+            //glTexPageCommitmentARB(GL_TEXTURE_3D, 0, PageX, PageY, PageZ, PageSizeX, PageSizeY, PageSizeZ, GL_TRUE);
+            glTexSubImage3D(GL_TEXTURE_3D, 0, PageX, PageY, PageZ, PageSizeX, PageSizeY, PageSizeZ, GL_RGBA, GL_BYTE, Element.second.Data);
+        }*/
+
+        u32* Data = (u32*)Pages.begin()->second.Data;
+        u32* Data2 = (u32*)Pages.end()->second.Data;
+        glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA8_SNORM, 2*32, 2*32, 2*16);
+        glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 0, 32, 32, 16, GL_RGBA, GL_BYTE, Data);
+        glTexSubImage3D(GL_TEXTURE_3D, 0, 32, 32, 16, 32, 32, 16, GL_RGBA, GL_BYTE, Data);
+        //glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8_SNORM, 32, 32, 16, 0, GL_RGBA, GL_BYTE, Data);
+
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    }
+
+    return MapTexture;
 }
 
 static svo_buffers
@@ -378,6 +544,13 @@ CreateSvoRenderData(const svo* const Tree, const sbr_view_data* const ViewData, 
     RenderData->CanvasVAO = CanvasBuffers.VAO;
     RenderData->CanvasVBO = CanvasBuffers.VBO;
 
+    RenderData->MapTexture = UploadLeafDataSparse();
+    if (0 == RenderData->MapTexture)
+    {
+        DeleteSvoRenderData(RenderData);
+        return nullptr;
+    }
+
     svo_buffers SvoBuffers = UploadOctreeBlockData(Tree);
     if (0 == SvoBuffers.SvoBuffer || 0 == SvoBuffers.FarPtrBuffer)
     {
@@ -385,7 +558,7 @@ CreateSvoRenderData(const svo* const Tree, const sbr_view_data* const ViewData, 
         return nullptr;
     }
 
-    RenderData->NormalDataTexutre = CreateNormalsTexture(Tree->Normals.size(), Tree->Normals.data());
+    RenderData->NormalDataTexutre = UploadAttributeData(0, nullptr, nullptr);
     if (0 == RenderData->NormalDataTexutre)
     {
         fprintf(stderr, "Failed to upload normal data\n");
@@ -422,6 +595,10 @@ DeleteSvoRenderData(sbr_render_data* RenderData)
 
         glDeleteTextures(1, &RenderData->RenderImage);
         glDeleteVertexArrays(1, &RenderData->CanvasVAO);
+
+        glBindTexture(GL_TEXTURE_3D, 0);
+
+        glDeleteTextures(1, &RenderData->MapTexture);
 
         free(RenderData);
     }

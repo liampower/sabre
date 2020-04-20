@@ -17,7 +17,7 @@
 #include "sabre_data.h"
 #include "sabre_render.h"
 
-static constexpr u32 SABRE_MAX_TREE_DEPTH = 6;
+static constexpr u32 SABRE_MAX_TREE_DEPTH = 4;
 static constexpr u32 SABRE_SCALE_EXPONENT = 5;
 
 static constexpr u32 DisplayWidth = 512;
@@ -45,7 +45,7 @@ HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei L
 {
     if (GL_DEBUG_TYPE_ERROR == Type)
     {
-        //fprintf(stderr, "[OpenGL Error] %s\n", Msg);
+        fprintf(stderr, "[OpenGL Error] %s\n", Msg);
     }
     else
     {

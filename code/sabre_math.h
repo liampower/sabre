@@ -145,7 +145,7 @@ struct uvec3
         Z = Uniform;
     }
 
-    inline 
+    inline explicit
     operator vec3()
     {
         vec3 Result;
@@ -157,7 +157,7 @@ struct uvec3
         return Result;
     }
 
-    inline
+    inline explicit
     operator bvec3()
     {
         bvec3 Result;
@@ -169,6 +169,60 @@ struct uvec3
         return Result;
     }
 };
+
+static inline uvec3
+operator%(uvec3 L, uvec3 R)
+{
+    uvec3 Result;
+
+    Result.X = L.X % R.X;
+    Result.Y = L.Y % R.Y;
+    Result.Z = L.Z % R.Z;
+
+    return Result;
+}
+
+static inline uvec3
+operator/(uvec3 L, uvec3 R)
+{
+    uvec3 Result;
+
+    Result.X = L.X / R.X;
+    Result.Y = L.Y / R.Y;
+    Result.Z = L.Z / R.Z;
+
+    return Result;
+}
+
+static inline bool
+operator==(uvec3 L, uvec3 R)
+{
+    return L.X == R.X && L.Y == R.Y && L.Z == R.Z;
+}
+
+static inline uvec3
+operator-(uvec3 L, uvec3 R)
+{
+    uvec3 Result;
+
+    Result.X = L.X - R.X;
+    Result.Y = L.Y - R.Y;
+    Result.Z = L.Z - R.Z;
+
+    return Result;
+}
+
+static inline uvec3
+operator*(uvec3 L, uvec3 R)
+{
+    uvec3 Result;
+
+    Result.X = L.X * R.X;
+    Result.Y = L.Y * R.Y;
+    Result.Z = L.Z * R.Z;
+
+    return Result;
+}
 
 struct ivec3
 {

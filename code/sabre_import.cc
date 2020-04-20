@@ -46,7 +46,7 @@ Part1By2(u32 X)
     return X;
 }
 
-static inline u32
+extern u32
 EncodeMorton3(u32 X, u32 Y, u32 Z)
 {
     return (Part1By2(Z) << 2) + (Part1By2(Y) << 1) + Part1By2(X);
