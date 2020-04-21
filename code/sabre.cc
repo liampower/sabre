@@ -17,7 +17,7 @@
 #include "sabre_data.h"
 #include "sabre_render.h"
 
-static constexpr u32 SABRE_MAX_TREE_DEPTH = 8;
+static constexpr u32 SABRE_MAX_TREE_DEPTH = 6;
 static constexpr u32 SABRE_SCALE_EXPONENT = 5;
 
 static constexpr u32 DisplayWidth = 512;
@@ -47,10 +47,6 @@ HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei L
     {
         fprintf(stderr, "[OpenGL Error] %s\n", Msg);
     }
-    else
-    {
-        //fprintf(stderr, "[OpenGL Info] %s\n", Msg);
-    }
 }
 
 static inline f32
@@ -65,12 +61,6 @@ OutputGraphicsDeviceInfo(void)
 {
     printf("Graphics Vendor: %s\n", glGetString(GL_VENDOR));
     printf("Graphics Renderer: %s\n", glGetString(GL_RENDERER));
-}
-
-static inline u32
-FloatBitsToU32(float F)
-{
-    return *(u32*)(&F);
 }
 
 // NOTE(Liam): Warning! Does not work if Min,Max are not the **actual** (dimension-wise) min and
@@ -97,11 +87,6 @@ CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const)
 
     if (DistanceSqToCube >= 0)
     {
-        // WRONG: DOESNT HAPPEN FOR JUST LEAVES
-        /*vec3 BoxCtr = Min + ((Max - Min) * 0.5f);
-        uint32_t Normal = PackVec3ToSnorm3(Normalize(BoxCtr - S));
-        DEBUGNormals.push_back(Normal);*/
-
         return SURFACE_INTERSECTED;
     }
     else return SURFACE_OUTSIDE;

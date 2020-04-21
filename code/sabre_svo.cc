@@ -490,7 +490,7 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
                 SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, Parent);
                 vec3 VoxelNormal = NormalFn(OctCentre, Tree);
                 
-                DEBUGLeafKeys.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelNormal)));
+                Tree->Normals.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelNormal)));
             }
         }
         else if (SURFACE_INSIDE == SurfaceState)
@@ -498,7 +498,7 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
             SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, Parent);
             vec3 VoxelNormal = NormalFn(OctCentre, Tree);
 
-            DEBUGLeafKeys.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelNormal)));
+            Tree->Normals.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelNormal)));
         }
     }
 

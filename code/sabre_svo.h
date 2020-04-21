@@ -6,8 +6,8 @@
 #include "sabre.h"
 #include "sabre_math.h"
 
-static constexpr u32 SVO_NODES_PER_BLK = 4096;
-static constexpr u32 SVO_FAR_PTRS_PER_BLK = 4096;
+static constexpr u32 SVO_NODES_PER_BLK = 8192;
+static constexpr u32 SVO_FAR_PTRS_PER_BLK = 8192;
 
 static_assert(SVO_FAR_PTRS_PER_BLK >= SVO_NODES_PER_BLK, "Far Ptrs Per Blk must be >= Entries per Blk");
 
@@ -107,7 +107,7 @@ struct svo
     svo_block* RootBlock;
 
 
-    std::vector<uint32_t> Normals;
+    std::vector<std::pair<uvec3, uint32_t>> Normals;
 };
 
 typedef svo_surface_state (*intersector_fn)(vec3, vec3, const svo* const);

@@ -11,11 +11,6 @@
 static constexpr uint WORK_SIZE_X = 512;
 static constexpr uint WORK_SIZE_Y = 512;
 
-extern u32 DEBUGHmap[128][1024];
-extern u32 DEBUGHmapHead[128];
-
-struct linear_cmp;
-
 struct uvec3_hash
 {
 public:
@@ -23,8 +18,6 @@ public:
         return Element.X + Element.Y + Element.Z;
     }
 };
-
-extern std::vector<std::pair<uvec3, u32>> DEBUGLeafKeys;
 
 
 typedef GLuint gl_uint;
@@ -236,8 +229,6 @@ CreateRenderImage(int ImgWidth, int ImgHeight)
 
 struct tex_page
 {
-    uvec3 Address;
-	int Capacity;
     u32 Data[16][32][32];
 };
 
@@ -261,13 +252,10 @@ PartitionLeafDataToBuckets(const std::vector<std::pair<uvec3, u32>>& LeafData)
             uvec3 PageCoords = Element.first % PageSize;
 
             Page->Data[PageCoords.Z][PageCoords.Y][PageCoords.X] = Element.second;
-            ++Page->Capacity;
         }
         else
         {
             tex_page Page = { };
-            Page.Capacity = 1;
-            Page.Address = Bucket;
 
             uvec3 PageCoords = Element.first % PageSize;
 
@@ -281,7 +269,7 @@ PartitionLeafDataToBuckets(const std::vector<std::pair<uvec3, u32>>& LeafData)
 }
 
 static gl_uint
-UploadLeafDataSparse(void)
+UploadLeafDataSparse(const svo* const Tree)
 {
     gl_uint MapTexture;
     glCreateTextures(GL_TEXTURE_3D, 1, &MapTexture);
@@ -290,7 +278,8 @@ UploadLeafDataSparse(void)
     {
         glBindTexture(GL_TEXTURE_3D, MapTexture);
 
-        std::unordered_map<uvec3, tex_page, uvec3_hash> Pages = PartitionLeafDataToBuckets(DEBUGLeafKeys);
+        std::unordered_map<uvec3, tex_page, uvec3_hash> Pages = PartitionLeafDataToBuckets(Tree->Normals);
+
         // Read the page sizes
         gl_int PageSizeX, PageSizeY, PageSizeZ;
 		glGetInternalformativ(GL_TEXTURE_3D, GL_RGBA8_SNORM, GL_VIRTUAL_PAGE_SIZE_X_ARB, 1, &PageSizeX);
@@ -307,44 +296,8 @@ UploadLeafDataSparse(void)
         // Enable sparse texture storage
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_SPARSE_ARB, GL_TRUE);
 
-        // Allocate a large texture buffer to hold all of the chunks in a sparse
-        // buffer.
-        //glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA8_SNORM, 128, 128, 128);
-
-        // Need to write data into sparse blocks depending on what the leaf data was.
-        // Block size: 32*32*32
-
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        //glTexPageCommitmentARB(GL_TEXTURE_3D, 0, 0, 0, 0, PageSizeX, PageSizeY, PageSizeZ, GL_TRUE);
-        //glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 0, 32, 32, 16, GL_RGBA, GL_BYTE, Data);
 
-        //glTexPageCommitmentARB(GL_TEXTURE_3D, 0, 32, 32, 16, PageSizeX, PageSizeY, PageSizeZ, GL_TRUE);
-        //glTexSubImage3D(GL_TEXTURE_3D, 0, 32, 32, 16, 32, 32, 16, GL_RGBA, GL_BYTE, Data);
-
-        PageSizeX = 32;
-        PageSizeY = 32;
-        PageSizeZ = 16;
-        /*for (auto It = Pages.begin(); It != Pages.end(); ++It)
-        {
-            auto Element = *It;
-            gl_int PageX = Element.first.X*PageSizeX;
-            gl_int PageY = Element.first.Y*PageSizeY;
-            gl_int PageZ = Element.first.Z*PageSizeZ;
-
-            //glTexPageCommitmentARB(GL_TEXTURE_3D, 0, PageX, PageY, PageZ, PageSizeX, PageSizeY, PageSizeZ, GL_TRUE);
-            glTexSubImage3D(GL_TEXTURE_3D, 0, PageX, PageY, PageZ, PageSizeX, PageSizeY, PageSizeZ, GL_RGBA, GL_BYTE, Element.second.Data);
-        }*/
-
-#if 0
-        u32* Data = (u32*)Pages.begin()->second.Data;
-        u32* Data2 = (u32*)Pages.end()->second.Data;
-        glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA8_SNORM, 2*32, 2*32, 2*16);
-        glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 0, 32, 32, 16, GL_RGBA, GL_BYTE, Data);
-        glTexSubImage3D(GL_TEXTURE_3D, 0, 32, 32, 16, 32, 32, 16, GL_RGBA, GL_BYTE, Data2);
-        //glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8_SNORM, 32, 32, 16, 0, GL_RGBA, GL_BYTE, Data);
-#endif
-
-        int CellCount = 2;
         glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA8_SNORM, 1024, 1024, 1024);
 
         for (auto It = Pages.begin(); It != Pages.end(); ++It)
@@ -354,8 +307,30 @@ UploadLeafDataSparse(void)
             gl_int PageY = Element.first.Y*PageSizeY;
             gl_int PageZ = Element.first.Z*PageSizeZ;
 
-            glTexPageCommitmentARB(GL_TEXTURE_3D, 0, PageX, PageY, PageZ, PageSizeX, PageSizeY, PageSizeZ, GL_TRUE);
-            glTexSubImage3D(GL_TEXTURE_3D, 0, PageX, PageY, PageZ, 32, 32, 16, GL_RGBA, GL_BYTE, Element.second.Data);
+            // Mark the page containing this point as backed by physical
+            // memory.
+            glTexPageCommitmentARB(GL_TEXTURE_3D,
+                                   0,
+                                   PageX,
+                                   PageY,
+                                   PageZ,
+                                   PageSizeX,
+                                   PageSizeY,
+                                   PageSizeZ,
+                                   GL_TRUE);
+
+            // Upload the leaf data into the subtexture page
+            glTexSubImage3D(GL_TEXTURE_3D,
+                            0,
+                            PageX,
+                            PageY,
+                            PageZ,
+                            PageSizeX,
+                            PageSizeY,
+                            PageSizeZ,
+                            GL_RGBA,
+                            GL_BYTE,
+                            Element.second.Data);
         }
 
         glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
@@ -376,7 +351,7 @@ UploadOctreeBlockData(const svo* const Svo)
 
     // FIXME(Liam): BIG cleanup here needed - may need to bite the bullet
     // and just have the nodes be typedef'd into U32s anyway.
-    static_assert(sizeof(svo_node) == sizeof(GLuint), "Node size must == GLuint size!");
+    static_assert(sizeof(svo_node) == sizeof(gl_uint), "Node size must == GLuint size!");
 
     if (SvoBuffer && FarPtrBuffer)
     {
@@ -395,7 +370,7 @@ UploadOctreeBlockData(const svo* const Svo)
         // Allocate space for the node data buffer
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoBuffer);
         glBufferData(GL_SHADER_STORAGE_BUFFER, MaxSvoDataSize, nullptr, GL_DYNAMIC_COPY);
-        GLuint* GPUSvoBuffer = (GLuint*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+        gl_uint* GPUSvoBuffer = (gl_uint*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
 
         // Reset SSBO buffer binding
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
@@ -414,7 +389,7 @@ UploadOctreeBlockData(const svo* const Svo)
             NextSvoDataOffset += CurrentBlk->NextFreeSlot;
 
             memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SVO_FAR_PTRS_PER_BLK * sizeof(far_ptr)); 
-            NextFarPtrDataOffset += SVO_FAR_PTRS_PER_BLK;//CurrentBlk->NextFarPtrSlot;
+            NextFarPtrDataOffset += SVO_FAR_PTRS_PER_BLK;
 
             CurrentBlk = CurrentBlk->Next;
         }
@@ -496,7 +471,7 @@ CreateSvoRenderData(const svo* const Tree, const sbr_view_data* const ViewData, 
     RenderData->CanvasVAO = CanvasBuffers.VAO;
     RenderData->CanvasVBO = CanvasBuffers.VBO;
 
-    RenderData->MapTexture = UploadLeafDataSparse();
+    RenderData->MapTexture = UploadLeafDataSparse(Tree);
     if (0 == RenderData->MapTexture)
     {
         DeleteSvoRenderData(RenderData);
@@ -565,7 +540,7 @@ UpdateSvoRenderData(const svo* const Svo, sbr_render_data* const RenderDataOut)
     // Allocate space for the node data buffer
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, RenderDataOut->SvoBuffer);
     glBufferData(GL_SHADER_STORAGE_BUFFER, MaxSvoDataSize, nullptr, GL_DYNAMIC_COPY);
-    GLuint* GPUSvoBuffer = (GLuint*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+    gl_uint* GPUSvoBuffer = (gl_uint*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
 
     // Reset SSBO buffer binding
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);

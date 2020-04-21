@@ -325,10 +325,12 @@ vec3 Raycast(in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
-                        return texelFetch(MapDataUniform, ivec3(NodeCentre.xyz), 0).xyz;
-                        /*vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(32, 0, 0));
+                        vec3 N = texelFetch(MapDataUniform, ivec3(NodeCentre.xyz), 0).xyz;
+                        
+                        vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(32, 0, 0));
 
-                        return vec3(dot(N, Ldir));*/
+                        return vec3(dot(Ldir, N));
+
                     }
                     else
                     {
