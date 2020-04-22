@@ -853,7 +853,7 @@ DeleteVoxel(svo* Tree, vec3 VoxelP)
     u32 CurrentScale = MaxScale;
 
     // Descend the tree until we get to the minium scale.
-    while (CurrentScale > MinScale)
+    while (CurrentScale > (MinScale << 1))
     {
         // If we had previously created a child node, we need to
         // continue building the tree until we reach the min scale.
@@ -861,7 +861,7 @@ DeleteVoxel(svo* Tree, vec3 VoxelP)
         {
             node_ref NewParentRef = AllocateNewNode(Tree->LastBlock, Tree);
 
-            u32 OctMsk = ~(1U << (u32)CurrentOct);
+            u32 OctMsk = ~(1U << CurrentOct);
             NewParentRef.Node->OccupiedMask = 0xFF;   // All octants occupied
             NewParentRef.Node->LeafMask = (u8)OctMsk; // All octants except current leaves
 
@@ -873,7 +873,7 @@ DeleteVoxel(svo* Tree, vec3 VoxelP)
         {
             if (CurrentScale <= (MinScale << 1))
             {
-                u32 ClearMsk = ~(1U << (u32)CurrentOct);
+                u32 ClearMsk = ~(1U << CurrentOct);
                 ParentNodeRef.Node->LeafMask &= ClearMsk;
                 ParentNodeRef.Node->OccupiedMask &= ClearMsk;
 

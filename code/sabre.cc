@@ -17,7 +17,7 @@
 #include "sabre_data.h"
 #include "sabre_render.h"
 
-static constexpr u32 SABRE_MAX_TREE_DEPTH = 6;
+static constexpr u32 SABRE_MAX_TREE_DEPTH = 5;
 static constexpr u32 SABRE_SCALE_EXPONENT = 5;
 
 static constexpr u32 DisplayWidth = 512;
@@ -110,11 +110,11 @@ CreateCubeSphereTestScene(void)
                                             SABRE_MAX_TREE_DEPTH,
                                             &CubeSphereIntersection,
                                             &SphereNormal);
-    //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
+    InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
     //InsertVoxel(WorldSvo, vec3(0, 17, 0), 16);
     //InsertVoxel(WorldSvo, vec3(20, 20, 20), 16);
     //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
-    //DeleteVoxel(WorldSvo, vec3(0, 0, 0));
+    DeleteVoxel(WorldSvo, vec3(0, 0, 0));
 
     return WorldSvo;
 }
@@ -231,7 +231,7 @@ main(int ArgCount, const char** const Args)
     glViewport(0, 0, FramebufferWidth, FramebufferHeight);
     glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-#if 1
+#if 0
     svo* WorldSvo = CreateImportedMeshTestScene("data/TestModels/serapis.glb");
 #else
     svo* WorldSvo = CreateCubeSphereTestScene();

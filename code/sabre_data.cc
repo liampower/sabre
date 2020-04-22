@@ -290,6 +290,7 @@ vec3 Raycast(in ray R)
         // root node.
         Scale >>= 1;
 
+
         Stack[CurrentDepth] = st_frame(ParentNode, 
                                        Scale,
                                        ParentCentre,
@@ -300,6 +301,7 @@ vec3 Raycast(in ray R)
         {
             // Radius of the current octant's cube (half the current scale);
             vec3 Rad = vec3(Scale >> 1);
+            if (Rad == vec3(0)) return vec3(1, 0, 1);
 
             // Get the centre position of this octant
             vec3 OctSgn = mix(vec3(-1), vec3(1), bvec3(CurrentOct & OCT_BITS));
@@ -395,6 +397,7 @@ vec3 Raycast(in ray R)
             }
             else
             {
+                return vec3(1);
                 break;
             }
         }
