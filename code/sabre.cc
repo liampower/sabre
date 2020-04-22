@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <assert.h>
+#include <vector>
 
 #include <glad/glad.h>
 #include <glfw/glfw3.h>
@@ -16,7 +17,7 @@
 #include "sabre_data.h"
 #include "sabre_render.h"
 
-static constexpr u32 SABRE_MAX_TREE_DEPTH = 8;
+static constexpr u32 SABRE_MAX_TREE_DEPTH = 7;
 static constexpr u32 SABRE_SCALE_EXPONENT = 5;
 
 static constexpr u32 DisplayWidth = 512;
@@ -38,16 +39,13 @@ struct camera
     vec3 Position;
 };
 
+
 static void
 HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei Length, const GLchar* Msg, const void*)
 {
     if (GL_DEBUG_TYPE_ERROR == Type)
     {
-        //fprintf(stderr, "[OpenGL Error] %s\n", Msg);
-    }
-    else
-    {
-        //fprintf(stderr, "[OpenGL Info] %s\n", Msg);
+        fprintf(stderr, "[OpenGL Error] %s\n", Msg);
     }
 }
 
@@ -69,7 +67,7 @@ OutputGraphicsDeviceInfo(void)
 // max corners.
 //
 // Tree parameter ignored here.
-static inline bool
+static svo_surface_state
 CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const)
 {
     const vec3 S = vec3(16);
@@ -87,22 +85,33 @@ CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const)
     if (S.Z < Min.Z) DistanceSqToCube -= Squared(S.Z - Min.Z);
     else if (S.Z > Max.Z) DistanceSqToCube -= Squared(S.Z - Max.Z);
 
-    if (DistanceSqToCube > 0)
+    if (DistanceSqToCube >= 0)
     {
-        return true;
+        return SURFACE_INTERSECTED;
     }
-    else
-    {
-        return false;
-    }
+    else return SURFACE_OUTSIDE;
+}
+
+
+static inline vec3
+SphereNormal(vec3 C, const svo* const)
+{
+    const vec3 S = vec3(16);
+
+    vec3 Normal = Normalize(C - S);
+
+    return Normal;
 }
 
 static inline svo*
 CreateCubeSphereTestScene(void)
 {
-    svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT, SABRE_MAX_TREE_DEPTH, &CubeSphereIntersection);
+    svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT,
+                                            SABRE_MAX_TREE_DEPTH,
+                                            &CubeSphereIntersection,
+                                            &SphereNormal);
     InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
-    InsertVoxel(WorldSvo, vec3(0, 17, 0), 16);
+    //InsertVoxel(WorldSvo, vec3(0, 17, 0), 16);
     //InsertVoxel(WorldSvo, vec3(20, 20, 20), 16);
     //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
     DeleteVoxel(WorldSvo, vec3(0, 0, 0));
@@ -160,7 +169,7 @@ InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, camera* Cam, svo* const Svo)
 #endif
 
 
-    vec3 InsertP = Cam->Position + 1.5f*Cam->Forward;//vec3(CameraPos.X, CameraPos.Y, CameraPos.Z - 1.0f);
+    vec3 InsertP = Cam->Position + 1.5f*Cam->Forward;
     DEBUGPrintVec3(InsertP);
     InsertVoxel(Svo, InsertP, 16);
 }
@@ -168,7 +177,7 @@ InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, camera* Cam, svo* const Svo)
 static void
 DeleteVoxelAtMousePoint(f64 MouseX, f64 MouseY, camera* Cam, svo* const Svo)
 {
-    vec3 DeleteP = Cam->Position + 1.5f*Cam->Forward;//vec3(CameraPos.X, CameraPos.Y, CameraPos.Z - 1.0f);
+    vec3 DeleteP = Cam->Position + 1.5f*Cam->Forward;
     
     DeleteVoxel(Svo, DeleteP);
 }
@@ -187,7 +196,6 @@ main(int ArgCount, const char** const Args)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    //glfwWindowHint(GLFW_SAMPLES, 4); // NOTE: 4x MSAA
     glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
     
     GLFWwindow* Window = glfwCreateWindow(DisplayWidth, DisplayHeight, DisplayTitle, nullptr, nullptr);
@@ -223,7 +231,11 @@ main(int ArgCount, const char** const Args)
     glViewport(0, 0, FramebufferWidth, FramebufferHeight);
     glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
+#if 1
     svo* WorldSvo = CreateImportedMeshTestScene("data/TestModels/serapis.glb");
+#else
+    svo* WorldSvo = CreateCubeSphereTestScene();
+#endif
     if (nullptr == WorldSvo)
     {
         fprintf(stderr, "Failed to load World SVO\n");
@@ -237,7 +249,16 @@ main(int ArgCount, const char** const Args)
     ViewData.ScreenWidth = 512;
     ViewData.ScreenHeight = 512;
 
-    sbr_render_data* RenderData = CreateSvoRenderData(WorldSvo, &ViewData);
+    svo_normals_buffer NormalsBuffer = { };
+
+    sbr_render_data* RenderData = CreateSvoRenderData(WorldSvo, &ViewData, &NormalsBuffer);
+
+#if 0
+    FILE* File = fopen("logs/cs.nvasm", "wb");
+    if (File) DEBUGOutputRenderShaderAssembly(RenderData, File);
+    fclose(File);
+#endif
+
     if (nullptr == RenderData)
     {
         fprintf(stderr, "Failed to initialise render data\n");
@@ -246,13 +267,12 @@ main(int ArgCount, const char** const Args)
         return EXIT_FAILURE;
     }
 
-
     camera Cam = { };
     Cam.Forward = vec3(0, 0, -1);
     Cam.Right = vec3(1, 0, 0);
     Cam.Up = vec3(0, 1, 0);
     Cam.Position = vec3(4, 4, 96);
-    Cam.Velocity = 1.4f;
+    Cam.Velocity = 0.4f;
 
     const vec3 WorldYAxis = vec3(0, 1, 0);
 
@@ -345,7 +365,6 @@ main(int ArgCount, const char** const Args)
                 LastMouseRTime = CurrentTime;
             }
             
-            //printf("%f\n", (CurrentTime - LastMouseLTime)*1000.0);
             if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_LEFT) && ((CurrentTime - LastMouseLTime)) >= 1)
             {
                 DeleteVoxelAtMousePoint(MouseX, MouseY, &Cam, WorldSvo);

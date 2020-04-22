@@ -8,6 +8,7 @@
 #include <assert.h>
 #include <math.h>
 #include <unordered_set>
+#include <unordered_map>
 #include <stack>
 #include <deque>
 #include <xmmintrin.h>
@@ -25,6 +26,15 @@ struct tri3
     vec3 V2;
 };
 
+static inline vec3
+ComputeTriangleNormal(tri3* Triangle)
+{
+    vec3 E0 = Triangle->V1 - Triangle->V0;
+    vec3 E1 = Triangle->V2 - Triangle->V0;
+
+    return Normalize(Cross(E0, E1));
+}
+
 static inline u32
 Part1By2(u32 X)
 {
@@ -36,7 +46,7 @@ Part1By2(u32 X)
     return X;
 }
 
-static inline u32
+extern u32
 EncodeMorton3(u32 X, u32 Y, u32 Z)
 {
     return (Part1By2(Z) << 2) + (Part1By2(Y) << 1) + Part1By2(X);
@@ -50,10 +60,22 @@ public:
     }
 };
 
+struct tri_data
+{
+    tri3 T;
+    vec3 Normal;
+};
+
 struct tri_buffer
 {
-    u32  TriangleCount;
-    tri3 Triangles[1];
+    u32      TriangleCount;
+    tri_data Triangles[1];
+};
+
+struct normals_buffer
+{
+    u32  NormalCount;
+    vec3 Normals[1];
 };
 
 
@@ -61,6 +83,7 @@ struct pos_attrib
 {
     float V[3];
 };
+
 
 static inline bool
 TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
@@ -261,9 +284,17 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
 }
 
 
-static std::vector<tri3> GlobalTriangleList;
 static std::unordered_set<u32, u32_hash> GlobalTriangleIndex;
+static std::unordered_map<u32, vec3> GlobalNormalIndex;
 
+static inline vec3
+NormalSampler(vec3 C, const svo* const)
+{
+    u32 MortonCode = EncodeMorton3(C.X, C.Y, C.Z);
+
+
+    return GlobalNormalIndex.at(MortonCode);
+}
 
 static tri_buffer*
 LoadMeshTriangles(cgltf_mesh* Mesh)
@@ -300,8 +331,8 @@ LoadMeshTriangles(cgltf_mesh* Mesh)
 
                         cgltf_accessor_unpack_floats(Accessor, (f32*)PosBuffer, PosCount*3);
 
-                        u32 TriCount = IndexCount - 3;
-                        tri_buffer* TriBuffer = (tri_buffer*) malloc(sizeof(tri_buffer) + (sizeof(tri3) * TriCount));
+                        usize TriCount = IndexCount - 3;
+                        tri_buffer* TriBuffer = (tri_buffer*) malloc(sizeof(tri_buffer) + (sizeof(tri_data) * TriCount));
                         TriBuffer->TriangleCount = TriCount;
 
                         for (u32 TriIndex = 0; TriIndex < TriCount; TriIndex += 3)
@@ -326,7 +357,10 @@ LoadMeshTriangles(cgltf_mesh* Mesh)
                             T.V1 = vec3(P1.V[0], P1.V[1], fabsf(P1.V[2]));
                             T.V2 = vec3(P2.V[0], P2.V[1], fabsf(P2.V[2]));
 
-                            TriBuffer->Triangles[TriIndex] = T;
+                            vec3 N = ComputeTriangleNormal(&T);
+
+                            TriBuffer->Triangles[TriIndex].T = T;
+                            TriBuffer->Triangles[TriIndex].Normal = N;
                         }
 
                         free(PosBuffer);
@@ -381,20 +415,21 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
 
     std::deque<st_ctx> Stack;
 
+    u32 Bias = 0;
+    f32 InvBias = 1.0f;
+    if (MaxDepth > ScaleExponent)
+    {
+        Bias = (MaxDepth - ScaleExponent);
+        InvBias = 1.0f / (1 << Bias);
+    }
+
+
     for (u32 TriIndex = 0; TriIndex < Tris->TriangleCount; ++TriIndex)
     {
-        tri3 T = Tris->Triangles[TriIndex];//Tris.at(TriIndex);
+        tri3 T = Tris->Triangles[TriIndex].T;
 
         // For every triangle, check if it is enclosed in a bounding box
         
-        u32 Bias = 0;
-        f32 InvBias = 1.0f;
-        if (MaxDepth > ScaleExponent)
-        {
-            Bias = (MaxDepth - ScaleExponent);
-            InvBias = 1.0f / (1 << Bias);
-        }
-
         u32 RootScale = 1U << (ScaleExponent) << Bias;
         vec3 ParentCentreP = vec3(RootScale >> 1);
 
@@ -432,13 +467,9 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
 
                 if (TriangleAABBIntersection(CentreM, RadiusM, TriVerts))
                 {
-                    IndexOut.insert(EncodeMorton3(Centre.X, Centre.Y, Centre.Z));
-                    /*usize OffsetX = (u32)Centre.X / 64;
-                    usize OffsetY = (u32)Centre.Y / 64;
-                    usize OffsetZ = (u32)Centre.Z / 64;
-                    TriangleBitmapX[OffsetX] |= (1 << (u32)Centre.X % 64);
-                    TriangleBitmapY[OffsetY] |= (1 << (u32)Centre.Y % 64);
-                    TriangleBitmapZ[OffsetZ] |= (1 << (u32)Centre.Z % 64);*/
+                    u32 ChildVoxelCode = EncodeMorton3(Centre.X, Centre.Y, Centre.Z); 
+                    IndexOut.insert(ChildVoxelCode);
+                    GlobalNormalIndex.insert(std::make_pair(ChildVoxelCode, Tris->Triangles[TriIndex].Normal));
 
                     if (CurrentCtx.Depth < MaxDepth)
                     {
@@ -458,23 +489,22 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
 }
 
 
-static bool
+static svo_surface_state
 IntersectorFunction(vec3 vMin, vec3 vMax, const svo* const Tree)
 {
     vec3 Halfsize = (vMax - vMin) * 0.5f;
     uvec3 Centre = uvec3((vMin + Halfsize) * (1 << Tree->Bias.Scale));
     
     u32 MortonCode = EncodeMorton3(Centre.X, Centre.Y, Centre.Z);
-    /*u32 Xmsk = (1 << (Centre.X % 64));
-    u32 Ymsk = (1 << (Centre.Y % 64));
-    u32 Zmsk = (1 << (Centre.Z % 64));
 
-    u32 IndexX = Centre.X / 64;
-    u32 IndexY = Centre.Y / 64;
-    u32 IndexZ = Centre.Z / 64;*/
-
-    return GlobalTriangleIndex.find(MortonCode) != GlobalTriangleIndex.end();
-    //return ((TriangleBitmapX[IndexX] & Xmsk) && (TriangleBitmapY[IndexY] & Ymsk) && (TriangleBitmapZ[IndexZ] & Zmsk));
+    if (GlobalTriangleIndex.find(MortonCode) != GlobalTriangleIndex.end())
+    {
+        return SURFACE_INTERSECTED;
+    }
+    else
+    {
+        return SURFACE_OUTSIDE;
+    }
 }
 
 static inline f32
@@ -524,27 +554,6 @@ GetMeshMinDimension(const cgltf_primitive* const Prim)
 extern "C" svo*
 ImportGltfToSvo(u32 MaxDepth, const char* const GLTFPath)
 {
-    //                        W     Z     Y     X
-#if 0 
-    m128 Centre = _mm_set_ps(0.0f, 30.25f, 49.25, 52.25);
-    m128 Radius = _mm_set_ps(0.0f, 0.25f, 0.25f, 0.25f);
-
-    m128 Triangle[3];
-    Triangle[0] = _mm_set_ps(0.0f, 30.9630013f, 49.5660324f, 52.4217682f);
-    Triangle[1] = _mm_set_ps(0.0f, 30.3846645f, 49.7899361f, 52.1688766f);
-    Triangle[2] = _mm_set_ps(0.0f, 30.1548805f, 49.1613388f, 52.4547081f);
-
-    f32 Centre2[3] = { 52.25f, 49.25f, 30.25f };
-    f32 Radius2[3] = { 0.25f, 0.25f, 0.25f };
-    f32 Triangle2[3][3] = {
-        {52.4217682f, 49.5660324f, 30.9630013f},
-        {52.1688766f, 49.7899361f, 30.3846645f},
-        {52.4547081f, 49.1613388f, 30.1548805f}
-    };
-
-    bool A = TriangleAABBIntersection(Centre, Radius, Triangle);
-#endif
-
 	cgltf_options Options = { };
     cgltf_data* Data = nullptr;
 
@@ -556,9 +565,12 @@ ImportGltfToSvo(u32 MaxDepth, const char* const GLTFPath)
 	if (cgltf_result_success == Result)
     {
         tri_buffer* TriangleData = LoadMeshTriangles(&Data->meshes[0]);
+
         if (nullptr == TriangleData)
         {
             fprintf(stderr, "Failed to load triangle data");
+            cgltf_free(Data);
+
             return nullptr;
         }
 
@@ -574,7 +586,7 @@ ImportGltfToSvo(u32 MaxDepth, const char* const GLTFPath)
         GlobalTriangleIndex.reserve(TriangleData->TriangleCount);
         BuildTriangleIndex(MaxDepth, ScaleExponent, TriangleData, GlobalTriangleIndex);
 
-        svo* Svo = CreateSparseVoxelOctree(ScaleExponent, MaxDepth, &IntersectorFunction);
+        svo* Svo = CreateSparseVoxelOctree(ScaleExponent, MaxDepth, &IntersectorFunction, &NormalSampler);
 
         free(TriangleData);
         cgltf_free(Data);

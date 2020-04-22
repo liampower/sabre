@@ -25,6 +25,19 @@
   #define aligned(N) __attribute__((aligned(N)))
 #endif
 
+static inline float
+Clamp(float X, float Lo, float Hi)
+{
+    if (X < Lo) return Lo;
+    if (X > Hi) return Hi;
+    else        return X;
+}
+
+static inline int
+Round(float X)
+{
+    return (int)roundf(X);
+}
 
 struct bvec3
 {
@@ -37,7 +50,6 @@ struct mat3
 {
     float M[3][3];
 };
-
 
 
 // {{{ Vectors
@@ -133,7 +145,7 @@ struct uvec3
         Z = Uniform;
     }
 
-    inline 
+    inline explicit
     operator vec3()
     {
         vec3 Result;
@@ -145,7 +157,7 @@ struct uvec3
         return Result;
     }
 
-    inline
+    inline explicit
     operator bvec3()
     {
         bvec3 Result;
@@ -157,6 +169,60 @@ struct uvec3
         return Result;
     }
 };
+
+static inline uvec3
+operator%(uvec3 L, uvec3 R)
+{
+    uvec3 Result;
+
+    Result.X = L.X % R.X;
+    Result.Y = L.Y % R.Y;
+    Result.Z = L.Z % R.Z;
+
+    return Result;
+}
+
+static inline uvec3
+operator/(uvec3 L, uvec3 R)
+{
+    uvec3 Result;
+
+    Result.X = L.X / R.X;
+    Result.Y = L.Y / R.Y;
+    Result.Z = L.Z / R.Z;
+
+    return Result;
+}
+
+static inline bool
+operator==(uvec3 L, uvec3 R)
+{
+    return L.X == R.X && L.Y == R.Y && L.Z == R.Z;
+}
+
+static inline uvec3
+operator-(uvec3 L, uvec3 R)
+{
+    uvec3 Result;
+
+    Result.X = L.X - R.X;
+    Result.Y = L.Y - R.Y;
+    Result.Z = L.Z - R.Z;
+
+    return Result;
+}
+
+static inline uvec3
+operator*(uvec3 L, uvec3 R)
+{
+    uvec3 Result;
+
+    Result.X = L.X * R.X;
+    Result.Y = L.Y * R.Y;
+    Result.Z = L.Z * R.Z;
+
+    return Result;
+}
 
 struct ivec3
 {
@@ -619,6 +685,12 @@ static inline float
 Length(vec3 V)
 {
     return sqrtf(V.X*V.X + V.Y*V.Y + V.Z*V.Z);
+}
+
+static inline float
+LengthSq(vec3 V)
+{
+    return (V.X*V.X + V.Y*V.Y + V.Z*V.Z);
 }
 
 static inline float

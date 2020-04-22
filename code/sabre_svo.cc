@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <intrin.h>
+#include <vector>
+#include <map>
 
 #include "sabre.h"
 #include "sabre_math.h"
@@ -22,6 +24,7 @@ enum svo_oct
     OCT_C111 = 7
 };
 
+
 enum svo_voxel_type
 {
     VOXEL_PARENT = 0U,
@@ -35,6 +38,9 @@ struct node_ref
 };
 
 
+std::vector<std::pair<uvec3, packed_snorm3>> DEBUGLeafKeys;
+
+
 static inline u32
 CountSetBits(u32 Msk)
 {
@@ -43,6 +49,20 @@ CountSetBits(u32 Msk)
 #else
     return (u32)(__builtin_popcount(Msk));
 #endif
+}
+
+static inline packed_snorm3
+PackVec3ToSnorm3(vec3 V)
+{
+    f32 Exp = 127.0f;
+
+    u8 Sx = (u8)Round(Clamp(V.X, -1.0f, 1.0f) * Exp);
+    u8 Sy = (u8)Round(Clamp(V.Y, -1.0f, 1.0f) * Exp);
+    u8 Sz = (u8)Round(Clamp(V.Z, -1.0f, 1.0f) * Exp);
+
+    packed_snorm3 Out = ((u8)Sz) | ((u8)Sy << 0x08U) | ((u8)Sx << 16U);
+
+    return Out;
 }
 
 static inline u32
@@ -139,7 +159,7 @@ GetChildCount(svo_node* Parent)
 static inline int
 GetFreeSlotCount(svo_block* const Blk)
 {
-    return (int)SVO_ENTRIES_PER_BLOCK - (int)Blk->NextFreeSlot;
+    return (int)SVO_NODES_PER_BLK - (int)Blk->NextFreeSlot;
 }
 
 
@@ -240,14 +260,14 @@ GetNodeChild(node_ref ParentRef, svo_oct ChildOct)
         FirstChildIndex = FarPtr->NodeOffset;
 
         i32 BlksFromParent = (i32)FarPtr->BlkIndex - (i32)ParentRef.Blk->Index;
-        i32 BlksFromFirst = (i32)((FirstChildIndex + ChildOffset) / SVO_ENTRIES_PER_BLOCK);
+        i32 BlksFromFirst = (i32)((FirstChildIndex + ChildOffset) / SVO_NODES_PER_BLK);
 
         BlksToJump = BlksFromParent + BlksFromFirst;
     }
     else
     {
         FirstChildIndex = ParentRef.Node->ChildPtr & CHILD_PTR_MSK;
-        i32 BlksFromFirst = (i32)((FirstChildIndex + ChildOffset) / SVO_ENTRIES_PER_BLOCK);
+        i32 BlksFromFirst = (i32)((FirstChildIndex + ChildOffset) / SVO_NODES_PER_BLK);
 
         BlksToJump = BlksFromFirst;
     }
@@ -268,7 +288,7 @@ GetNodeChild(node_ref ParentRef, svo_oct ChildOct)
         }
     }
 
-    u32 ChildIndex = (FirstChildIndex + ChildOffset) % SVO_ENTRIES_PER_BLOCK;
+    u32 ChildIndex = (FirstChildIndex + ChildOffset) % SVO_NODES_PER_BLK;
 
     return node_ref{ ChildBlk, &ChildBlk->Entries[ChildIndex] };
 }
@@ -278,7 +298,7 @@ static far_ptr*
 AllocateFarPtr(svo_block* const ContainingBlk)
 {
     usize NextFarPtrSlot = ContainingBlk->NextFarPtrSlot;
-    assert(NextFarPtrSlot < SVO_FAR_PTRS_PER_BLOCK);
+    assert(NextFarPtrSlot < SVO_FAR_PTRS_PER_BLK);
     far_ptr* Ptr = &ContainingBlk->FarPtrs[NextFarPtrSlot];
     ++ContainingBlk->NextFarPtrSlot;
 
@@ -406,9 +426,8 @@ AllocateNode(svo_block* const Blk)
     }
 }
 
-
 static void
-BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth, u32 Scale, svo_block* ParentBlk, vec3 Centre, intersector_fn SurfaceFn)
+BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth, u32 Scale, svo_block* ParentBlk, vec3 Centre, intersector_fn SurfaceFn, normal_fn NormalFn)
 {
     struct node_child
     {
@@ -424,8 +443,6 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
     node_child Children[8];
     u32 LastChildIndex = 0;
 
-    // TODO(Liam): Try to eliminate the need for a +1 bias; we would like to *not* have
-    // the bias lie about what the actual difference in levels is!
     uvec3 Radius = uvec3(Scale >> 1);
 
     const node_ref ParentRef = node_ref{ ParentBlk, Parent };
@@ -436,14 +453,15 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
         // into "real" space from the scaled space we operate in when
         // constructing the tree.
         vec3 OctCentre = GetOctantCentre((svo_oct)Oct, Scale, Centre);
-        vec3 OctMin = (OctCentre - Radius) * Tree->Bias.InvScale;
-        vec3 OctMax = (OctCentre + Radius) * Tree->Bias.InvScale;
+        vec3 OctMin = (OctCentre - vec3(Radius)) * Tree->Bias.InvScale;
+        vec3 OctMax = (OctCentre + vec3(Radius)) * Tree->Bias.InvScale;
 
-        if (SurfaceFn(OctMin, OctMax, Tree))
+        svo_surface_state SurfaceState = SurfaceFn(OctMin, OctMax, Tree);
+        if (SURFACE_INTERSECTED == SurfaceState)
         {
             // Check if the NEXT depth is less than the tree max
             // depth.
-            if (Depth < Tree->MaxDepth)
+            if (Depth + 1 < Tree->MaxDepth)
             {
                 // Need to subdivide
                 SetOctantOccupied((svo_oct)Oct, VOXEL_PARENT, Parent);
@@ -469,7 +487,17 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
             else
             {
                 SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, Parent);
+                vec3 VoxelNormal = NormalFn(OctCentre, Tree);
+                
+                Tree->Normals.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelNormal)));
             }
+        }
+        else if (SURFACE_INSIDE == SurfaceState)
+        {
+            SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, Parent);
+            vec3 VoxelNormal = NormalFn(OctCentre, Tree);
+
+            Tree->Normals.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelNormal)));
         }
     }
 
@@ -484,12 +512,13 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
                                 NextScale,
                                 Child.Blk,
                                 Child.Centre,
-                                SurfaceFn);
+                                SurfaceFn,
+                                NormalFn);
     }
 }
 
 extern "C" svo*
-CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceFn)
+CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceFn, normal_fn NormalFn)
 {
     svo* Tree = (svo*)calloc(1, sizeof(svo));
     
@@ -537,7 +566,8 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
                                 RootScale >> 1,
                                 RootBlk,
                                 RootCentre,
-                                SurfaceFn);
+                                SurfaceFn,
+                                NormalFn);
 
         return Tree;
     }
@@ -779,7 +809,7 @@ DeleteLeafChild(svo_oct ChildOct, svo* const Tree, node_ref ParentRef)
 
     // Mask of all octants except the intended
     // child.
-    u32 LeavesMsk = ~(1U << (u32)ChildOct);
+    u32 LeavesMsk = ~(1U << ChildOct);
 
     // Clear this oct's bit from the parent leaf
     // mask. If this octant was a leaf, it will
@@ -792,7 +822,7 @@ DeleteLeafChild(svo_oct ChildOct, svo* const Tree, node_ref ParentRef)
 
     // Set all octants inside the newly allocated
     // child to 
-    NewChildRef.Node->LeafMask = (u8) LeavesMsk;
+    NewChildRef.Node->LeafMask = (u8)LeavesMsk;
 
     return NewChildRef;
 }
@@ -820,17 +850,19 @@ DeleteVoxel(svo* Tree, vec3 VoxelP)
     // For configurations where MaxDepth < ScaleExponent, this will always
     // be 1 << (ScaleExponent - MaxDepth)
     u32 CurrentScale = MaxScale;
+    u32 LeafScale = MinScale << 1;
 
     // Descend the tree until we get to the minium scale.
-    while (CurrentScale > MinScale)
+    while (CurrentScale > LeafScale)
     {
+        CurrentScale >>= 1;
         // If we had previously created a child node, we need to
         // continue building the tree until we reach the min scale.
-        if (CreatedChild && CurrentScale > (MinScale << 1))
+        if (CreatedChild && CurrentScale > LeafScale)
         {
             node_ref NewParentRef = AllocateNewNode(Tree->LastBlock, Tree);
 
-            u32 OctMsk = ~(1U << (u32)CurrentOct);
+            u32 OctMsk = ~(1U << CurrentOct);
             NewParentRef.Node->OccupiedMask = 0xFF;   // All octants occupied
             NewParentRef.Node->LeafMask = (u8)OctMsk; // All octants except current leaves
 
@@ -840,9 +872,9 @@ DeleteVoxel(svo* Tree, vec3 VoxelP)
         }
         else if (IsOctantOccupied(ParentNodeRef.Node, CurrentOct))
         {
-            if (CurrentScale <= (MinScale << 1))
+            if (CurrentScale <= LeafScale)
             {
-                u32 ClearMsk = ~(1U << (u32)CurrentOct);
+                u32 ClearMsk = ~(1U << CurrentOct);
                 ParentNodeRef.Node->LeafMask &= ClearMsk;
                 ParentNodeRef.Node->OccupiedMask &= ClearMsk;
 
@@ -865,7 +897,6 @@ DeleteVoxel(svo* Tree, vec3 VoxelP)
             return;
         }
 
-        CurrentScale >>= 1;
         ParentCentre = GetOctantCentre(CurrentOct, CurrentScale, ParentCentre);
         CurrentOct = GetOctantForPosition(DeleteP, ParentCentre);
     }
@@ -917,7 +948,10 @@ LoadSvoFromFile(FILE* FileIn)
         }
 
         CurrentBlk->Prev = Svo->LastBlock;
-        if (Svo->LastBlock) Svo->LastBlock->Next = CurrentBlk;
+        if (nullptr != Svo->LastBlock)
+        {
+            Svo->LastBlock->Next = CurrentBlk;
+        }
 
         // TODO(Liam): Check failure
         if (0 == fread(CurrentBlk, sizeof(svo_block), 1, FileIn))
@@ -929,6 +963,7 @@ LoadSvoFromFile(FILE* FileIn)
         // Need to link prev block to this one
         Svo->LastBlock = CurrentBlk;
     }
+
 
     return Svo;
 }

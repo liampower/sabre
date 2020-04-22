@@ -1,16 +1,26 @@
 #ifndef SABRE_SVO_H
 #define SABRE_SVO_H
 
+#include <vector>
+
 #include "sabre.h"
 #include "sabre_math.h"
 
-static constexpr u32 SVO_ENTRIES_PER_BLOCK  = 8192;
-static constexpr u32 SVO_FAR_PTRS_PER_BLOCK = 8192;
+static constexpr u32 SVO_NODES_PER_BLK = 8192;
+static constexpr u32 SVO_FAR_PTRS_PER_BLK = 8192;
 
-static_assert(SVO_FAR_PTRS_PER_BLOCK >= SVO_ENTRIES_PER_BLOCK, "Far Ptrs Per Blk must be >= Entries per Blk");
-
+static_assert(SVO_FAR_PTRS_PER_BLK >= SVO_NODES_PER_BLK, "Far Ptrs Per Blk must be >= Entries per Blk");
 
 struct svo_block;
+
+typedef uint32_t packed_snorm3;
+
+enum svo_surface_state
+{
+    SURFACE_INTERSECTED,
+    SURFACE_INSIDE,
+    SURFACE_OUTSIDE
+};
 
 struct far_ptr
 {
@@ -46,6 +56,14 @@ struct svo_bias
     uint32_t Scale;
 };
 
+
+struct svo_normals_buffer
+{
+    uint32_t  NormalsCount;
+    uint32_t* NormalsData;
+};
+
+
 struct svo_block
 {
     usize      NextFreeSlot;
@@ -53,8 +71,8 @@ struct svo_block
     u32        Index;
     svo_block* Prev;
     svo_block* Next;
-    svo_node   Entries[SVO_ENTRIES_PER_BLOCK];
-    far_ptr    FarPtrs[SVO_FAR_PTRS_PER_BLOCK];
+    svo_node   Entries[SVO_NODES_PER_BLK];
+    far_ptr    FarPtrs[SVO_FAR_PTRS_PER_BLK];
 };
 
 struct svo
@@ -77,10 +95,7 @@ struct svo
     // the entire tree scale so that the smallest extant
     // of any child region is 1. Remember to divide by this
     // value when doing any space-operations!
-    //u32 Bias;
-
     svo_bias Bias;
-    //f32 InvBias;
 
     // Last block of nodes in this tree
     // NOTE(Liam): Warning! This field is volatile and unsafe
@@ -92,13 +107,17 @@ struct svo
 
     // First block of nodes in this tree
     svo_block* RootBlock;
+
+
+    std::vector<std::pair<uvec3, packed_snorm3>> Normals;
 };
 
-typedef bool (*intersector_fn)(vec3, vec3, const svo* const);
+typedef svo_surface_state (*intersector_fn)(vec3, vec3, const svo* const);
+typedef vec3 (*normal_fn)(vec3, const svo* const);
 
 
 extern "C" void
-InsertVoxel(svo* Svo, vec3 P, u32 VoxelScale);
+InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale);
 
 extern "C" void
 DeleteVoxel(svo* Tree, vec3 P);
@@ -115,7 +134,8 @@ ImportGltfToSvo(u32 MaxDepth, const char* const GLTFPath);
 extern "C" svo*
 CreateSparseVoxelOctree(u32 ScaleExponent,
                         u32 MaxDepth,
-                        intersector_fn Surface);
+                        intersector_fn Surface,
+                        normal_fn NormalFn);
 
 extern "C" void
 OutputSvoToFile(const svo* const Svo, FILE* FileOut);

@@ -15,7 +15,9 @@ struct sbr_view_data
 };
 
 extern "C" sbr_render_data*
-CreateSvoRenderData(const svo* const Tree, const sbr_view_data* const ViewData);
+CreateSvoRenderData(const svo* const Tree,
+                    const sbr_view_data* const ViewData,
+                    const svo_normals_buffer* const Normals);
 
 
 extern "C" void
