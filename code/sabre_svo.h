@@ -13,6 +13,8 @@ static_assert(SVO_FAR_PTRS_PER_BLK >= SVO_NODES_PER_BLK, "Far Ptrs Per Blk must 
 
 struct svo_block;
 
+typedef uint32_t packed_snorm3;
+
 enum svo_surface_state
 {
     SURFACE_INTERSECTED,
@@ -107,7 +109,7 @@ struct svo
     svo_block* RootBlock;
 
 
-    std::vector<std::pair<uvec3, uint32_t>> Normals;
+    std::vector<std::pair<uvec3, packed_snorm3>> Normals;
 };
 
 typedef svo_surface_state (*intersector_fn)(vec3, vec3, const svo* const);
@@ -115,7 +117,7 @@ typedef vec3 (*normal_fn)(vec3, const svo* const);
 
 
 extern "C" void
-InsertVoxel(svo* Svo, vec3 P, u32 VoxelScale);
+InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale);
 
 extern "C" void
 DeleteVoxel(svo* Tree, vec3 P);

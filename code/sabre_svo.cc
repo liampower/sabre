@@ -38,7 +38,7 @@ struct node_ref
 };
 
 
-std::vector<std::pair<uvec3, u32>> DEBUGLeafKeys;
+std::vector<std::pair<uvec3, packed_snorm3>> DEBUGLeafKeys;
 
 
 static inline u32
@@ -51,17 +51,16 @@ CountSetBits(u32 Msk)
 #endif
 }
 
-static inline uint32_t
+static inline packed_snorm3
 PackVec3ToSnorm3(vec3 V)
 {
     f32 Exp = 127.0f;
 
-    i8 Sx = (i8)Round(Clamp(V.X, -1.0f, 1.0f) * Exp);
-    i8 Sy = (i8)Round(Clamp(V.Y, -1.0f, 1.0f) * Exp);
-    i8 Sz = (i8)Round(Clamp(V.Z, -1.0f, 1.0f) * Exp);
+    u8 Sx = (u8)Round(Clamp(V.X, -1.0f, 1.0f) * Exp);
+    u8 Sy = (u8)Round(Clamp(V.Y, -1.0f, 1.0f) * Exp);
+    u8 Sz = (u8)Round(Clamp(V.Z, -1.0f, 1.0f) * Exp);
 
-    //uint32_t Out = (0xFF | (Sz) | (Sy << 0x08) | (Sx << 0x10));
-    uint32_t Out = ((u8)Sz) | ((u8)Sy << 0x08U) | ((u8)Sx << 16U);
+    packed_snorm3 Out = ((u8)Sz) | ((u8)Sy << 0x08U) | ((u8)Sx << 16U);
 
     return Out;
 }
@@ -810,7 +809,7 @@ DeleteLeafChild(svo_oct ChildOct, svo* const Tree, node_ref ParentRef)
 
     // Mask of all octants except the intended
     // child.
-    u32 LeavesMsk = ~(1U << (u32)ChildOct);
+    u32 LeavesMsk = ~(1U << ChildOct);
 
     // Clear this oct's bit from the parent leaf
     // mask. If this octant was a leaf, it will
@@ -823,7 +822,7 @@ DeleteLeafChild(svo_oct ChildOct, svo* const Tree, node_ref ParentRef)
 
     // Set all octants inside the newly allocated
     // child to 
-    NewChildRef.Node->LeafMask = (u8) LeavesMsk;
+    NewChildRef.Node->LeafMask = (u8)LeavesMsk;
 
     return NewChildRef;
 }
@@ -851,13 +850,15 @@ DeleteVoxel(svo* Tree, vec3 VoxelP)
     // For configurations where MaxDepth < ScaleExponent, this will always
     // be 1 << (ScaleExponent - MaxDepth)
     u32 CurrentScale = MaxScale;
+    u32 LeafScale = MinScale << 1;
 
     // Descend the tree until we get to the minium scale.
-    while (CurrentScale > (MinScale << 1))
+    while (CurrentScale > LeafScale)
     {
+        CurrentScale >>= 1;
         // If we had previously created a child node, we need to
         // continue building the tree until we reach the min scale.
-        if (CreatedChild && CurrentScale > (MinScale << 1))
+        if (CreatedChild && CurrentScale > LeafScale)
         {
             node_ref NewParentRef = AllocateNewNode(Tree->LastBlock, Tree);
 
@@ -871,7 +872,7 @@ DeleteVoxel(svo* Tree, vec3 VoxelP)
         }
         else if (IsOctantOccupied(ParentNodeRef.Node, CurrentOct))
         {
-            if (CurrentScale <= (MinScale << 1))
+            if (CurrentScale <= LeafScale)
             {
                 u32 ClearMsk = ~(1U << CurrentOct);
                 ParentNodeRef.Node->LeafMask &= ClearMsk;
@@ -896,7 +897,6 @@ DeleteVoxel(svo* Tree, vec3 VoxelP)
             return;
         }
 
-        CurrentScale >>= 1;
         ParentCentre = GetOctantCentre(CurrentOct, CurrentScale, ParentCentre);
         CurrentOct = GetOctantForPosition(DeleteP, ParentCentre);
     }
@@ -948,7 +948,10 @@ LoadSvoFromFile(FILE* FileIn)
         }
 
         CurrentBlk->Prev = Svo->LastBlock;
-        if (Svo->LastBlock) Svo->LastBlock->Next = CurrentBlk;
+        if (nullptr != Svo->LastBlock)
+        {
+            Svo->LastBlock->Next = CurrentBlk;
+        }
 
         // TODO(Liam): Check failure
         if (0 == fread(CurrentBlk, sizeof(svo_block), 1, FileIn))

@@ -122,7 +122,7 @@ uint MaxComponentU(uvec3 V)
     return max(max(V.x, V.y), V.z);
 }
 
-uint GetNodeChildIndex(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
+uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
 {
     uint ChildPtr = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
     uint OccBits = (ParentNode & SVO_NODE_OCCUPIED_MASK) >> 8; 
@@ -137,7 +137,7 @@ uint GetNodeChildIndex(in uint ParentNode, in uint Oct, inout uint ParentBlkInde
         uint ChildIndex = ParentBlkIndex*EntriesPerBlockUniform + ChildPtr + ChildOffset;
         ParentBlkIndex += (ChildPtr + ChildOffset) / (EntriesPerBlockUniform);
 
-        return ChildIndex;
+        return SvoInputBuffer.Nodes[ChildIndex];
     }
     else
     {
@@ -157,7 +157,7 @@ uint GetNodeChildIndex(in uint ParentNode, in uint Oct, inout uint ParentBlkInde
 
         uint ChildIndex = ChildBlkStart + FarPtr.NodeOffset + ChildOffset;
 
-        return ChildIndex;
+        return SvoInputBuffer.Nodes[ChildIndex];
     }
 }
 
@@ -269,8 +269,6 @@ vec3 Raycast(in ray R)
     {
         // Ray enters octree --- begin processing
 
-        // Initialise parent to root node
-        uint ParentNode = SvoInputBuffer.Nodes[0];
 
         // Current position along the ray
         vec3 RayP = R.Origin + CurrentIntersection.tMin * R.Dir;
@@ -279,6 +277,8 @@ vec3 Raycast(in ray R)
 
         // Current octant the ray is in (confirmed good)
         CurrentOct = GetOctant(RayP, ParentCentre*InvBiasUniform);
+
+        uint ParentNode = SvoInputBuffer.Nodes[0];
         
         // Initialise depth to 1
         CurrentDepth = 1;
@@ -301,7 +301,6 @@ vec3 Raycast(in ray R)
         {
             // Radius of the current octant's cube (half the current scale);
             vec3 Rad = vec3(Scale >> 1);
-            if (Rad == vec3(0)) return vec3(1, 0, 1);
 
             // Get the centre position of this octant
             vec3 OctSgn = mix(vec3(-1), vec3(1), bvec3(CurrentOct & OCT_BITS));
@@ -311,11 +310,6 @@ vec3 Raycast(in ray R)
             vec3 NodeMax = (NodeCentre + Rad) * InvBiasUniform;
 
             CurrentIntersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
-
-            // TODO(Liam): There are some spots occurring due to (probably) error in
-            // the intersection. Investigate an epsilon value that lets us eliminate
-            // these spots. The epsilon should probably be the same as the step value
-            // we use below.
 
             if (CurrentIntersection.tMin <= CurrentIntersection.tMax)
             {
@@ -338,17 +332,17 @@ vec3 Raycast(in ray R)
                     {
                         // Voxel has children --- execute push
                         // NOTE(Liam): BlkIndex (potentially) updated here
-                        ParentNode = SvoInputBuffer.Nodes[GetNodeChildIndex(ParentNode, CurrentOct, BlkIndex /*out*/)];
-                        CurrentOct = GetOctant(RayP, NodeCentre*InvBiasUniform);
-                        ParentCentre = NodeCentre;
-                        Scale >>= 1;
-                        ++CurrentDepth;
 
                         Stack[CurrentDepth] = st_frame(ParentNode,
                                                    Scale,
                                                    ParentCentre,
                                                    BlkIndex);
 
+                        ParentNode = GetNodeChild(ParentNode, CurrentOct, BlkIndex /*out*/);
+                        CurrentOct = GetOctant(RayP, NodeCentre*InvBiasUniform);
+                        ParentCentre = NodeCentre;
+                        Scale >>= 1;
+                        ++CurrentDepth;
 
                         continue;
                     }
@@ -397,7 +391,6 @@ vec3 Raycast(in ray R)
             }
             else
             {
-                return vec3(1);
                 break;
             }
         }
