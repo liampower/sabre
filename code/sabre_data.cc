@@ -40,7 +40,7 @@ extern const char* const RaycasterComputeKernel = R"GLSL(
 #define SVO_NODE_CHILD_PTR_MASK 0x7FFF0000U
 #define SVO_FAR_PTR_BIT_MASK    0x80000000U
 
-#define MAX_STEPS 128
+#define MAX_STEPS 200
 #define SCREEN_DIM 512
 
 #define ASSERT(Expr) if (! (Expr)) { return vec3(1); }
@@ -321,11 +321,12 @@ vec3 Raycast(in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
+                        return Oct2Cr(CurrentOct);
                         vec3 N = texelFetch(MapDataUniform, ivec3(NodeCentre.xyz), 0).xyz;
                         
                         vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(32, 0, 0));
 
-                        return vec3(dot(Ldir, N));
+                        return vec3(dot(Ldir, N));// * vec3(0.74, 0.67, 0.32);
 
                     }
                     else
@@ -350,7 +351,6 @@ vec3 Raycast(in ray R)
 
                 // Octant not occupied, need to handle advance/pop
                 uint NextOct = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
-
                 RayP = R.Origin + (CurrentIntersection.tMax + 0.015625) * R.Dir;
 
                 if (IsAdvanceValid(NextOct, CurrentOct, RaySgn))
@@ -362,6 +362,7 @@ vec3 Raycast(in ray R)
                     // Determined that NodeCentre is never < 0
                     uvec3 NodeCentreBits = uvec3(NodeCentre);
                     uvec3 RayPBits = uvec3(RayP * BiasScale);
+
 
                     // NOTE(Liam): It is **okay** to have negative values here
                     // because the HDB will end up being equal to ScaleExponentUniform.
@@ -404,6 +405,7 @@ vec3 Raycast(in ray R)
     return vec3(0.12);
 }
 
+
 void main()
 {
     // Ray XY coordinates of the screen pixels; goes from 0-512
@@ -412,6 +414,7 @@ void main()
     vec3 ScreenOrigin = vec3(ViewPosUniform.x - 256, ViewPosUniform.y - 256, ViewPosUniform.z - 512);
 
 	vec3 ScreenCoord = ScreenOrigin + vec3(PixelCoords, 0);
+    ScreenCoord.x *= 1280.0/720.0;
 
     vec3 RayP = ViewPosUniform;
     vec3 RayD = normalize(ScreenCoord - ViewPosUniform);

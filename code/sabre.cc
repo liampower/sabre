@@ -17,11 +17,11 @@
 #include "sabre_data.h"
 #include "sabre_render.h"
 
-static constexpr u32 SABRE_MAX_TREE_DEPTH = 7;
+static constexpr u32 SABRE_MAX_TREE_DEPTH = 2;
 static constexpr u32 SABRE_SCALE_EXPONENT = 5;
 
-static constexpr u32 DisplayWidth = 512;
-static constexpr u32 DisplayHeight = 512;
+static constexpr u32 DisplayWidth = 1280;
+static constexpr u32 DisplayHeight = 720;
 static constexpr const char* const DisplayTitle = "Sabre";
 
 // NOTE(Liam): Forces use of nVidia GPU on hybrid graphics systems.
@@ -152,34 +152,81 @@ CreateLoadedMeshTestScene(const char* const SvoMeshFileName)
     }
 }
 
+extern "C" void
+InsertVoxel2(vec3 CastOrigin, vec3 Ray, svo* const Tree);
 
 static void
-InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, camera* Cam, svo* const Svo)
+InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, svo* const Svo)
 {
-    // Need to unproject the mouse X and Y into the scene.
-#if 0
-    vec3 ViewDir = Normalize(/* ??? */);
+    // Unproject the MouseX & Y positions into worldspace.
+    
+    //vec3 DeleteP = (Cam.Position - vec3(256, 256, 512)) + vec3((f32)MouseX, (f32)MouseY, 0);
+    vec3 D = vec3(f32(512) / 2.0f, f32(512) / 2.0f, 0.0f);
+    
+    // Origin of the screen plane in world-space
+    vec3 WorldVOrigin = Cam.Position - vec3(256, 256, 512);
 
-    for (u32 Step = 0; Step < MAX_HAND_STEPS; ++Step)
-    {
-        // World position of the "hand" point
-        vec3 HandPos = CameraPos + ViewDir*Step;
+    D = WorldVOrigin + D;
+    //D.X *= 1280.0/720.0;
 
-    }
-#endif
+    vec3 R = Normalize(D - Cam.Position);
 
+    mat3 CameraMatrix = mat3{{
+        { Cam.Right.X, Cam.Right.Y, Cam.Right.Z },
+        { Cam.Up.X, Cam.Up.Y, Cam.Up.Z },
+        { -Cam.Forward.X, -Cam.Forward.Y, -Cam.Forward.Z },
+    }};
+    /*mat3 CameraMatrix = mat3{{
+        { Cam.Right.Z, Cam.Up.X, -Cam.Forward.Z },
+        { Cam.Right.Y, Cam.Up.Y, -Cam.Forward.Y },
+        { Cam.Right.X, Cam.Up.Z, -Cam.Forward.X },
+    }};*/
 
-    vec3 InsertP = Cam->Position + 1.5f*Cam->Forward;
-    DEBUGPrintVec3(InsertP);
-    InsertVoxel(Svo, InsertP, 16);
+    R = R * CameraMatrix;
+
+    printf("D: "); DEBUGPrintVec3(D); printf("\n");
+    printf("R: "); DEBUGPrintVec3(R); printf("\n");
+
+    InsertVoxel2(Cam.Position, R, Svo);
 }
 
+extern "C" void
+DeleteVoxel2(vec3 CastOrigin, vec3 Ray, svo* const Tree);
+
+
 static void
-DeleteVoxelAtMousePoint(f64 MouseX, f64 MouseY, camera* Cam, svo* const Svo)
+DeleteVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, svo* const Svo)
 {
-    vec3 DeleteP = Cam->Position + 1.5f*Cam->Forward;
+    // Unproject the MouseX & Y positions into worldspace.
     
-    DeleteVoxel(Svo, DeleteP);
+    //vec3 DeleteP = (Cam.Position - vec3(256, 256, 512)) + vec3((f32)MouseX, (f32)MouseY, 0);
+    vec3 D = vec3(f32(512) / 2.0f, f32(512) / 2.0f, 0.0f);
+    
+    // Origin of the screen plane in world-space
+    vec3 WorldVOrigin = Cam.Position - vec3(256, 256, 512);
+
+    D = WorldVOrigin + D;
+    //D.X *= 1280.0/720.0;
+
+    vec3 R = Normalize(D - Cam.Position);
+
+    mat3 CameraMatrix = mat3{{
+        { Cam.Right.X, Cam.Right.Y, Cam.Right.Z },
+        { Cam.Up.X, Cam.Up.Y, Cam.Up.Z },
+        { -Cam.Forward.X, -Cam.Forward.Y, -Cam.Forward.Z },
+    }};
+    /*mat3 CameraMatrix = mat3{{
+        { Cam.Right.Z, Cam.Up.X, -Cam.Forward.Z },
+        { Cam.Right.Y, Cam.Up.Y, -Cam.Forward.Y },
+        { Cam.Right.X, Cam.Up.Z, -Cam.Forward.X },
+    }};*/
+
+    R = R * CameraMatrix;
+
+    printf("D: "); DEBUGPrintVec3(D); printf("\n");
+    printf("R: "); DEBUGPrintVec3(R); printf("\n");
+
+    DeleteVoxel2(Cam.Position, R, Svo);
 }
 
 
@@ -231,8 +278,8 @@ main(int ArgCount, const char** const Args)
     glViewport(0, 0, FramebufferWidth, FramebufferHeight);
     glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-#if 1
-    svo* WorldSvo = CreateImportedMeshTestScene("data/TestModels/serapis.glb");
+#if 0
+    svo* WorldSvo = CreateImportedMeshTestScene("data/Showcase/serapis.glb");
 #else
     svo* WorldSvo = CreateCubeSphereTestScene();
 #endif
@@ -360,14 +407,14 @@ main(int ArgCount, const char** const Args)
             f64 CurrentTime = glfwGetTime();
             if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_RIGHT) && ((CurrentTime - LastMouseRTime)) >= 1)
             {
-                InsertVoxelAtMousePoint(MouseX, MouseY, &Cam, WorldSvo);
+                InsertVoxelAtMousePoint(MouseX, MouseY, Cam, WorldSvo);
                 UpdateSvoRenderData(WorldSvo, RenderData);
                 LastMouseRTime = CurrentTime;
             }
             
             if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_LEFT) && ((CurrentTime - LastMouseLTime)) >= 1)
             {
-                DeleteVoxelAtMousePoint(MouseX, MouseY, &Cam, WorldSvo);
+                DeleteVoxelAtMousePoint(MouseX, MouseY, Cam, WorldSvo);
                 UpdateSvoRenderData(WorldSvo, RenderData);
                 LastMouseLTime = CurrentTime;
             }

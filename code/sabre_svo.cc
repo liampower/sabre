@@ -78,6 +78,17 @@ FindHighestSetBit(u32 Msk)
 #endif
 }
 
+static inline uvec3
+FindHighestSetBit(uvec3 Msk)
+{
+    uvec3 Out;
+    Out.X = FindHighestSetBit(Msk.X);
+    Out.Y = FindHighestSetBit(Msk.Y);
+    Out.Z = FindHighestSetBit(Msk.Z);
+
+    return Out;
+}
+
 static inline u32
 GetTreeMaxScaleBiased(const svo* const Tree)
 {
@@ -827,6 +838,197 @@ DeleteLeafChild(svo_oct ChildOct, svo* const Tree, node_ref ParentRef)
     return NewChildRef;
 }
 
+struct ray_intersection
+{
+    float tMin;
+    float tMax;
+    vec3 tMaxV;
+    vec3 tMinV;
+};
+
+static ray_intersection
+ComputeRayBoxIntersection(vec3 ROrigin, vec3 RInvDir, vec3 vMin, vec3 vMax)
+{
+    vec3 t0 = (vMin - ROrigin) * RInvDir; // Distance along ray to vmin planes
+    vec3 t1 = (vMax - ROrigin) * RInvDir; // Distance along ray to vmax planes
+
+    vec3 tMin = Min(t0, t1); // Minimums of all distances
+    vec3 tMax = Max(t0, t1); // Maximums of all distances
+
+    float ttMin = HorzMax(tMin); // Largest of the min distances (closest to box)
+    float ttMax = HorzMin(tMax); // Smallest of max distances (closest to box)
+
+    ray_intersection Result = { ttMin, ttMax, tMax, tMin };
+    return Result;
+}
+
+struct st_frame
+{
+    node_ref Node;
+    uint Scale;
+    vec3 ParentCentre;
+};
+
+static bool
+IsAdvanceValid(svo_oct NewOct, svo_oct OldOct, vec3 RaySgn)
+{
+    ivec3 NewOctBits = ivec3(NewOct) & ivec3(1, 2, 4);
+    ivec3 OldOctBits = ivec3(OldOct) & ivec3(1, 2, 4);
+
+    vec3 OctSgn = Sign(NewOctBits - OldOctBits);
+
+    return Any(Equals(RaySgn, OctSgn, 0.0f));
+}
+
+static svo_oct
+GetNextOctant(float tMax, vec3 tMaxV, svo_oct CurrentOct)
+{
+    uvec3 XorMsk3 = uvec3(GreaterThanEqual(vec3(tMax), tMaxV)) * uvec3(1, 2, 4);
+
+    uint XorMsk = XorMsk3.X + XorMsk3.Y + XorMsk3.Z;
+
+    return svo_oct(CurrentOct ^ XorMsk);
+}
+
+static vec3
+GetVoxelPosition(vec3 RayOrigin, vec3 RayDir, svo* const Tree)
+{
+    u32 MaxScale = GetTreeMaxScaleBiased(Tree);
+    u32 LeafScale = GetTreeMinScaleBiased(Tree) << 1u;
+
+    vec3 RaySgn = Sign(RayDir);
+    st_frame Stack[64 + 1];
+    uint Scale = MaxScale;
+    vec3 RayInvDir = 1.0f / RayDir;
+    vec3 RootMin = vec3(0);
+    vec3 RootMax = vec3(Scale) * Tree->Bias.InvScale;
+    const float BiasScale = (1.0f / Tree->Bias.InvScale);
+
+    ray_intersection CurrentIntersection = ComputeRayBoxIntersection(RayOrigin, RayInvDir, RootMin, RootMax);
+    if (CurrentIntersection.tMin <= CurrentIntersection.tMax || true)    // Raycast to find voxel position
+    {
+        vec3 RayP = RayOrigin + CurrentIntersection.tMin * RayDir;
+        vec3 ParentCentre = vec3(Scale >> 1);
+        svo_oct CurrentOct = GetOctantForPosition(RayP, ParentCentre*Tree->Bias.InvScale);
+        node_ref ParentNodeRef = GetTreeRootNodeRef(Tree);
+        uint CurrentDepth = 1;
+        Scale >>= 1;
+
+        Stack[CurrentDepth] = { ParentNodeRef, Scale, ParentCentre };
+
+        for (int Step = 0; Step < 64; ++Step)
+        {
+            vec3 Rad = vec3(Scale >> 1);
+            vec3 NodeCentre = GetOctantCentre(CurrentOct, Scale, ParentCentre);
+            vec3 NodeMin = (NodeCentre - Rad) * Tree->Bias.InvScale;
+            vec3 NodeMax = (NodeCentre + Rad) * Tree->Bias.InvScale;
+
+            CurrentIntersection = ComputeRayBoxIntersection(RayOrigin, RayInvDir, NodeMin, NodeMax);
+
+            if (CurrentIntersection.tMin <= CurrentIntersection.tMax)
+            {
+                if (IsOctantOccupied(ParentNodeRef.Node, CurrentOct))
+                {
+                    // {{{ 
+                    if (IsOctantLeaf(ParentNodeRef.Node, CurrentOct))
+                    {
+                        // Leaf hit; return nodecentre.
+                        //return NodeCentre;
+                        svo_oct N = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
+
+                        return GetOctantCentre(svo_oct(N^N), Scale, ParentCentre);
+                    }
+                    else
+                    {
+                        Stack[CurrentDepth] = { ParentNodeRef, Scale, ParentCentre };
+
+                        ParentNodeRef = GetNodeChild(ParentNodeRef, CurrentOct);
+                        CurrentOct = GetOctantForPosition(RayP, NodeCentre*Tree->Bias.InvScale);
+                        ParentCentre = NodeCentre;
+                        Scale >>= 1;
+                        ++CurrentDepth;
+
+                        continue;
+                    }
+                    // }}}
+                }
+
+                RayP = RayOrigin + (CurrentIntersection.tMax + 0.015625f) * RayDir;
+                const svo_oct NextOct = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
+
+                if (IsAdvanceValid(NextOct, CurrentOct, RaySgn))
+                {
+                    CurrentOct = NextOct;
+                }
+                else
+                {
+                    // {{{ 
+                    // Determined that NodeCentre is never < 0
+                    uvec3 NodeCentreBits = uvec3(NodeCentre);
+                    uvec3 RayPBits = uvec3(RayP * BiasScale);
+
+                    // NOTE(Liam): It is **okay** to have negative values here
+                    // because the HDB will end up being equal to ScaleExponentUniform.
+                    //
+                    // Find the highest differing bit
+                    uvec3 HDB = FindHighestSetBit(NodeCentreBits ^ RayPBits);
+                    bvec3 B = LessThan(HDB, uvec3(Tree->ScaleExponent + Tree->Bias.Scale));
+
+                    uint M = HorzMax(Select(HDB, uvec3(0), B));
+
+                    uint NextDepth = ((Tree->ScaleExponent + Tree->Bias.Scale) - M);
+
+                    if (NextDepth <= 64 && NextDepth < CurrentDepth)
+                    {
+                        CurrentDepth = NextDepth;
+                        Scale = Stack[CurrentDepth].Scale;
+                        ParentCentre = Stack[CurrentDepth].ParentCentre;
+                        ParentNodeRef = Stack[CurrentDepth].Node;
+
+                        CurrentOct = GetOctantForPosition(RayP, ParentCentre*Tree->Bias.InvScale);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                    /// }}}
+                }
+            }
+        }
+
+    }
+
+    printf("Position not found\n");
+
+    return vec3(FLT_MAX);
+}
+
+extern "C" void
+DeleteVoxel2(vec3 RayOrigin, vec3 RayDir, svo* const Tree)
+{
+    vec3 DeletePos = GetVoxelPosition(RayOrigin, RayDir, Tree) * Tree->Bias.InvScale;
+    printf("Position found: "); DEBUGPrintVec3(DeletePos); printf("\n");
+
+    if (DeletePos.X == FLT_MAX)
+    {
+        return;
+    }
+
+    DeleteVoxel(Tree, DeletePos);
+}
+
+extern "C" void
+InsertVoxel2(vec3 RayOrigin, vec3 RayDir, svo* const Tree)
+{
+    vec3 InsertPos = GetVoxelPosition(RayOrigin, RayDir, Tree) * Tree->Bias.InvScale;
+
+    if (InsertPos.X == FLT_MAX)
+    {
+        return;
+    }
+
+    InsertVoxel(Tree, InsertPos, 8);
+}
 
 extern "C" void
 DeleteVoxel(svo* Tree, vec3 VoxelP)
@@ -853,7 +1055,7 @@ DeleteVoxel(svo* Tree, vec3 VoxelP)
     u32 LeafScale = MinScale << 1;
 
     // Descend the tree until we get to the minium scale.
-    while (CurrentScale > LeafScale)
+    while (CurrentScale >= LeafScale)
     {
         CurrentScale >>= 1;
         // If we had previously created a child node, we need to

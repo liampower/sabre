@@ -437,6 +437,19 @@ LessThan(vec3 A, vec3 B)
 }
 
 static inline bvec3
+LessThan(uvec3 A, uvec3 B)
+{
+    bvec3 Out;
+
+    Out.X = A.X < B.X;
+    Out.Y = A.Y < B.Y;
+    Out.Z = A.Z < B.Z;
+
+    return Out;
+}
+
+
+static inline bvec3
 LessThanEqual(vec3 A, vec3 B)
 {
     bvec3 Out;
@@ -484,12 +497,43 @@ Equals(vec3 A, vec3 B, float Tolerance)
     return Out;
 }
 
+static inline bvec3
+Equals(uvec3 A, uvec3 B)
+{
+    bvec3 Out;
+
+    Out.X = A.X == B.X;
+    Out.Y = A.Y == B.Y;
+    Out.Z = A.Z == B.Z;
+
+    return Out;
+}
+
 static inline float
 Sign(float V)
 {
     if (V > 0) return 1.0f;
     if (V < 0) return -1.0f;
     else       return 0.0f;
+}
+
+
+static inline ivec3
+operator&(ivec3 L, ivec3 R)
+{
+    return ivec3(L.X & R.X, L.Y & R.Y, L.Z & R.Z);
+}
+
+static inline vec3
+Sign(ivec3 V)
+{
+    vec3 Out;
+
+    Out.X = Sign(V.X);
+    Out.Y = Sign(V.Y);
+    Out.Z = Sign(V.Z);
+
+    return Out;
 }
 
 static inline vec3
@@ -660,6 +704,51 @@ Dot(vec3 U, vec3 V)
     return Result;
 }
 
+static inline uvec3
+Select(uvec3 U, uvec3 V, bvec3 Mask)
+{
+    uvec3 Out;
+    Out.X = (Mask.X ? U.X : V.X);
+    Out.Y = (Mask.Y ? U.Y : V.Y);
+    Out.Z = (Mask.Z ? U.Z : V.Z);
+
+    return Out;
+}
+
+static inline vec3
+operator/(float K, vec3 V)
+{
+    vec3 Out;
+    Out.X = K / V.X;
+    Out.Y = K / V.Y;
+    Out.Z = K / V.Z;
+
+    return Out;
+}
+
+static inline u32
+HorzMax(uvec3 V)
+{
+    return Max(Max(V.X, V.Y), V.Z);
+}
+
+static inline float
+HorzMax(vec3 V)
+{
+    return Max(Max(V.X, V.Y), V.Z);
+}
+
+static inline u32
+HorzMin(uvec3 V)
+{
+    return Min(Min(V.X, V.Y), V.Z);
+}
+
+static inline float
+HorzMin(vec3 V)
+{
+    return Min(Min(V.X, V.Y), V.Z);
+}
 static inline vec3 
 Normalize(vec3 V)
 {
@@ -777,11 +866,12 @@ Translate3D(m4x4* Matrix, const vec3 Translation)
     Matrix->M[2][3] = Translation.Z;
 }
 
-static inline vec3
-operator*(vec3 V, mat3 M)
+static inline vec3 vcall
+operator*(const vec3& V, const mat3& M)
 {
     vec3 Out;
 
+    // Matrix indexed as [row][col]
     Out.X = V.X*M.M[0][0] + V.Y*M.M[1][0] + V.Z*M.M[2][0];
     Out.Y = V.X*M.M[0][1] + V.Y*M.M[1][1] + V.Z*M.M[2][1];
     Out.Z = V.X*M.M[0][2] + V.Y*M.M[1][2] + V.Z*M.M[2][2];

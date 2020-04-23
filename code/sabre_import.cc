@@ -299,6 +299,9 @@ NormalSampler(vec3 C, const svo* const)
 static tri_buffer*
 LoadMeshTriangles(cgltf_mesh* Mesh)
 {
+    usize LastTri = 0;
+    tri_buffer* TriBuffer = nullptr;
+
     // Locate the primitive entry for the mesh's triangle data block.
     // We do not handle non-triangle meshes.
     for (u32 PrimIndex = 0; PrimIndex < Mesh->primitives_count; ++PrimIndex)
@@ -332,8 +335,19 @@ LoadMeshTriangles(cgltf_mesh* Mesh)
                         cgltf_accessor_unpack_floats(Accessor, (f32*)PosBuffer, PosCount*3);
 
                         usize TriCount = IndexCount - 3;
-                        tri_buffer* TriBuffer = (tri_buffer*) malloc(sizeof(tri_buffer) + (sizeof(tri_data) * TriCount));
-                        TriBuffer->TriangleCount = TriCount;
+
+                        
+                        if (nullptr == TriBuffer)
+                        {
+                            TriBuffer = (tri_buffer*) malloc(sizeof(tri_buffer) + (sizeof(tri_data) * TriCount));
+                        }
+                        else
+                        {
+                            TriBuffer = (tri_buffer*) realloc(TriBuffer, sizeof(tri_buffer) + (sizeof(tri_data) * (TriBuffer->TriangleCount + TriCount)));
+                        }
+
+                        TriBuffer->TriangleCount += TriCount;
+
 
                         for (u32 TriIndex = 0; TriIndex < TriCount; TriIndex += 3)
                         {
@@ -359,21 +373,18 @@ LoadMeshTriangles(cgltf_mesh* Mesh)
 
                             vec3 N = ComputeTriangleNormal(&T);
 
-                            TriBuffer->Triangles[TriIndex].T = T;
-                            TriBuffer->Triangles[TriIndex].Normal = N;
+                            TriBuffer->Triangles[LastTri].T = T;
+                            TriBuffer->Triangles[LastTri].Normal = N;
+                            ++LastTri;
                         }
 
                         free(PosBuffer);
-                        free(IndexBuffer);
-
-                        return TriBuffer;
+                        //return TriBuffer;
                     }
                 }
 
                 // Didn't find any positions, free the index buffer and exit.
                 free(IndexBuffer);
-
-                return nullptr;
             }
 
         }
@@ -381,7 +392,7 @@ LoadMeshTriangles(cgltf_mesh* Mesh)
     }
 
     // Mesh does not have triangle primitives; bail out
-    return nullptr;
+    return TriBuffer;
 }
 
 static inline vec3
