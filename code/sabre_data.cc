@@ -92,6 +92,7 @@ uniform vec3 ViewPosUniform;
 uniform mat3 ViewMatrixUniform;
 
 uniform sampler3D MapDataUniform;
+uniform sampler3D ColourDataUniform;
 
 const uvec3 OCT_BITS = uvec3(1, 2, 4);
 const vec3 OCT_BITS_F32 = vec3(1.0, 2.0, 4.0);
@@ -321,12 +322,12 @@ vec3 Raycast(in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
-                        return Oct2Cr(CurrentOct);
-                        vec3 N = texelFetch(MapDataUniform, ivec3(NodeCentre.xyz), 0).xyz;
+                        //vec3 N = texelFetch(MapDataUniform, ivec3(NodeCentre.xyz), 0).xyz;
+                        //vec3 C = texelFetch(ColourDataUniform, ivec3(NodeCentre.xyz), 0).bgr;
                         
                         vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(32, 0, 0));
 
-                        return vec3(dot(Ldir, N));// * vec3(0.74, 0.67, 0.32);
+                        return vec3(dot(Ldir, vec3(1, 1, 1)));
 
                     }
                     else
@@ -351,7 +352,7 @@ vec3 Raycast(in ray R)
 
                 // Octant not occupied, need to handle advance/pop
                 uint NextOct = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
-                RayP = R.Origin + (CurrentIntersection.tMax + 0.015625) * R.Dir;
+                RayP = R.Origin + (CurrentIntersection.tMax + 0.0078125) * R.Dir;
 
                 if (IsAdvanceValid(NextOct, CurrentOct, RaySgn))
                 {
@@ -399,10 +400,10 @@ vec3 Raycast(in ray R)
     else
     {
         // Ray doesn't hit octree --- output background colour
-        return vec3(0.12);
+        return vec3(0.08);
     }
 
-    return vec3(0.12);
+    return vec3(0.08);
 }
 
 

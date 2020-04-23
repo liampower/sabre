@@ -48,6 +48,7 @@ struct sbr_render_data
     gl_int ViewPosUniformLocation; // Location of view position uniform
 
     gl_uint MapTexture;
+    gl_uint ColourTexture;
 };
 
 
@@ -201,7 +202,8 @@ SetRenderUniformData(const svo* const Tree, sbr_render_data* const RenderData)
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "FarPtrsPerBlockUniform"), SVO_FAR_PTRS_PER_BLK);
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "BiasUniform"), Tree->Bias.Scale);
     glUniform1f(glGetUniformLocation(RenderData->RenderShader, "InvBiasUniform"), Tree->Bias.InvScale);
-    //glUniform1i(glGetUniformLocation(RenderData->RenderShader, "MapDataUniform"), RenderData->MapTexture);
+    glUniform1i(glGetUniformLocation(RenderData->RenderShader, "MapDataUniform"), RenderData->MapTexture);
+    glUniform1i(glGetUniformLocation(RenderData->RenderShader, "ColourDataUniform"), RenderData->ColourTexture);
 
     printf("Inv Bias: %f\n", (f64)Tree->Bias.InvScale);
     printf("Bias Scale: %u\n", 1U << Tree->Bias.Scale);
@@ -269,16 +271,18 @@ PartitionLeafDataToBuckets(const std::vector<std::pair<uvec3, u32>>& LeafData)
 }
 
 static gl_uint
-UploadLeafDataSparse(const svo* const Tree)
+UploadLeafDataSparse(std::vector<std::pair<uvec3, u32>> Data, int AttachmentIndex)
 {
     gl_uint MapTexture;
     glCreateTextures(GL_TEXTURE_3D, 1, &MapTexture);
 
     if (MapTexture)
     {
+        glActiveTexture(GL_TEXTURE0 + AttachmentIndex);
         glBindTexture(GL_TEXTURE_3D, MapTexture);
+        if (AttachmentIndex > 0) return MapTexture;
 
-        std::unordered_map<uvec3, tex_page, uvec3_hash> Pages = PartitionLeafDataToBuckets(Tree->Normals);
+        std::unordered_map<uvec3, tex_page, uvec3_hash> Pages = PartitionLeafDataToBuckets(Data);
 
         // Read the page sizes
         gl_int PageSizeX, PageSizeY, PageSizeZ;
@@ -298,10 +302,13 @@ UploadLeafDataSparse(const svo* const Tree)
 
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
-        glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA8_SNORM, 1024, 1024, 1024);
+        glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA8_SNORM, 2048, 2048, 2048);
 
+        int MaxCellCount = 1;
+        int CellCount = 0;
         for (auto It = Pages.begin(); It != Pages.end(); ++It)
         {
+            if (CellCount == MaxCellCount) break;
             auto Element = *It;
             gl_int PageX = Element.first.X*PageSizeX;
             gl_int PageY = Element.first.Y*PageSizeY;
@@ -331,6 +338,7 @@ UploadLeafDataSparse(const svo* const Tree)
                             GL_RGBA,
                             GL_BYTE,
                             Element.second.Data);
+           ++CellCount;
         }
 
         glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
@@ -471,7 +479,9 @@ CreateSvoRenderData(const svo* const Tree, const sbr_view_data* const ViewData, 
     RenderData->CanvasVAO = CanvasBuffers.VAO;
     RenderData->CanvasVBO = CanvasBuffers.VBO;
 
-    RenderData->MapTexture = UploadLeafDataSparse(Tree);
+    RenderData->MapTexture = UploadLeafDataSparse(Tree->Normals, 0);
+    //RenderData->ColourTexture = UploadLeafDataSparse(Tree->Colours, 1);
+
     if (0 == RenderData->MapTexture)
     {
         DeleteSvoRenderData(RenderData);
@@ -517,6 +527,7 @@ DeleteSvoRenderData(sbr_render_data* RenderData)
         glBindTexture(GL_TEXTURE_3D, 0);
 
         glDeleteTextures(1, &RenderData->MapTexture);
+        glDeleteTextures(1, &RenderData->ColourTexture);
 
         free(RenderData);
     }

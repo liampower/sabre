@@ -14,6 +14,7 @@ static_assert(SVO_FAR_PTRS_PER_BLK >= SVO_NODES_PER_BLK, "Far Ptrs Per Blk must 
 struct svo_block;
 
 typedef uint32_t packed_snorm3;
+typedef uint32_t packed_snorm3;
 
 enum svo_surface_state
 {
@@ -110,10 +111,14 @@ struct svo
 
 
     std::vector<std::pair<uvec3, packed_snorm3>> Normals;
+
+    // TODO Use unorms
+    std::vector<std::pair<uvec3, packed_snorm3>> Colours;
 };
 
 typedef svo_surface_state (*intersector_fn)(vec3, vec3, const svo* const);
 typedef vec3 (*normal_fn)(vec3, const svo* const);
+typedef vec3 (*colour_fn)(vec3, const svo* const);
 
 
 extern "C" void
@@ -135,7 +140,8 @@ extern "C" svo*
 CreateSparseVoxelOctree(u32 ScaleExponent,
                         u32 MaxDepth,
                         intersector_fn Surface,
-                        normal_fn NormalFn);
+                        normal_fn NormalFn,
+                        colour_fn ColourFn);
 
 extern "C" void
 OutputSvoToFile(const svo* const Svo, FILE* FileOut);

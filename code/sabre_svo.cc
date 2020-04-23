@@ -438,7 +438,7 @@ AllocateNode(svo_block* const Blk)
 }
 
 static void
-BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth, u32 Scale, svo_block* ParentBlk, vec3 Centre, intersector_fn SurfaceFn, normal_fn NormalFn)
+BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth, u32 Scale, svo_block* ParentBlk, vec3 Centre, intersector_fn SurfaceFn, normal_fn NormalFn, colour_fn ColourFn)
 {
     struct node_child
     {
@@ -499,16 +499,20 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
             {
                 SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, Parent);
                 vec3 VoxelNormal = NormalFn(OctCentre, Tree);
+                vec3 VoxelColour = ColourFn(OctCentre, Tree);
                 
                 Tree->Normals.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelNormal)));
+                Tree->Colours.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelColour)));
             }
         }
         else if (SURFACE_INSIDE == SurfaceState)
         {
             SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, Parent);
             vec3 VoxelNormal = NormalFn(OctCentre, Tree);
+            vec3 VoxelColour = ColourFn(OctCentre, Tree);
 
             Tree->Normals.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelNormal)));
+            Tree->Colours.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelColour)));
         }
     }
 
@@ -524,12 +528,13 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
                                 Child.Blk,
                                 Child.Centre,
                                 SurfaceFn,
-                                NormalFn);
+                                NormalFn,
+                                ColourFn);
     }
 }
 
 extern "C" svo*
-CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceFn, normal_fn NormalFn)
+CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceFn, normal_fn NormalFn, colour_fn ColourFn)
 {
     svo* Tree = (svo*)calloc(1, sizeof(svo));
     
@@ -578,7 +583,8 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
                                 RootBlk,
                                 RootCentre,
                                 SurfaceFn,
-                                NormalFn);
+                                NormalFn,
+                                ColourFn);
 
         return Tree;
     }
@@ -933,10 +939,7 @@ GetVoxelPosition(vec3 RayOrigin, vec3 RayDir, svo* const Tree)
                     if (IsOctantLeaf(ParentNodeRef.Node, CurrentOct))
                     {
                         // Leaf hit; return nodecentre.
-                        //return NodeCentre;
-                        svo_oct N = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
-
-                        return GetOctantCentre(svo_oct(N^N), Scale, ParentCentre);
+                        return NodeCentre;
                     }
                     else
                     {

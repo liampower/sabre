@@ -64,6 +64,7 @@ struct tri_data
 {
     tri3 T;
     vec3 Normal;
+    vec3 Colour;
 };
 
 struct tri_buffer
@@ -286,6 +287,7 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
 
 static std::unordered_set<u32, u32_hash> GlobalTriangleIndex;
 static std::unordered_map<u32, vec3> GlobalNormalIndex;
+static std::unordered_map<u32, vec3> GlobalColourIndex;
 
 static inline vec3
 NormalSampler(vec3 C, const svo* const)
@@ -294,6 +296,15 @@ NormalSampler(vec3 C, const svo* const)
 
 
     return GlobalNormalIndex.at(MortonCode);
+}
+
+static inline vec3
+ColourSampler(vec3 C, const svo* const)
+{
+    u32 MortonCode = EncodeMorton3(C.X, C.Y, C.Z);
+
+
+    return GlobalColourIndex.at(MortonCode);
 }
 
 static tri_buffer*
@@ -375,6 +386,7 @@ LoadMeshTriangles(cgltf_mesh* Mesh)
 
                             TriBuffer->Triangles[LastTri].T = T;
                             TriBuffer->Triangles[LastTri].Normal = N;
+                            TriBuffer->Triangles[LastTri].Colour = vec3(1, 0, 0);
                             ++LastTri;
                         }
 
@@ -481,6 +493,7 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
                     u32 ChildVoxelCode = EncodeMorton3(Centre.X, Centre.Y, Centre.Z); 
                     IndexOut.insert(ChildVoxelCode);
                     GlobalNormalIndex.insert(std::make_pair(ChildVoxelCode, Tris->Triangles[TriIndex].Normal));
+                    GlobalColourIndex.insert(std::make_pair(ChildVoxelCode, Tris->Triangles[TriIndex].Colour));
 
                     if (CurrentCtx.Depth < MaxDepth)
                     {
@@ -597,7 +610,7 @@ ImportGltfToSvo(u32 MaxDepth, const char* const GLTFPath)
         GlobalTriangleIndex.reserve(TriangleData->TriangleCount);
         BuildTriangleIndex(MaxDepth, ScaleExponent, TriangleData, GlobalTriangleIndex);
 
-        svo* Svo = CreateSparseVoxelOctree(ScaleExponent, MaxDepth, &IntersectorFunction, &NormalSampler);
+        svo* Svo = CreateSparseVoxelOctree(ScaleExponent, MaxDepth, &IntersectorFunction, &NormalSampler, &ColourSampler);
 
         free(TriangleData);
         cgltf_free(Data);

@@ -17,7 +17,7 @@
 #include "sabre_data.h"
 #include "sabre_render.h"
 
-static constexpr u32 SABRE_MAX_TREE_DEPTH = 2;
+static constexpr u32 SABRE_MAX_TREE_DEPTH = 8;
 static constexpr u32 SABRE_SCALE_EXPONENT = 5;
 
 static constexpr u32 DisplayWidth = 1280;
@@ -103,13 +103,22 @@ SphereNormal(vec3 C, const svo* const)
     return Normal;
 }
 
+static inline vec3
+SphereColour(vec3 C, const svo* const)
+{
+    return vec3(1, 0, 0);
+}
+
+
 static inline svo*
 CreateCubeSphereTestScene(void)
 {
     svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT,
                                             SABRE_MAX_TREE_DEPTH,
                                             &CubeSphereIntersection,
-                                            &SphereNormal);
+                                            &SphereNormal,
+                                            &SphereColour);
+
     InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
     //InsertVoxel(WorldSvo, vec3(0, 17, 0), 16);
     //InsertVoxel(WorldSvo, vec3(20, 20, 20), 16);
@@ -278,8 +287,8 @@ main(int ArgCount, const char** const Args)
     glViewport(0, 0, FramebufferWidth, FramebufferHeight);
     glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-#if 0
-    svo* WorldSvo = CreateImportedMeshTestScene("data/Showcase/serapis.glb");
+#if 1
+    svo* WorldSvo = CreateImportedMeshTestScene("data/Showcase/sibenik.glb");
 #else
     svo* WorldSvo = CreateCubeSphereTestScene();
 #endif
@@ -319,7 +328,7 @@ main(int ArgCount, const char** const Args)
     Cam.Right = vec3(1, 0, 0);
     Cam.Up = vec3(0, 1, 0);
     Cam.Position = vec3(4, 4, 96);
-    Cam.Velocity = 0.4f;
+    Cam.Velocity = 1.32f;
 
     const vec3 WorldYAxis = vec3(0, 1, 0);
 
@@ -345,11 +354,11 @@ main(int ArgCount, const char** const Args)
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         
-        if (ImGui::BeginMainMenuBar())
+        /*if (ImGui::BeginMainMenuBar())
         {
             ImGui::Text("%fms CPU  %d BLKS  %d LVLS", 1000.0*DeltaTime, GetSvoUsedBlockCount(WorldSvo), GetSvoDepth(WorldSvo));
             ImGui::EndMainMenuBar();
-        }
+        }*/
 
         glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
