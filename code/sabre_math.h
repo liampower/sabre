@@ -39,7 +39,7 @@ Round(float X)
     return (int)roundf(X);
 }
 
-struct bvec3
+struct sbrv3b
 {
     bool X;
     bool Y;
@@ -56,16 +56,16 @@ struct mat3
 // NOTE: COLUMN vector.
 //
 
-struct vec3
+struct sbrv3
 {
     float X;
     float Y;
     float Z;
 
-    inline vec3() {}
+    inline sbrv3() {}
 
     inline explicit
-    vec3(float InX, float InY, float InZ)
+    sbrv3(float InX, float InY, float InZ)
     {
         X = InX;
         Y = InY;
@@ -73,7 +73,7 @@ struct vec3
     }
 
     inline explicit
-    vec3(int Uniform)
+    sbrv3(int Uniform)
     {
         X = (float) Uniform;
         Y = (float) Uniform;
@@ -81,7 +81,7 @@ struct vec3
     }
 
     inline explicit
-    vec3(u32 Uniform)
+    sbrv3(u32 Uniform)
     {
         X = (float) Uniform;
         Y = (float) Uniform;
@@ -89,7 +89,7 @@ struct vec3
     }
 
     inline explicit
-    vec3(float Uniform)
+    sbrv3(float Uniform)
     {
         X = Uniform;
         Y = Uniform;
@@ -97,7 +97,7 @@ struct vec3
     }
 
     inline
-    vec3(const vec3& Copy)
+    sbrv3(const sbrv3& Copy)
     {
         X = Copy.X;
         Y = Copy.Y;
@@ -105,16 +105,16 @@ struct vec3
     }
 };
 
-struct uvec3
+struct sbrv3u
 {
     u32 X;
     u32 Y;
     u32 Z;
 
-    inline uvec3() {}
+    inline sbrv3u() {}
 
     inline explicit
-    uvec3(u32 InX, u32 InY, u32 InZ)
+    sbrv3u(u32 InX, u32 InY, u32 InZ)
     {
         X = InX;
         Y = InY;
@@ -122,7 +122,7 @@ struct uvec3
     }
 
     inline explicit
-    uvec3(bvec3 B)
+    sbrv3u(sbrv3b B)
     {
         X = (u32)B.X;
         Y = (u32)B.Y;
@@ -130,7 +130,7 @@ struct uvec3
     }
 
     inline explicit
-    uvec3(vec3 V)
+    sbrv3u(sbrv3 V)
     {
         X = (u32)V.X;
         Y = (u32)V.Y;
@@ -138,7 +138,7 @@ struct uvec3
     }
 
     inline explicit
-    uvec3(u32 Uniform)
+    sbrv3u(u32 Uniform)
     {
         X = Uniform;
         Y = Uniform;
@@ -146,9 +146,9 @@ struct uvec3
     }
 
     inline explicit
-    operator vec3()
+    operator sbrv3()
     {
-        vec3 Result;
+        sbrv3 Result;
 
         Result.X = (float) X;
         Result.Y = (float) Y;
@@ -158,9 +158,9 @@ struct uvec3
     }
 
     inline explicit
-    operator bvec3()
+    operator sbrv3b()
     {
-        bvec3 Result;
+        sbrv3b Result;
         
         Result.X = (X != 0);
         Result.Y = (Y != 0);
@@ -170,10 +170,10 @@ struct uvec3
     }
 };
 
-static inline uvec3
-operator%(uvec3 L, uvec3 R)
+static inline sbrv3u
+operator%(sbrv3u L, sbrv3u R)
 {
-    uvec3 Result;
+    sbrv3u Result;
 
     Result.X = L.X % R.X;
     Result.Y = L.Y % R.Y;
@@ -182,10 +182,10 @@ operator%(uvec3 L, uvec3 R)
     return Result;
 }
 
-static inline uvec3
-operator/(uvec3 L, uvec3 R)
+static inline sbrv3u
+operator/(sbrv3u L, sbrv3u R)
 {
-    uvec3 Result;
+    sbrv3u Result;
 
     Result.X = L.X / R.X;
     Result.Y = L.Y / R.Y;
@@ -195,15 +195,15 @@ operator/(uvec3 L, uvec3 R)
 }
 
 static inline bool
-operator==(uvec3 L, uvec3 R)
+operator==(sbrv3u L, sbrv3u R)
 {
     return L.X == R.X && L.Y == R.Y && L.Z == R.Z;
 }
 
-static inline uvec3
-operator-(uvec3 L, uvec3 R)
+static inline sbrv3u
+operator-(sbrv3u L, sbrv3u R)
 {
-    uvec3 Result;
+    sbrv3u Result;
 
     Result.X = L.X - R.X;
     Result.Y = L.Y - R.Y;
@@ -212,10 +212,10 @@ operator-(uvec3 L, uvec3 R)
     return Result;
 }
 
-static inline uvec3
-operator*(uvec3 L, uvec3 R)
+static inline sbrv3u
+operator*(sbrv3u L, sbrv3u R)
 {
-    uvec3 Result;
+    sbrv3u Result;
 
     Result.X = L.X * R.X;
     Result.Y = L.Y * R.Y;
@@ -224,14 +224,14 @@ operator*(uvec3 L, uvec3 R)
     return Result;
 }
 
-struct ivec3
+struct isbrv3
 {
     i32 X;
     i32 Y;
     i32 Z;
 
     inline explicit
-    ivec3(i32 InX, i32 InY, i32 InZ)
+    isbrv3(i32 InX, i32 InY, i32 InZ)
     {
         X = InX;
         Y = InY;
@@ -239,7 +239,7 @@ struct ivec3
     }
 
     inline explicit
-    ivec3(i32 Uniform)
+    isbrv3(i32 Uniform)
     {
         X = Uniform;
         Y = Uniform;
@@ -247,7 +247,7 @@ struct ivec3
     }
 
     inline explicit
-    ivec3(bvec3 B)
+    isbrv3(sbrv3b B)
     {
         X = (i32)B.X;
         Y = (i32)B.Y;
@@ -255,7 +255,7 @@ struct ivec3
     }
 
     inline explicit
-    ivec3(vec3 B)
+    isbrv3(sbrv3 B)
     {
         X = (i32)B.X;
         Y = (i32)B.Y;
@@ -263,9 +263,9 @@ struct ivec3
     }
 
     inline
-    operator bvec3()
+    operator sbrv3b()
     {
-        bvec3 Result;
+        sbrv3b Result;
         
         Result.X = (X != 0);
         Result.Y = (Y != 0);
@@ -276,10 +276,10 @@ struct ivec3
 };
 
 
-inline ivec3
-operator-(ivec3 L, ivec3 R)
+inline isbrv3
+operator-(isbrv3 L, isbrv3 R)
 {
-    ivec3 Result = ivec3(0);
+    isbrv3 Result = isbrv3(0);
 
     Result.X = L.X - R.X;
     Result.Y = L.Y - R.Y;
@@ -290,16 +290,16 @@ operator-(ivec3 L, ivec3 R)
 
 
 static inline u32
-Dot(uvec3 A, uvec3 B)
+Dot(sbrv3u A, sbrv3u B)
 {
     return A.X*B.X + A.Y*B.Y + A.Z*B.Z;
 }
 
 
-static inline vec3
-Invert(vec3 V)
+static inline sbrv3
+Invert(sbrv3 V)
 {
-    vec3 Out = vec3(0.0f);
+    sbrv3 Out = sbrv3(0.0f);
 
     if (V.X != 0.0f) Out.X = 1.0f / V.X;
     if (V.Y != 0.0f) Out.Y = 1.0f / V.Y;
@@ -309,10 +309,10 @@ Invert(vec3 V)
 }
 
 
-static inline uvec3
-Clamp(uvec3 Val, u32 Min, u32 Max)
+static inline sbrv3u
+Clamp(sbrv3u Val, u32 Min, u32 Max)
 {
-    uvec3 Out = Val;
+    sbrv3u Out = Val;
 
     if (Out.X > Max) Out.X = Max;
     if (Out.X < Min) Out.X = Min;
@@ -339,10 +339,10 @@ Max(float A, float B)
 }
 
 
-static inline vec3
-Min(vec3 A, vec3 B)
+static inline sbrv3
+Min(sbrv3 A, sbrv3 B)
 {
-    vec3 Out;
+    sbrv3 Out;
 
     Out.X = Min(A.X, B.X);
     Out.Y = Min(A.Y, B.Y);
@@ -351,10 +351,10 @@ Min(vec3 A, vec3 B)
     return Out;
 }
 
-static inline vec3
-Max(vec3 A, vec3 B)
+static inline sbrv3
+Max(sbrv3 A, sbrv3 B)
 {
-    vec3 Out;
+    sbrv3 Out;
 
     Out.X = Max(A.X, B.X);
     Out.Y = Max(A.Y, B.Y);
@@ -364,21 +364,21 @@ Max(vec3 A, vec3 B)
 }
 
 static inline bool
-Any(bvec3 V)
+Any(sbrv3b V)
 {
     return (V.X || V.Y || V.Z);
 }
 
 static inline bool
-All(bvec3 V)
+All(sbrv3b V)
 {
     return (V.X && V.Y && V.Z);
 }
 
-static inline bvec3
-GreaterThan(vec3 A, vec3 B)
+static inline sbrv3b
+GreaterThan(sbrv3 A, sbrv3 B)
 {
-    bvec3 Out;
+    sbrv3b Out;
 
     Out.X = A.X > B.X;
     Out.Y = A.Y > B.Y;
@@ -387,10 +387,10 @@ GreaterThan(vec3 A, vec3 B)
     return Out;
 }
 
-static inline bvec3
-GreaterThan(uvec3 A, uvec3 B)
+static inline sbrv3b
+GreaterThan(sbrv3u A, sbrv3u B)
 {
-    bvec3 Out;
+    sbrv3b Out;
 
     Out.X = A.X > B.X;
     Out.Y = A.Y > B.Y;
@@ -399,10 +399,10 @@ GreaterThan(uvec3 A, uvec3 B)
     return Out;
 }
 
-static inline bvec3
-GreaterThanEqual(uvec3 A, uvec3 B)
+static inline sbrv3b
+GreaterThanEqual(sbrv3u A, sbrv3u B)
 {
-    bvec3 Out;
+    sbrv3b Out;
 
     Out.X = A.X >= B.X;
     Out.Y = A.Y >= B.Y;
@@ -411,10 +411,10 @@ GreaterThanEqual(uvec3 A, uvec3 B)
     return Out;
 }
 
-static inline bvec3
-GreaterThanEqual(vec3 A, vec3 B)
+static inline sbrv3b
+GreaterThanEqual(sbrv3 A, sbrv3 B)
 {
-    bvec3 Out;
+    sbrv3b Out;
 
     Out.X = A.X >= B.X;
     Out.Y = A.Y >= B.Y;
@@ -424,10 +424,10 @@ GreaterThanEqual(vec3 A, vec3 B)
 }
 
 
-static inline bvec3
-LessThan(vec3 A, vec3 B)
+static inline sbrv3b
+LessThan(sbrv3 A, sbrv3 B)
 {
-    bvec3 Out;
+    sbrv3b Out;
 
     Out.X = A.X < B.X;
     Out.Y = A.Y < B.Y;
@@ -436,10 +436,10 @@ LessThan(vec3 A, vec3 B)
     return Out;
 }
 
-static inline bvec3
-LessThan(uvec3 A, uvec3 B)
+static inline sbrv3b
+LessThan(sbrv3u A, sbrv3u B)
 {
-    bvec3 Out;
+    sbrv3b Out;
 
     Out.X = A.X < B.X;
     Out.Y = A.Y < B.Y;
@@ -449,10 +449,10 @@ LessThan(uvec3 A, uvec3 B)
 }
 
 
-static inline bvec3
-LessThanEqual(vec3 A, vec3 B)
+static inline sbrv3b
+LessThanEqual(sbrv3 A, sbrv3 B)
 {
-    bvec3 Out;
+    sbrv3b Out;
 
     Out.X = A.X < B.X;
     Out.Y = A.Y < B.Y;
@@ -461,10 +461,10 @@ LessThanEqual(vec3 A, vec3 B)
     return Out;
 }
 
-static inline bvec3
-operator&&(bvec3 L, bvec3 R)
+static inline sbrv3b
+operator&&(sbrv3b L, sbrv3b R)
 {
-    bvec3 Out;
+    sbrv3b Out;
 
     Out.X = L.X && R.X;
     Out.Y = L.Y && R.Y;
@@ -473,10 +473,10 @@ operator&&(bvec3 L, bvec3 R)
     return Out;
 }
 
-static inline bvec3
-operator||(bvec3 L, bvec3 R)
+static inline sbrv3b
+operator||(sbrv3b L, sbrv3b R)
 {
-    bvec3 Out;
+    sbrv3b Out;
 
     Out.X = L.X || R.X;
     Out.Y = L.Y || R.Y;
@@ -485,10 +485,10 @@ operator||(bvec3 L, bvec3 R)
     return Out;
 }
 
-static inline bvec3
-Equals(vec3 A, vec3 B, float Tolerance)
+static inline sbrv3b
+Equals(sbrv3 A, sbrv3 B, float Tolerance)
 {
-    bvec3 Out;
+    sbrv3b Out;
 
     Out.X = fabsf(B.X - A.X) <= Tolerance;
     Out.Y = fabsf(B.Y - A.Y) <= Tolerance;
@@ -497,10 +497,10 @@ Equals(vec3 A, vec3 B, float Tolerance)
     return Out;
 }
 
-static inline bvec3
-Equals(uvec3 A, uvec3 B)
+static inline sbrv3b
+Equals(sbrv3u A, sbrv3u B)
 {
-    bvec3 Out;
+    sbrv3b Out;
 
     Out.X = A.X == B.X;
     Out.Y = A.Y == B.Y;
@@ -518,16 +518,16 @@ Sign(float V)
 }
 
 
-static inline ivec3
-operator&(ivec3 L, ivec3 R)
+static inline isbrv3
+operator&(isbrv3 L, isbrv3 R)
 {
-    return ivec3(L.X & R.X, L.Y & R.Y, L.Z & R.Z);
+    return isbrv3(L.X & R.X, L.Y & R.Y, L.Z & R.Z);
 }
 
-static inline vec3
-Sign(ivec3 V)
+static inline sbrv3
+Sign(isbrv3 V)
 {
-    vec3 Out;
+    sbrv3 Out;
 
     Out.X = Sign(V.X);
     Out.Y = Sign(V.Y);
@@ -536,10 +536,10 @@ Sign(ivec3 V)
     return Out;
 }
 
-static inline vec3
-Sign(vec3 V)
+static inline sbrv3
+Sign(sbrv3 V)
 {
-    vec3 Out;
+    sbrv3 Out;
 
     Out.X = Sign(V.X);
     Out.Y = Sign(V.Y);
@@ -548,10 +548,10 @@ Sign(vec3 V)
     return Out;
 }
 
-inline vec3 
-operator+(vec3 L, vec3 R)
+inline sbrv3 
+operator+(sbrv3 L, sbrv3 R)
 {
-    vec3 Result;
+    sbrv3 Result;
 
     Result.X = L.X + R.X;
     Result.Y = L.Y + R.Y;
@@ -560,10 +560,10 @@ operator+(vec3 L, vec3 R)
     return Result;
 }
 
-inline vec3 
-operator-(vec3 L, vec3 R)
+inline sbrv3 
+operator-(sbrv3 L, sbrv3 R)
 {
-    vec3 Result;
+    sbrv3 Result;
 
     Result.X = L.X - R.X;
     Result.Y = L.Y - R.Y;
@@ -572,10 +572,10 @@ operator-(vec3 L, vec3 R)
     return Result;
 }
 
-inline vec3 
-operator/(vec3 V, f32 Scalar)
+inline sbrv3 
+operator/(sbrv3 V, f32 Scalar)
 {
-    vec3 Result;
+    sbrv3 Result;
 
     Result.X = V.X / Scalar;
     Result.Y = V.Y / Scalar;
@@ -584,10 +584,10 @@ operator/(vec3 V, f32 Scalar)
     return Result;
 }
 
-inline vec3
-operator*(vec3 L, vec3 R)
+inline sbrv3
+operator*(sbrv3 L, sbrv3 R)
 {
-    vec3 Result;
+    sbrv3 Result;
 
     Result.X = L.X * R.X;
     Result.Y = L.Y * R.Y;
@@ -597,21 +597,21 @@ operator*(vec3 L, vec3 R)
 }
 
 inline bool
-operator<(vec3 L, vec3 R)
+operator<(sbrv3 L, sbrv3 R)
 {
     return (L.X < R.X) && (L.Y < R.Y) && (L.Z < R.Z);
 }
 
 
-inline vec3 
-operator-(vec3 A)
+inline sbrv3 
+operator-(sbrv3 A)
 {
-    return vec3(-A.X, -A.Y, -A.Z);
+    return sbrv3(-A.X, -A.Y, -A.Z);
 }
 
 
-inline vec3& 
-operator+=(vec3& L, vec3 R)
+inline sbrv3& 
+operator+=(sbrv3& L, sbrv3 R)
 {
     L = L + R;
 
@@ -619,8 +619,8 @@ operator+=(vec3& L, vec3 R)
 }
 
 
-inline vec3& 
-operator-=(vec3& L, vec3 R)
+inline sbrv3& 
+operator-=(sbrv3& L, sbrv3 R)
 {
     L = L - R;
 
@@ -628,10 +628,10 @@ operator-=(vec3& L, vec3 R)
 }
 
 
-inline vec3 
-operator*(float Scalar, vec3 Vec)
+inline sbrv3 
+operator*(float Scalar, sbrv3 Vec)
 {
-    vec3 Result;
+    sbrv3 Result;
 
     Result.X = Scalar * Vec.X;
     Result.Y = Scalar * Vec.Y;
@@ -640,10 +640,10 @@ operator*(float Scalar, vec3 Vec)
     return Result;
 }
 
-inline vec3 
-operator*(vec3 Vec, float Scalar)
+inline sbrv3 
+operator*(sbrv3 Vec, float Scalar)
 {
-    vec3 Result;
+    sbrv3 Result;
 
     Result.X = Scalar * Vec.X;
     Result.Y = Scalar * Vec.Y;
@@ -652,10 +652,10 @@ operator*(vec3 Vec, float Scalar)
     return Result;
 }
 
-inline vec3
-operator*(vec3 V, int Scalar)
+inline sbrv3
+operator*(sbrv3 V, int Scalar)
 {
-    vec3 Result;
+    sbrv3 Result;
 
     Result.X = Scalar * V.X;
     Result.Y = Scalar * V.Y;
@@ -664,10 +664,10 @@ operator*(vec3 V, int Scalar)
     return Result;
 }
 
-inline vec3
-operator*(vec3 V, unsigned int Scalar)
+inline sbrv3
+operator*(sbrv3 V, unsigned int Scalar)
 {
-    vec3 Result;
+    sbrv3 Result;
 
     Result.X = Scalar * V.X;
     Result.Y = Scalar * V.Y;
@@ -676,8 +676,8 @@ operator*(vec3 V, unsigned int Scalar)
     return Result;
 }
 
-inline vec3
-operator*=(vec3& L, float R)
+inline sbrv3
+operator*=(sbrv3& L, float R)
 {
     L = L * R;
 
@@ -685,10 +685,10 @@ operator*=(vec3& L, float R)
 }
 
 
-static inline vec3 
-Cross(vec3 U, vec3 V)
+static inline sbrv3 
+Cross(sbrv3 U, sbrv3 V)
 {
-    vec3 Result;
+    sbrv3 Result;
 
     Result.X = (U.Y * V.Z) - (U.Z * V.Y);
     Result.Y = (U.Z * V.X) - (U.X * V.Z);
@@ -698,16 +698,16 @@ Cross(vec3 U, vec3 V)
 }
 
 static inline float
-Dot(vec3 U, vec3 V)
+Dot(sbrv3 U, sbrv3 V)
 {
     float Result = (U.X * V.X) + (U.Y * V.Y) + (U.Z * V.Z);
     return Result;
 }
 
-static inline uvec3
-Select(uvec3 U, uvec3 V, bvec3 Mask)
+static inline sbrv3u
+Select(sbrv3u U, sbrv3u V, sbrv3b Mask)
 {
-    uvec3 Out;
+    sbrv3u Out;
     Out.X = (Mask.X ? U.X : V.X);
     Out.Y = (Mask.Y ? U.Y : V.Y);
     Out.Z = (Mask.Z ? U.Z : V.Z);
@@ -715,10 +715,10 @@ Select(uvec3 U, uvec3 V, bvec3 Mask)
     return Out;
 }
 
-static inline vec3
-operator/(float K, vec3 V)
+static inline sbrv3
+operator/(float K, sbrv3 V)
 {
-    vec3 Out;
+    sbrv3 Out;
     Out.X = K / V.X;
     Out.Y = K / V.Y;
     Out.Z = K / V.Z;
@@ -727,40 +727,40 @@ operator/(float K, vec3 V)
 }
 
 static inline u32
-HorzMax(uvec3 V)
+HorzMax(sbrv3u V)
 {
     return Max(Max(V.X, V.Y), V.Z);
 }
 
 static inline float
-HorzMax(vec3 V)
+HorzMax(sbrv3 V)
 {
     return Max(Max(V.X, V.Y), V.Z);
 }
 
 static inline u32
-HorzMin(uvec3 V)
+HorzMin(sbrv3u V)
 {
     return Min(Min(V.X, V.Y), V.Z);
 }
 
 static inline float
-HorzMin(vec3 V)
+HorzMin(sbrv3 V)
 {
     return Min(Min(V.X, V.Y), V.Z);
 }
-static inline vec3 
-Normalize(vec3 V)
+static inline sbrv3 
+Normalize(sbrv3 V)
 {
     const float L = sqrtf(V.X*V.X + V.Y*V.Y + V.Z*V.Z);
 
     if (L == 0.0f)
     { 
-        return vec3(0.0f, 0.0f, 0.0f);
+        return sbrv3(0.0f, 0.0f, 0.0f);
     }
     else
     {
-        vec3 Result;
+        sbrv3 Result;
 
         Result.X = V.X / L;
         Result.Y = V.Y / L;
@@ -771,25 +771,25 @@ Normalize(vec3 V)
 }
 
 static inline float 
-Length(vec3 V)
+Length(sbrv3 V)
 {
     return sqrtf(V.X*V.X + V.Y*V.Y + V.Z*V.Z);
 }
 
 static inline float
-LengthSq(vec3 V)
+LengthSq(sbrv3 V)
 {
     return (V.X*V.X + V.Y*V.Y + V.Z*V.Z);
 }
 
 static inline float
-MaxComponent(vec3 V)
+MaxComponent(sbrv3 V)
 {
     return Max(Max(V.X, V.Y), V.Z);
 }
 
 static inline float
-MinComponent(vec3 V)
+MinComponent(sbrv3 V)
 {
     return Min(Min(V.X, V.Y), V.Z);
 }
@@ -822,7 +822,7 @@ IdentityMatrix()
 }
 
 static inline m4x4 vcall
-TranslationMatrix(const vec3 Translation)
+TranslationMatrix(const sbrv3 Translation)
 {
     m4x4 T = IdentityMatrix();
     
@@ -834,7 +834,7 @@ TranslationMatrix(const vec3 Translation)
 }
 
 static inline m4x4 vcall
-TranslationMatrix(const uvec3 Translation)
+TranslationMatrix(const sbrv3u Translation)
 {
     m4x4 T = IdentityMatrix();
     
@@ -859,17 +859,17 @@ TranslationMatrix(u32 X, u32 Y, u32 Z)
 }
 
 static inline void vcall
-Translate3D(m4x4* Matrix, const vec3 Translation)
+Translate3D(m4x4* Matrix, const sbrv3 Translation)
 {
     Matrix->M[0][3] = Translation.X;
     Matrix->M[1][3] = Translation.Y;
     Matrix->M[2][3] = Translation.Z;
 }
 
-static inline vec3 vcall
-operator*(const vec3& V, const mat3& M)
+static inline sbrv3 vcall
+operator*(const sbrv3& V, const mat3& M)
 {
-    vec3 Out;
+    sbrv3 Out;
 
     // Matrix indexed as [row][col]
     Out.X = V.X*M.M[0][0] + V.Y*M.M[1][0] + V.Z*M.M[2][0];
@@ -931,10 +931,10 @@ operator*(m4x4 L, m4x4 R)
 
 // {{{ Integer vectors
 
-inline uvec3 
-operator+(uvec3 Left, uvec3 Right)
+inline sbrv3u 
+operator+(sbrv3u Left, sbrv3u Right)
 {
-    uvec3 Result;
+    sbrv3u Result;
 
     Result.X = Left.X + Right.X;
     Result.Y = Left.Y + Right.Y;
@@ -943,10 +943,10 @@ operator+(uvec3 Left, uvec3 Right)
     return Result;
 }
 
-inline uvec3
-operator^(uvec3 L, uvec3 R)
+inline sbrv3u
+operator^(sbrv3u L, sbrv3u R)
 {
-    uvec3 Result;
+    sbrv3u Result;
 
     Result.X = L.X ^ R.X;
     Result.Y = L.Y ^ R.Y;
@@ -955,10 +955,10 @@ operator^(uvec3 L, uvec3 R)
     return Result;
 }
 
-inline uvec3
-operator&(uvec3 L, uvec3 R)
+inline sbrv3u
+operator&(sbrv3u L, sbrv3u R)
 {
-    uvec3 Result;
+    sbrv3u Result;
 
     Result.X = L.X & R.X;
     Result.Y = L.Y & R.Y;
@@ -967,10 +967,10 @@ operator&(uvec3 L, uvec3 R)
     return Result;
 }
 
-inline uvec3
-operator>>(uvec3 L, uvec3 R)
+inline sbrv3u
+operator>>(sbrv3u L, sbrv3u R)
 {
-    uvec3 Result;
+    sbrv3u Result;
 
     Result.X = L.X >> R.X;
     Result.Y = L.Y >> R.Y;
@@ -979,10 +979,10 @@ operator>>(uvec3 L, uvec3 R)
     return Result;
 }
 
-inline uvec3
-operator&(uvec3 L, uint Scalar)
+inline sbrv3u
+operator&(sbrv3u L, uint Scalar)
 {
-    uvec3 Result;
+    sbrv3u Result;
 
     Result.X = L.X & Scalar;
     Result.Y = L.Y & Scalar;
@@ -991,10 +991,10 @@ operator&(uvec3 L, uint Scalar)
     return Result;
 }
 
-inline uvec3
-operator<<(uvec3 L, uvec3 R)
+inline sbrv3u
+operator<<(sbrv3u L, sbrv3u R)
 {
-    uvec3 Result;
+    sbrv3u Result;
 
     Result.X = L.X << R.X;
     Result.Y = L.Y << R.Y;
@@ -1003,10 +1003,10 @@ operator<<(uvec3 L, uvec3 R)
     return Result;
 }
 
-inline uvec3 
-operator*(uvec3 L, u32 R)
+inline sbrv3u 
+operator*(sbrv3u L, u32 R)
 {
-    uvec3 Result;
+    sbrv3u Result;
 
     Result.X = L.X * R;
     Result.Y = L.Y * R;
@@ -1071,7 +1071,7 @@ operator*(quat L, quat R)
 }
 
 static inline quat
-RotationQuaternion(const float Angle, vec3 Axis)
+RotationQuaternion(const float Angle, sbrv3 Axis)
 {
     quat Result;
 
@@ -1118,10 +1118,10 @@ Normalize(quat Q)
     return Result;
 }
 
-static inline vec3
+static inline sbrv3
 ImaginaryPart(quat Q)
 {
-    return vec3(Q.Y, Q.Z, Q.W);
+    return sbrv3(Q.Y, Q.Z, Q.W);
 }
 
 static inline float
@@ -1132,10 +1132,10 @@ RealPart(quat Q)
 
 // TODO Needs optimization!
 // There is a better way invented by Fabien 'ryg' Giesen.
-static inline vec3
-Rotate(quat Rotation, vec3 V)
+static inline sbrv3
+Rotate(quat Rotation, sbrv3 V)
 {
-    /*vec3 Result;
+    /*sbrv3 Result;
     Normalize(Rotation);
     const quat Conj = Conjugate(Rotation);
     const quat V = {{ 0.0f, P.X, P.Y, P.Z }};
@@ -1147,8 +1147,8 @@ Rotate(quat Rotation, vec3 V)
     Result.Z = Rotated.W;
 
     return Result;*/
-    vec3 T = 2.0f * Cross(ImaginaryPart(Rotation), V);
-    vec3 Rotated = V + RealPart(Rotation) * T + Cross(ImaginaryPart(Rotation), T);
+    sbrv3 T = 2.0f * Cross(ImaginaryPart(Rotation), V);
+    sbrv3 Rotated = V + RealPart(Rotation) * T + Cross(ImaginaryPart(Rotation), T);
 
     return Rotated;
 

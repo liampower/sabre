@@ -17,26 +17,26 @@
 
 typedef __m128 m128;
 typedef __m256 m256;
-typedef u32 morton_index;
+typedef uint64_t morton_key;
 
 struct tri3
 {
-    vec3 V0;
-    vec3 V1;
-    vec3 V2;
+    sbrv3 V0;
+    sbrv3 V1;
+    sbrv3 V2;
 };
 
-static inline vec3
+static inline sbrv3
 ComputeTriangleNormal(tri3* Triangle)
 {
-    vec3 E0 = Triangle->V1 - Triangle->V0;
-    vec3 E1 = Triangle->V2 - Triangle->V0;
+    sbrv3 E0 = Triangle->V1 - Triangle->V0;
+    sbrv3 E1 = Triangle->V2 - Triangle->V0;
 
     return Normalize(Cross(E0, E1));
 }
 
-static inline u32
-Part1By2(u32 X)
+static inline uint64_t
+Part1By2(uint64_t X)
 {
     X &= 0X000003ff;                  // X = ---- ---- ---- ---- ---- --98 7654 3210
     X = (X ^ (X << 16)) & 0Xff0000ff; // X = ---- --98 ---- ---- ---- ---- 7654 3210
@@ -46,16 +46,16 @@ Part1By2(u32 X)
     return X;
 }
 
-extern u32
-EncodeMorton3(u32 X, u32 Y, u32 Z)
+extern morton_key
+EncodeMorton3(sbrv3u V)
 {
-    return (Part1By2(Z) << 2) + (Part1By2(Y) << 1) + Part1By2(X);
+    return (Part1By2((uint64_t)V.Z) << 2) + (Part1By2((uint64_t)V.Y) << 1) + Part1By2((uint64_t)V.X);
 }
 
-struct u32_hash
+struct u64_hash
 {
 public:
-    size_t operator()(const u32& Element) const{
+    size_t operator()(const u64& Element) const{
         return (size_t) Element;
     }
 };
@@ -63,8 +63,8 @@ public:
 struct tri_data
 {
     tri3 T;
-    vec3 Normal;
-    vec3 Colour;
+    sbrv3 Normal;
+    sbrv3 Colour;
 };
 
 struct tri_buffer
@@ -76,7 +76,7 @@ struct tri_buffer
 struct normals_buffer
 {
     u32  NormalCount;
-    vec3 Normals[1];
+    sbrv3 Normals[1];
 };
 
 
@@ -285,23 +285,23 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
 }
 
 
-static std::unordered_set<u32, u32_hash> GlobalTriangleIndex;
-static std::unordered_map<u32, vec3> GlobalNormalIndex;
-static std::unordered_map<u32, vec3> GlobalColourIndex;
+static std::unordered_set<morton_key, u64_hash> GlobalTriangleIndex;
+static std::unordered_map<morton_key, sbrv3> GlobalNormalIndex;
+static std::unordered_map<morton_key, sbrv3> GlobalColourIndex;
 
-static inline vec3
-NormalSampler(vec3 C, const sbr_svo* const)
+static inline sbrv3
+NormalSampler(sbrv3 C, const sbr_svo* const)
 {
-    u32 MortonCode = EncodeMorton3(C.X, C.Y, C.Z);
+    morton_key MortonCode = EncodeMorton3(sbrv3u(C));
 
 
     return GlobalNormalIndex.at(MortonCode);
 }
 
-static inline vec3
-ColourSampler(vec3 C, const sbr_svo* const)
+static inline sbrv3
+ColourSampler(sbrv3 C, const sbr_svo* const)
 {
-    u32 MortonCode = EncodeMorton3(C.X, C.Y, C.Z);
+    morton_key MortonCode = EncodeMorton3(sbrv3u(C));
 
 
     return GlobalColourIndex.at(MortonCode);
@@ -323,7 +323,7 @@ LoadMeshTriangles(cgltf_mesh* Mesh)
         {
             if (Prim->indices)
             {
-                u32  IndexCount = Prim->indices->count;
+                cgltf_size IndexCount = Prim->indices->count;
                 u32* IndexBuffer = (u32*) malloc(IndexCount * sizeof(u32));
 
                 // Copy the indices into the index buffer.
@@ -339,7 +339,9 @@ LoadMeshTriangles(cgltf_mesh* Mesh)
                     if (cgltf_attribute_type_position == Attrib->type)
                     {
                         cgltf_accessor* Accessor = Attrib->data;
-                        u32 PosCount = Accessor->count;
+
+                        cgltf_size PosCount = Accessor->count;
+
                         assert(cgltf_num_components(Accessor->type) == 3);
                         pos_attrib* PosBuffer = (pos_attrib*) malloc(sizeof(pos_attrib) * PosCount);
 
@@ -378,15 +380,15 @@ LoadMeshTriangles(cgltf_mesh* Mesh)
                             // is inverted, despite my option selections. So, we abs the
                             // Z coordinate here for no real reason other than to work around
                             // Blender's brain damage.
-                            T.V0 = vec3(P0.V[0], P0.V[1], fabsf(P0.V[2]));
-                            T.V1 = vec3(P1.V[0], P1.V[1], fabsf(P1.V[2]));
-                            T.V2 = vec3(P2.V[0], P2.V[1], fabsf(P2.V[2]));
+                            T.V0 = sbrv3(P0.V[0], P0.V[1], fabsf(P0.V[2]));
+                            T.V1 = sbrv3(P1.V[0], P1.V[1], fabsf(P1.V[2]));
+                            T.V2 = sbrv3(P2.V[0], P2.V[1], fabsf(P2.V[2]));
 
-                            vec3 N = ComputeTriangleNormal(&T);
+                            sbrv3 N = ComputeTriangleNormal(&T);
 
                             TriBuffer->Triangles[LastTri].T = T;
                             TriBuffer->Triangles[LastTri].Normal = N;
-                            TriBuffer->Triangles[LastTri].Colour = vec3(1, 0, 0);
+                            TriBuffer->Triangles[LastTri].Colour = sbrv3(1, 0, 0);
                             ++LastTri;
                         }
 
@@ -407,15 +409,15 @@ LoadMeshTriangles(cgltf_mesh* Mesh)
     return TriBuffer;
 }
 
-static inline vec3
-GetOctantCentre(u32 Oct, u32 Scale, vec3 ParentCentreP)
+static inline sbrv3
+GetOctantCentre(u32 Oct, u32 Scale, sbrv3 ParentCentreP)
 {
     f32 Rad = (f32)(Scale >> 1U);
     f32 X = (Oct & 1U) ? 1.0f : -1.0f;
     f32 Y = (Oct & 2U) ? 1.0f : -1.0f;
     f32 Z = (Oct & 4U) ? 1.0f : -1.0f;
 
-    return ParentCentreP + (vec3(X, Y, Z) * Rad);
+    return ParentCentreP + (sbrv3(X, Y, Z) * Rad);
 }
 
 static inline u32
@@ -426,14 +428,14 @@ NextPowerOf2Exponent(u32 X)
    
 
 static void
-BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unordered_set<u32, u32_hash>& IndexOut)
+BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unordered_set<morton_key, u64_hash>& IndexOut)
 {
     struct st_ctx
     {
         u32 Oct;
         u32 Scale;
         u32 Depth;
-        vec3 ParentCentre;
+        sbrv3 ParentCentre;
     };
 
     std::deque<st_ctx> Stack;
@@ -454,7 +456,7 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
         // For every triangle, check if it is enclosed in a bounding box
         
         u32 RootScale = 1U << (ScaleExponent) << Bias;
-        vec3 ParentCentreP = vec3(RootScale >> 1);
+        sbrv3 ParentCentreP = sbrv3(RootScale >> 1);
 
         st_ctx RootCtx = { };
         RootCtx.Oct = 0;
@@ -469,7 +471,7 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
         TriVerts[1] = _mm_set_ps(0.0f, T.V1.Z, T.V1.Y, T.V1.X);
         TriVerts[2] = _mm_set_ps(0.0f, T.V2.Z, T.V2.Y, T.V2.X);
 
-        u32 RootCode = EncodeMorton3(ParentCentreP.X, ParentCentreP.Y, ParentCentreP.Z);
+        morton_key RootCode = EncodeMorton3(sbrv3u(ParentCentreP));
         IndexOut.insert(RootCode);
 
         while (false == Stack.empty())
@@ -481,16 +483,16 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
             {
                 // TODO(Liam): Make GetOctantCentre *only* return uvecs, then can differentiate
                 // at the type level between scaled and unscaled vectors.
-                vec3 Centre = GetOctantCentre(Oct, CurrentCtx.Scale, CurrentCtx.ParentCentre);
+                sbrv3 Centre = GetOctantCentre(Oct, CurrentCtx.Scale, CurrentCtx.ParentCentre);
 
-                vec3 Radius = vec3(CurrentCtx.Scale >> 1) * InvBias;
+                sbrv3 Radius = sbrv3(CurrentCtx.Scale >> 1) * InvBias;
 
                 m128 CentreM = _mm_set_ps(0.0f, Centre.Z*InvBias, Centre.Y*InvBias, Centre.X*InvBias);
                 m128 RadiusM = _mm_set_ps(0.0f, Radius.Z, Radius.Y, Radius.X);
 
                 if (TriangleAABBIntersection(CentreM, RadiusM, TriVerts))
                 {
-                    u32 ChildVoxelCode = EncodeMorton3(Centre.X, Centre.Y, Centre.Z); 
+                    morton_key ChildVoxelCode = EncodeMorton3(sbrv3u(Centre)); 
                     IndexOut.insert(ChildVoxelCode);
                     GlobalNormalIndex.insert(std::make_pair(ChildVoxelCode, Tris->Triangles[TriIndex].Normal));
                     GlobalColourIndex.insert(std::make_pair(ChildVoxelCode, Tris->Triangles[TriIndex].Colour));
@@ -514,12 +516,12 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
 
 
 static sbr_surface
-IntersectorFunction(vec3 vMin, vec3 vMax, const sbr_svo* const Tree)
+IntersectorFunction(sbrv3 vMin, sbrv3 vMax, const sbr_svo* const Tree)
 {
-    vec3 Halfsize = (vMax - vMin) * 0.5f;
-    uvec3 Centre = uvec3((vMin + Halfsize) * (1 << Tree->Bias.Scale));
+    sbrv3 Halfsize = (vMax - vMin) * 0.5f;
+    sbrv3u Centre = sbrv3u((vMin + Halfsize) * (1 << Tree->Bias.Scale));
     
-    u32 MortonCode = EncodeMorton3(Centre.X, Centre.Y, Centre.Z);
+    morton_key MortonCode = EncodeMorton3(sbrv3u(Centre));
 
     if (GlobalTriangleIndex.find(MortonCode) != GlobalTriangleIndex.end())
     {

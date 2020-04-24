@@ -96,29 +96,28 @@ struct sbr_svo
     // to use; it is frequently modified by the implementation
     // and probably not a good way to achieve much of anything
     // besides tree construction!
-    // TODO(Liam): Can we entirely replace this with node_refs?
     svo_block* LastBlock;
 
     // First block of nodes in this tree
     svo_block* RootBlock;
 
 
-    std::vector<std::pair<uvec3, packed_snorm3>> Normals;
+    std::vector<std::pair<sbrv3u, packed_snorm3>> Normals;
 
     // TODO Use unorms
-    std::vector<std::pair<uvec3, packed_snorm3>> Colours;
+    std::vector<std::pair<sbrv3u, packed_snorm3>> Colours;
 };
 
-typedef sbr_surface (*intersector_fn)(vec3, vec3, const sbr_svo* const);
-typedef vec3 (*normal_fn)(vec3, const sbr_svo* const);
-typedef vec3 (*colour_fn)(vec3, const sbr_svo* const);
+typedef sbr_surface (*intersector_fn)(sbrv3, sbrv3, const sbr_svo* const);
+typedef sbrv3 (*normal_fn)(sbrv3, const sbr_svo* const);
+typedef sbrv3 (*colour_fn)(sbrv3, const sbr_svo* const);
 
 
 extern "C" void
-SBR_InsertVoxel(sbr_svo* Tree, vec3 P, uint32_t VoxelScale);
+SBR_InsertVoxel(sbr_svo* Tree, sbrv3 P, uint32_t VoxelScale);
 
 extern "C" void
-SBR_DeleteVoxel(sbr_svo* Tree, vec3 P);
+SBR_DeleteVoxel(sbr_svo* Tree, sbrv3 P);
 
 extern "C" svo_bias
 SBR_ComputeScaleBias(uint32_t MaxDepth,
@@ -151,7 +150,7 @@ extern "C" unsigned int
 GetSvoDepth(const sbr_svo* const Svo);
 
 static inline void
-DEBUGPrintVec3(vec3 V)
+DEBUGPrintVec3(sbrv3 V)
 {
     printf("(%f, %f, %f)", (f64)V.X, (f64)V.Y, (f64)V.Z);
 }

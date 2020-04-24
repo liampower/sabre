@@ -33,10 +33,10 @@ struct camera
 {
     f32  Velocity;
 
-    vec3 Up;
-    vec3 Right;
-    vec3 Forward;
-    vec3 Position;
+    sbrv3 Up;
+    sbrv3 Right;
+    sbrv3 Forward;
+    sbrv3 Position;
 };
 
 
@@ -68,9 +68,9 @@ OutputGraphicsDeviceInfo(void)
 //
 // Tree parameter ignored here.
 static sbr_surface
-CubeSphereIntersection(vec3 Min, vec3 Max, const sbr_svo* const)
+CubeSphereIntersection(sbrv3 Min, sbrv3 Max, const sbr_svo* const)
 {
-    const vec3 S = vec3(16);
+    const sbrv3 S = sbrv3(16);
     const f32 R = 8;
 
     f32 DistanceSqToCube = R * R;
@@ -93,20 +93,20 @@ CubeSphereIntersection(vec3 Min, vec3 Max, const sbr_svo* const)
 }
 
 
-static inline vec3
-SphereNormal(vec3 C, const sbr_svo* const)
+static inline sbrv3
+SphereNormal(sbrv3 C, const sbr_svo* const)
 {
-    const vec3 S = vec3(16);
+    const sbrv3 S = sbrv3(16);
 
-    vec3 Normal = Normalize(C - S);
+    sbrv3 Normal = Normalize(C - S);
 
     return Normal;
 }
 
-static inline vec3
-SphereColour(vec3 C, const sbr_svo* const)
+static inline sbrv3
+SphereColour(sbrv3 C, const sbr_svo* const)
 {
-    return vec3(1, 0, 0);
+    return sbrv3(1, 0, 0);
 }
 
 
@@ -119,11 +119,11 @@ CreateCubeSphereTestScene(void)
                                     &SphereNormal,
                                     &SphereColour);
 
-    SBR_InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
-    //InsertVoxel(WorldSvo, vec3(0, 17, 0), 16);
-    //InsertVoxel(WorldSvo, vec3(20, 20, 20), 16);
-    //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
-    SBR_DeleteVoxel(WorldSvo, vec3(0, 0, 0));
+    SBR_InsertVoxel(WorldSvo, sbrv3(0, 0, 0), 16);
+    //InsertVoxel(WorldSvo, sbrv3(0, 17, 0), 16);
+    //InsertVoxel(WorldSvo, sbrv3(20, 20, 20), 16);
+    //InsertVoxel(WorldSvo, sbrv3(0, 0, 0), 16);
+    SBR_DeleteVoxel(WorldSvo, sbrv3(0, 0, 0));
 
     return WorldSvo;
 }
@@ -162,23 +162,23 @@ CreateLoadedMeshTestScene(const char* const SvoMeshFileName)
 }
 
 extern "C" void
-InsertVoxel2(vec3 CastOrigin, vec3 Ray, sbr_svo* const Tree);
+InsertVoxel2(sbrv3 CastOrigin, sbrv3 Ray, sbr_svo* const Tree);
 
 static void
 InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, sbr_svo* const Svo)
 {
     // Unproject the MouseX & Y positions into worldspace.
     
-    //vec3 DeleteP = (Cam.Position - vec3(256, 256, 512)) + vec3((f32)MouseX, (f32)MouseY, 0);
-    vec3 D = vec3(f32(512) / 2.0f, f32(512) / 2.0f, 0.0f);
+    //sbrv3 DeleteP = (Cam.Position - sbrv3(256, 256, 512)) + sbrv3((f32)MouseX, (f32)MouseY, 0);
+    sbrv3 D = sbrv3(f32(512) / 2.0f, f32(512) / 2.0f, 0.0f);
     
     // Origin of the screen plane in world-space
-    vec3 WorldVOrigin = Cam.Position - vec3(256, 256, 512);
+    sbrv3 WorldVOrigin = Cam.Position - sbrv3(256, 256, 512);
 
     D = WorldVOrigin + D;
     //D.X *= 1280.0/720.0;
 
-    vec3 R = Normalize(D - Cam.Position);
+    sbrv3 R = Normalize(D - Cam.Position);
 
     mat3 CameraMatrix = mat3{{
         { Cam.Right.X, Cam.Right.Y, Cam.Right.Z },
@@ -200,7 +200,7 @@ InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, sbr_svo* cons
 }
 
 extern "C" void
-DeleteVoxel2(vec3 CastOrigin, vec3 Ray, sbr_svo* const Tree);
+DeleteVoxel2(sbrv3 CastOrigin, sbrv3 Ray, sbr_svo* const Tree);
 
 
 static void
@@ -208,16 +208,16 @@ DeleteVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, sbr_svo* cons
 {
     // Unproject the MouseX & Y positions into worldspace.
     
-    //vec3 DeleteP = (Cam.Position - vec3(256, 256, 512)) + vec3((f32)MouseX, (f32)MouseY, 0);
-    vec3 D = vec3(f32(512) / 2.0f, f32(512) / 2.0f, 0.0f);
+    //sbrv3 DeleteP = (Cam.Position - sbrv3(256, 256, 512)) + sbrv3((f32)MouseX, (f32)MouseY, 0);
+    sbrv3 D = sbrv3(f32(512) / 2.0f, f32(512) / 2.0f, 0.0f);
     
     // Origin of the screen plane in world-space
-    vec3 WorldVOrigin = Cam.Position - vec3(256, 256, 512);
+    sbrv3 WorldVOrigin = Cam.Position - sbrv3(256, 256, 512);
 
     D = WorldVOrigin + D;
     //D.X *= 1280.0/720.0;
 
-    vec3 R = Normalize(D - Cam.Position);
+    sbrv3 R = Normalize(D - Cam.Position);
 
     mat3 CameraMatrix = mat3{{
         { Cam.Right.X, Cam.Right.Y, Cam.Right.Z },
@@ -322,13 +322,13 @@ main(int ArgCount, const char** const Args)
     }
 
     camera Cam = { };
-    Cam.Forward = vec3(0, 0, -1);
-    Cam.Right = vec3(1, 0, 0);
-    Cam.Up = vec3(0, 1, 0);
-    Cam.Position = vec3(4, 4, 96);
+    Cam.Forward = sbrv3(0, 0, -1);
+    Cam.Right = sbrv3(1, 0, 0);
+    Cam.Up = sbrv3(0, 1, 0);
+    Cam.Position = sbrv3(4, 4, 96);
     Cam.Velocity = 1.32f;
 
-    const vec3 WorldYAxis = vec3(0, 1, 0);
+    const sbrv3 WorldYAxis = sbrv3(0, 1, 0);
 
     f64 LastMouseX, LastMouseY;
     glfwGetCursorPos(Window, &LastMouseX, &LastMouseY);

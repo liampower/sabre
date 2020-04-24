@@ -11,10 +11,10 @@
 static constexpr uint WORK_SIZE_X = 512;
 static constexpr uint WORK_SIZE_Y = 512;
 
-struct uvec3_hash
+struct sbrv3u_hash
 {
 public:
-    size_t operator()(const uvec3& Element) const{
+    size_t operator()(const sbrv3u& Element) const{
         return Element.X + Element.Y + Element.Z;
     }
 };
@@ -234,24 +234,24 @@ struct tex_page
     u32 Data[16][32][32];
 };
 
-static std::unordered_map<uvec3, tex_page, uvec3_hash>
-PartitionLeafDataToBuckets(const std::vector<std::pair<uvec3, u32>>& LeafData)
+static std::unordered_map<sbrv3u, tex_page, sbrv3u_hash>
+PartitionLeafDataToBuckets(const std::vector<std::pair<sbrv3u, u32>>& LeafData)
 {
-    std::unordered_map<uvec3, tex_page, uvec3_hash> Pages;
-    const uvec3 PageSize = uvec3(32, 32, 16);
+    std::unordered_map<sbrv3u, tex_page, sbrv3u_hash> Pages;
+    const sbrv3u PageSize = sbrv3u(32, 32, 16);
 
     for (auto It = LeafData.begin(); It != LeafData.end(); ++It)
     {
         auto Element = *It;
 
         // Subtexture coords
-        uvec3 Bucket = Element.first / PageSize;
+        sbrv3u Bucket = Element.first / PageSize;
 
         // Key already exists
         if (Pages.find(Bucket) != Pages.end())
         {
             tex_page* Page = &Pages.find(Bucket)->second;
-            uvec3 PageCoords = Element.first % PageSize;
+            sbrv3u PageCoords = Element.first % PageSize;
 
             Page->Data[PageCoords.Z][PageCoords.Y][PageCoords.X] = Element.second;
         }
@@ -259,7 +259,7 @@ PartitionLeafDataToBuckets(const std::vector<std::pair<uvec3, u32>>& LeafData)
         {
             tex_page Page = { };
 
-            uvec3 PageCoords = Element.first % PageSize;
+            sbrv3u PageCoords = Element.first % PageSize;
 
             Page.Data[PageCoords.Z][PageCoords.Y][PageCoords.X] = Element.second;
 
@@ -271,7 +271,7 @@ PartitionLeafDataToBuckets(const std::vector<std::pair<uvec3, u32>>& LeafData)
 }
 
 static gl_uint
-UploadLeafDataSparse(std::vector<std::pair<uvec3, u32>> Data, int AttachmentIndex)
+UploadLeafDataSparse(std::vector<std::pair<sbrv3u, u32>> Data, int AttachmentIndex)
 {
     gl_uint MapTexture;
     glCreateTextures(GL_TEXTURE_3D, 1, &MapTexture);
@@ -282,7 +282,7 @@ UploadLeafDataSparse(std::vector<std::pair<uvec3, u32>> Data, int AttachmentInde
         glBindTexture(GL_TEXTURE_3D, MapTexture);
         if (AttachmentIndex > 0) return MapTexture;
 
-        std::unordered_map<uvec3, tex_page, uvec3_hash> Pages = PartitionLeafDataToBuckets(Data);
+        std::unordered_map<sbrv3u, tex_page, sbrv3u_hash> Pages = PartitionLeafDataToBuckets(Data);
 
         // Read the page sizes
         gl_int PageSizeX, PageSizeY, PageSizeZ;
