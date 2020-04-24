@@ -16,21 +16,21 @@ struct svo_block;
 typedef uint32_t packed_snorm3;
 typedef uint32_t packed_snorm3;
 
-enum svo_surface_state
+enum sbr_surface
 {
     SURFACE_INTERSECTED,
     SURFACE_INSIDE,
     SURFACE_OUTSIDE
 };
 
-struct far_ptr
+struct sbr_far_ptr
 {
     // Index of the child node's block
-    u32 BlkIndex;
+    uint32_t BlkIndex;
 
     // Which slot in the child block the 
     // particular child node resides at
-    u32 NodeOffset;
+    uint32_t NodeOffset;
 };
 
 enum svo_blk_flags
@@ -42,12 +42,12 @@ union alignas(4) svo_node
 {
     struct
     {
-        u8  LeafMask;
-        u8  OccupiedMask;
-        u16 ChildPtr;
+        uint8_t  LeafMask;
+        uint8_t  OccupiedMask;
+        uint16_t ChildPtr;
     };
 
-    u32 Packed;
+    uint32_t Packed;
 };
 
 
@@ -58,34 +58,27 @@ struct svo_bias
 };
 
 
-struct svo_normals_buffer
-{
-    uint32_t  NormalsCount;
-    uint32_t* NormalsData;
-};
-
-
 struct svo_block
 {
-    usize      NextFreeSlot;
-    usize      NextFarPtrSlot;
-    u32        Index;
-    svo_block* Prev;
-    svo_block* Next;
-    svo_node   Entries[SVO_NODES_PER_BLK];
-    far_ptr    FarPtrs[SVO_FAR_PTRS_PER_BLK];
+    size_t      NextFreeSlot;
+    size_t      NextFarPtrSlot;
+    uint32_t    Index;
+    svo_block*  Prev;
+    svo_block*  Next;
+    svo_node    Entries[SVO_NODES_PER_BLK];
+    sbr_far_ptr FarPtrs[SVO_FAR_PTRS_PER_BLK];
 };
 
-struct svo
+struct sbr_svo
 {
     // How many total blocks are used in the tree.
-    u32 UsedBlockCount;
+    uint32_t UsedBlockCount;
 
     // The maximum depth of the svo to traverse
-    u32 MaxDepth;
+    uint32_t MaxDepth;
 
     // Extant of the octree in world space.
-    u32 ScaleExponent;
+    uint32_t ScaleExponent;
 
     // Required to maintain subtree-scale values as
     // integers. 
@@ -116,44 +109,46 @@ struct svo
     std::vector<std::pair<uvec3, packed_snorm3>> Colours;
 };
 
-typedef svo_surface_state (*intersector_fn)(vec3, vec3, const svo* const);
-typedef vec3 (*normal_fn)(vec3, const svo* const);
-typedef vec3 (*colour_fn)(vec3, const svo* const);
+typedef sbr_surface (*intersector_fn)(vec3, vec3, const sbr_svo* const);
+typedef vec3 (*normal_fn)(vec3, const sbr_svo* const);
+typedef vec3 (*colour_fn)(vec3, const sbr_svo* const);
 
 
 extern "C" void
-InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale);
+SBR_InsertVoxel(sbr_svo* Tree, vec3 P, uint32_t VoxelScale);
 
 extern "C" void
-DeleteVoxel(svo* Tree, vec3 P);
+SBR_DeleteVoxel(sbr_svo* Tree, vec3 P);
 
 extern "C" svo_bias
-ComputeScaleBias(uint32_t MaxDepth, uint32_t ScaleExponent);
+SBR_ComputeScaleBias(uint32_t MaxDepth,
+                     uint32_t ScaleExponent);
 
 extern "C" void
-DeleteSparseVoxelOctree(svo* Tree);
+SBR_DeleteScene(sbr_svo* Tree);
 
-extern "C" svo*
-ImportGltfToSvo(u32 MaxDepth, const char* const GLTFPath);
+extern "C" sbr_svo*
+SBR_ImportGLBFile(uint32_t MaxDepth,
+                  const char* const GLTFPath);
 
-extern "C" svo*
-CreateSparseVoxelOctree(u32 ScaleExponent,
-                        u32 MaxDepth,
-                        intersector_fn Surface,
-                        normal_fn NormalFn,
-                        colour_fn ColourFn);
+extern "C" sbr_svo*
+SBR_CreateScene(u32 ScaleExponent,
+                u32 MaxDepth,
+                intersector_fn Surface,
+                normal_fn NormalFn,
+                colour_fn ColourFn);
 
 extern "C" void
-OutputSvoToFile(const svo* const Svo, FILE* FileOut);
+OutputSvoToFile(const sbr_svo* const Svo, FILE* FileOut);
 
-extern "C" svo*
+extern "C" sbr_svo*
 LoadSvoFromFile(FILE* FileIn);
 
 extern "C" unsigned int
-GetSvoUsedBlockCount(const svo* const Svo);
+GetSvoUsedBlockCount(const sbr_svo* const Svo);
 
 extern "C" unsigned int
-GetSvoDepth(const svo* const Svo);
+GetSvoDepth(const sbr_svo* const Svo);
 
 static inline void
 DEBUGPrintVec3(vec3 V)

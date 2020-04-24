@@ -17,8 +17,8 @@
 #include "sabre_data.h"
 #include "sabre_render.h"
 
-static constexpr u32 SABRE_MAX_TREE_DEPTH = 8;
-static constexpr u32 SABRE_SCALE_EXPONENT = 5;
+static constexpr u32 DEMO_MAX_TREE_DEPTH = 8;
+static constexpr u32 DEMO_SCALE_EXPONENT = 5;
 
 static constexpr u32 DisplayWidth = 1280;
 static constexpr u32 DisplayHeight = 720;
@@ -67,8 +67,8 @@ OutputGraphicsDeviceInfo(void)
 // max corners.
 //
 // Tree parameter ignored here.
-static svo_surface_state
-CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const)
+static sbr_surface
+CubeSphereIntersection(vec3 Min, vec3 Max, const sbr_svo* const)
 {
     const vec3 S = vec3(16);
     const f32 R = 8;
@@ -94,7 +94,7 @@ CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const)
 
 
 static inline vec3
-SphereNormal(vec3 C, const svo* const)
+SphereNormal(vec3 C, const sbr_svo* const)
 {
     const vec3 S = vec3(16);
 
@@ -104,38 +104,38 @@ SphereNormal(vec3 C, const svo* const)
 }
 
 static inline vec3
-SphereColour(vec3 C, const svo* const)
+SphereColour(vec3 C, const sbr_svo* const)
 {
     return vec3(1, 0, 0);
 }
 
 
-static inline svo*
+static inline sbr_svo*
 CreateCubeSphereTestScene(void)
 {
-    svo* WorldSvo = CreateSparseVoxelOctree(SABRE_SCALE_EXPONENT,
-                                            SABRE_MAX_TREE_DEPTH,
-                                            &CubeSphereIntersection,
-                                            &SphereNormal,
-                                            &SphereColour);
+    sbr_svo* WorldSvo = SBR_CreateScene(DEMO_SCALE_EXPONENT,
+                                    DEMO_MAX_TREE_DEPTH,
+                                    &CubeSphereIntersection,
+                                    &SphereNormal,
+                                    &SphereColour);
 
-    InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
+    SBR_InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
     //InsertVoxel(WorldSvo, vec3(0, 17, 0), 16);
     //InsertVoxel(WorldSvo, vec3(20, 20, 20), 16);
     //InsertVoxel(WorldSvo, vec3(0, 0, 0), 16);
-    DeleteVoxel(WorldSvo, vec3(0, 0, 0));
+    SBR_DeleteVoxel(WorldSvo, vec3(0, 0, 0));
 
     return WorldSvo;
 }
 
 
-static inline svo*
+static inline sbr_svo*
 CreateImportedMeshTestScene(const char* const GLBFileName)
 {
-    return ImportGltfToSvo(SABRE_MAX_TREE_DEPTH, GLBFileName);
+    return SBR_ImportGLBFile(DEMO_MAX_TREE_DEPTH, GLBFileName);
 }
 
-static inline svo*
+static inline sbr_svo*
 CreateLoadedMeshTestScene(const char* const SvoMeshFileName)
 {
     FILE* SvoInFile;
@@ -143,7 +143,7 @@ CreateLoadedMeshTestScene(const char* const SvoMeshFileName)
 
     if (0 == Result)
     {
-        svo* WorldSvo = LoadSvoFromFile(SvoInFile);
+        sbr_svo* WorldSvo = LoadSvoFromFile(SvoInFile);
 
         if (nullptr == WorldSvo)
         {
@@ -162,10 +162,10 @@ CreateLoadedMeshTestScene(const char* const SvoMeshFileName)
 }
 
 extern "C" void
-InsertVoxel2(vec3 CastOrigin, vec3 Ray, svo* const Tree);
+InsertVoxel2(vec3 CastOrigin, vec3 Ray, sbr_svo* const Tree);
 
 static void
-InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, svo* const Svo)
+InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, sbr_svo* const Svo)
 {
     // Unproject the MouseX & Y positions into worldspace.
     
@@ -200,11 +200,11 @@ InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, svo* const Sv
 }
 
 extern "C" void
-DeleteVoxel2(vec3 CastOrigin, vec3 Ray, svo* const Tree);
+DeleteVoxel2(vec3 CastOrigin, vec3 Ray, sbr_svo* const Tree);
 
 
 static void
-DeleteVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, svo* const Svo)
+DeleteVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, sbr_svo* const Svo)
 {
     // Unproject the MouseX & Y positions into worldspace.
     
@@ -288,7 +288,7 @@ main(int ArgCount, const char** const Args)
     glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 #if 1
-    svo* WorldSvo = CreateImportedMeshTestScene("data/Showcase/bunny.glb");
+    sbr_svo* WorldSvo = CreateImportedMeshTestScene("data/Showcase/bunny.glb");
 #else
     svo* WorldSvo = CreateCubeSphereTestScene();
 #endif
@@ -305,9 +305,7 @@ main(int ArgCount, const char** const Args)
     ViewData.ScreenWidth = 512;
     ViewData.ScreenHeight = 512;
 
-    svo_normals_buffer NormalsBuffer = { };
-
-    sbr_render_data* RenderData = CreateSvoRenderData(WorldSvo, &ViewData, &NormalsBuffer);
+    sbr_render_data* RenderData = SBR_CreateRenderData(WorldSvo, &ViewData);
 
 #if 0
     FILE* File = fopen("logs/cs.nvasm", "wb");
@@ -354,11 +352,11 @@ main(int ArgCount, const char** const Args)
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         
-        /*if (ImGui::BeginMainMenuBar())
+        if (ImGui::BeginMainMenuBar())
         {
             ImGui::Text("%fms CPU  %d BLKS  %d LVLS", 1000.0*DeltaTime, GetSvoUsedBlockCount(WorldSvo), GetSvoDepth(WorldSvo));
             ImGui::EndMainMenuBar();
-        }*/
+        }
 
         glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -417,14 +415,14 @@ main(int ArgCount, const char** const Args)
             if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_RIGHT) && ((CurrentTime - LastMouseRTime)) >= 1)
             {
                 InsertVoxelAtMousePoint(MouseX, MouseY, Cam, WorldSvo);
-                UpdateSvoRenderData(WorldSvo, RenderData);
+                SBR_UpdateRenderData(WorldSvo, RenderData);
                 LastMouseRTime = CurrentTime;
             }
             
             if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_LEFT) && ((CurrentTime - LastMouseLTime)) >= 1)
             {
                 DeleteVoxelAtMousePoint(MouseX, MouseY, Cam, WorldSvo);
-                UpdateSvoRenderData(WorldSvo, RenderData);
+                SBR_UpdateRenderData(WorldSvo, RenderData);
                 LastMouseLTime = CurrentTime;
             }
 
@@ -453,7 +451,7 @@ main(int ArgCount, const char** const Args)
         ViewData.CamTransform = (float*)CameraMatrix;
         ViewData.CamPos = F;
 
-        DrawSvoRenderData(RenderData, &ViewData);
+        SBR_DrawScene(RenderData, &ViewData);
 
         ImGui::Render();
 
@@ -464,8 +462,8 @@ main(int ArgCount, const char** const Args)
         DeltaTime = FrameEndTime - FrameStartTime;
     }
 
-    DeleteSparseVoxelOctree(WorldSvo);
-    DeleteSvoRenderData(RenderData);
+    SBR_DeleteScene(WorldSvo);
+    SBR_DeleteRenderData(RenderData);
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();

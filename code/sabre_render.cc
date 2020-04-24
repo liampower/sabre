@@ -190,7 +190,7 @@ CompileShader(const char* VertSrc, const char* FragSrc)
 }
 
 static inline void
-SetRenderUniformData(const svo* const Tree, sbr_render_data* const RenderData)
+SetUniformData(const sbr_svo* const Tree, sbr_render_data* const RenderData)
 {
     glUseProgram(RenderData->RenderShader);
 
@@ -353,7 +353,7 @@ UploadLeafDataSparse(std::vector<std::pair<uvec3, u32>> Data, int AttachmentInde
 }
 
 static svo_buffers
-UploadOctreeBlockData(const svo* const Svo)
+UploadOctreeBlockData(const sbr_svo* const Svo)
 {
     svo_buffers RenderData = { };
     gl_uint SvoBuffer, FarPtrBuffer;
@@ -372,13 +372,13 @@ UploadOctreeBlockData(const svo* const Svo)
         // TODO(Liam): Waste here on the last block
         usize MaxSvoDataSize = SvoBlockDataSize * Svo->UsedBlockCount;
 
-        usize FarPtrBlockDataSize = sizeof(far_ptr) * SVO_FAR_PTRS_PER_BLK;
+        usize FarPtrBlockDataSize = sizeof(sbr_far_ptr) * SVO_FAR_PTRS_PER_BLK;
         usize MaxFarPtrDataSize = FarPtrBlockDataSize * Svo->UsedBlockCount;
 
         // Allocate space for the far ptr buffer
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, FarPtrBuffer);
         glBufferData(GL_SHADER_STORAGE_BUFFER, MaxFarPtrDataSize, nullptr, GL_DYNAMIC_COPY);
-        far_ptr* GPUFarPtrBuffer = (far_ptr*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+        sbr_far_ptr* GPUFarPtrBuffer = (sbr_far_ptr*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
 
         // Allocate space for the node data buffer
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoBuffer);
@@ -401,7 +401,7 @@ UploadOctreeBlockData(const svo* const Svo)
             memcpy(GPUSvoBuffer + NextSvoDataOffset, CurrentBlk->Entries, CurrentBlk->NextFreeSlot * sizeof(svo_node));
             NextSvoDataOffset += CurrentBlk->NextFreeSlot;
 
-            memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SVO_FAR_PTRS_PER_BLK * sizeof(far_ptr)); 
+            memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SVO_FAR_PTRS_PER_BLK * sizeof(sbr_far_ptr)); 
             NextFarPtrDataOffset += SVO_FAR_PTRS_PER_BLK;
 
             CurrentBlk = CurrentBlk->Next;
@@ -426,7 +426,7 @@ UploadOctreeBlockData(const svo* const Svo)
 }
 
 extern "C" void
-DrawSvoRenderData(const sbr_render_data* const RenderData, const sbr_view_data* const ViewData)
+SBR_DrawScene(const sbr_render_data* const RenderData, const sbr_view_data* const ViewData)
 {
     glUseProgram(RenderData->RenderShader);
     glUniformMatrix3fv(RenderData->ViewMatUniformLocation, 1, GL_TRUE, ViewData->CamTransform);
@@ -446,7 +446,7 @@ DrawSvoRenderData(const sbr_render_data* const RenderData, const sbr_view_data* 
 }
 
 extern "C" sbr_render_data*
-CreateSvoRenderData(const svo* const Tree, const sbr_view_data* const ViewData, const svo_normals_buffer* const NormalsData)
+SBR_CreateRenderData(const sbr_svo* const Tree, const sbr_view_data* const ViewData)
 {
     // TODO(Liam): Error checking
     sbr_render_data* RenderData = (sbr_render_data*) calloc(1, sizeof(sbr_render_data));
@@ -456,7 +456,7 @@ CreateSvoRenderData(const svo* const Tree, const sbr_view_data* const ViewData, 
     {
         fprintf(stderr, "Failed to compile compute shader\n");
 
-        DeleteSvoRenderData(RenderData);
+        SBR_DeleteRenderData(RenderData);
         return nullptr;
     }
 
@@ -465,19 +465,19 @@ CreateSvoRenderData(const svo* const Tree, const sbr_view_data* const ViewData, 
     {
         fprintf(stderr, "Failed to compile compute shader\n");
 
-        DeleteSvoRenderData(RenderData);
+        SBR_DeleteRenderData(RenderData);
         return nullptr;
     }
 
     RenderData->RenderImage = CreateRenderImage(ViewData->ScreenWidth, ViewData->ScreenHeight);
-    SetRenderUniformData(Tree, RenderData);
+    SetUniformData(Tree, RenderData);
 
     svo_buffers CanvasBuffers = UploadCanvasVertices();
     if (0 == CanvasBuffers.VAO || 0 == CanvasBuffers.VBO)
     {
         fprintf(stderr, "Failed to upload canvas vertices\n");
 
-        DeleteSvoRenderData(RenderData);
+        SBR_DeleteRenderData(RenderData);
         return nullptr;
     }
 
@@ -489,14 +489,14 @@ CreateSvoRenderData(const svo* const Tree, const sbr_view_data* const ViewData, 
 
     if (0 == RenderData->MapTexture)
     {
-        DeleteSvoRenderData(RenderData);
+        SBR_DeleteRenderData(RenderData);
         return nullptr;
     }
 
     svo_buffers SvoBuffers = UploadOctreeBlockData(Tree);
     if (0 == SvoBuffers.SvoBuffer || 0 == SvoBuffers.FarPtrBuffer)
     {
-        DeleteSvoRenderData(RenderData);
+        SBR_DeleteRenderData(RenderData);
         return nullptr;
     }
 
@@ -513,7 +513,7 @@ CreateSvoRenderData(const svo* const Tree, const sbr_view_data* const ViewData, 
 }
 
 extern "C" void
-DeleteSvoRenderData(sbr_render_data* RenderData)
+SBR_DeleteRenderData(sbr_render_data* RenderData)
 {
     if (RenderData)
     {
@@ -539,19 +539,19 @@ DeleteSvoRenderData(sbr_render_data* RenderData)
 }
 
 extern "C" void
-UpdateSvoRenderData(const svo* const Svo, sbr_render_data* const RenderDataOut)
+SBR_UpdateRenderData(const sbr_svo* const Svo, sbr_render_data* const RenderDataOut)
 {
     usize SvoBlockDataSize = sizeof(svo_node) * SVO_NODES_PER_BLK;
     // TODO(Liam): Waste here on the last block
     usize MaxSvoDataSize = SvoBlockDataSize * Svo->UsedBlockCount;
 
-    usize FarPtrBlockDataSize = sizeof(far_ptr) * SVO_FAR_PTRS_PER_BLK;
+    usize FarPtrBlockDataSize = sizeof(sbr_far_ptr) * SVO_FAR_PTRS_PER_BLK;
     usize MaxFarPtrDataSize = FarPtrBlockDataSize * Svo->UsedBlockCount;
 
     // Allocate space for the far ptr buffer
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, RenderDataOut->FarPtrBuffer);
     glBufferData(GL_SHADER_STORAGE_BUFFER, MaxFarPtrDataSize, nullptr, GL_DYNAMIC_COPY);
-    far_ptr* GPUFarPtrBuffer = (far_ptr*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+    sbr_far_ptr* GPUFarPtrBuffer = (sbr_far_ptr*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
 
     // Allocate space for the node data buffer
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, RenderDataOut->SvoBuffer);
@@ -573,7 +573,7 @@ UpdateSvoRenderData(const svo* const Svo, sbr_render_data* const RenderDataOut)
         memcpy(GPUSvoBuffer + NextSvoDataOffset, CurrentBlk->Entries, CurrentBlk->NextFreeSlot * sizeof(svo_node));
         NextSvoDataOffset += CurrentBlk->NextFreeSlot;
 
-        memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SVO_FAR_PTRS_PER_BLK * sizeof(far_ptr)); 
+        memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SVO_FAR_PTRS_PER_BLK * sizeof(sbr_far_ptr)); 
         NextFarPtrDataOffset += SVO_FAR_PTRS_PER_BLK;
 
         CurrentBlk = CurrentBlk->Next;

@@ -290,7 +290,7 @@ static std::unordered_map<u32, vec3> GlobalNormalIndex;
 static std::unordered_map<u32, vec3> GlobalColourIndex;
 
 static inline vec3
-NormalSampler(vec3 C, const svo* const)
+NormalSampler(vec3 C, const sbr_svo* const)
 {
     u32 MortonCode = EncodeMorton3(C.X, C.Y, C.Z);
 
@@ -299,7 +299,7 @@ NormalSampler(vec3 C, const svo* const)
 }
 
 static inline vec3
-ColourSampler(vec3 C, const svo* const)
+ColourSampler(vec3 C, const sbr_svo* const)
 {
     u32 MortonCode = EncodeMorton3(C.X, C.Y, C.Z);
 
@@ -513,8 +513,8 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
 }
 
 
-static svo_surface_state
-IntersectorFunction(vec3 vMin, vec3 vMax, const svo* const Tree)
+static sbr_surface
+IntersectorFunction(vec3 vMin, vec3 vMax, const sbr_svo* const Tree)
 {
     vec3 Halfsize = (vMax - vMin) * 0.5f;
     uvec3 Centre = uvec3((vMin + Halfsize) * (1 << Tree->Bias.Scale));
@@ -575,8 +575,8 @@ GetMeshMinDimension(const cgltf_primitive* const Prim)
     return Min(Min(MinX, MinY), MinZ);
 }
 
-extern "C" svo*
-ImportGltfToSvo(u32 MaxDepth, const char* const GLTFPath)
+extern "C" sbr_svo*
+SBR_ImportGLBFile(uint32_t MaxDepth, const char* const GLTFPath)
 {
 	cgltf_options Options = { };
     cgltf_data* Data = nullptr;
@@ -610,7 +610,11 @@ ImportGltfToSvo(u32 MaxDepth, const char* const GLTFPath)
         GlobalTriangleIndex.reserve(TriangleData->TriangleCount);
         BuildTriangleIndex(MaxDepth, ScaleExponent, TriangleData, GlobalTriangleIndex);
 
-        svo* Svo = CreateSparseVoxelOctree(ScaleExponent, MaxDepth, &IntersectorFunction, &NormalSampler, &ColourSampler);
+        sbr_svo* Svo = SBR_CreateScene(ScaleExponent,
+                                   MaxDepth,
+                                   &IntersectorFunction,
+                                   &NormalSampler,
+                                   &ColourSampler);
 
         free(TriangleData);
         cgltf_free(Data);

@@ -90,13 +90,13 @@ FindHighestSetBit(uvec3 Msk)
 }
 
 static inline u32
-GetTreeMaxScaleBiased(const svo* const Tree)
+GetTreeMaxScaleBiased(const sbr_svo* const Tree)
 {
     return (1U << Tree->ScaleExponent) << Tree->Bias.Scale;
 }
 
 static inline u32
-GetTreeMinScaleBiased(const svo* const Tree)
+GetTreeMinScaleBiased(const sbr_svo* const Tree)
 {
     return (Tree->MaxDepth > Tree->ScaleExponent) ? 
             1U : 
@@ -128,11 +128,11 @@ HasFarChildren(svo_node* Node)
     return (Node->ChildPtr & FAR_PTR_BIT_MSK) != 0;
 }
 
-static inline far_ptr*
-PushFarPtr(far_ptr FarPtr, svo_block* Blk)
+static inline sbr_far_ptr*
+PushFarPtr(sbr_far_ptr FarPtr, svo_block* Blk)
 {
     Blk->FarPtrs[Blk->NextFarPtrSlot] = FarPtr;
-    far_ptr* AllocatedFarPtr = &Blk->FarPtrs[Blk->NextFarPtrSlot];
+    sbr_far_ptr* AllocatedFarPtr = &Blk->FarPtrs[Blk->NextFarPtrSlot];
     ++Blk->NextFarPtrSlot;
 
     return AllocatedFarPtr;
@@ -140,13 +140,13 @@ PushFarPtr(far_ptr FarPtr, svo_block* Blk)
 
 
 static inline node_ref
-GetTreeRootNodeRef(const svo* const Tree)
+GetTreeRootNodeRef(const sbr_svo* const Tree)
 {
     return node_ref{ Tree->RootBlock, &Tree->RootBlock->Entries[0] };
 }
 
 
-static inline far_ptr*
+static inline sbr_far_ptr*
 GetFarPointer(svo_node* Node, svo_block* Blk)
 {
     if (HasFarChildren(Node))
@@ -205,7 +205,7 @@ SetOctantOccupied(svo_oct SubOctant, svo_voxel_type Type, svo_node* OutEntry)
 
 
 extern "C" svo_bias
-ComputeScaleBias(uint32_t MaxDepth, uint32_t ScaleExponent)
+SBR_ComputeScaleBias(uint32_t MaxDepth, uint32_t ScaleExponent)
 {
     if (MaxDepth > ScaleExponent)
     {
@@ -267,7 +267,7 @@ GetNodeChild(node_ref ParentRef, svo_oct ChildOct)
     if (HasFarChildren(ParentRef.Node))
     {
         u32 FarPtrIndex = ParentRef.Node->ChildPtr & CHILD_PTR_MSK;
-        far_ptr* FarPtr = &ParentRef.Blk->FarPtrs[FarPtrIndex];
+        sbr_far_ptr* FarPtr = &ParentRef.Blk->FarPtrs[FarPtrIndex];
         FirstChildIndex = FarPtr->NodeOffset;
 
         i32 BlksFromParent = (i32)FarPtr->BlkIndex - (i32)ParentRef.Blk->Index;
@@ -305,12 +305,12 @@ GetNodeChild(node_ref ParentRef, svo_oct ChildOct)
 }
 
 
-static far_ptr*
+static sbr_far_ptr*
 AllocateFarPtr(svo_block* const ContainingBlk)
 {
     usize NextFarPtrSlot = ContainingBlk->NextFarPtrSlot;
     assert(NextFarPtrSlot < SVO_FAR_PTRS_PER_BLK);
-    far_ptr* Ptr = &ContainingBlk->FarPtrs[NextFarPtrSlot];
+    sbr_far_ptr* Ptr = &ContainingBlk->FarPtrs[NextFarPtrSlot];
     ++ContainingBlk->NextFarPtrSlot;
 
     assert(Ptr->NodeOffset == 0);
@@ -339,7 +339,7 @@ LinkParentAndChildNodes(node_ref ParentRef, node_ref ChildRef)
     {
         // Allocate a new far pointer in the parent
         // TODO(Liam): Error handling
-        far_ptr* FarPtr = AllocateFarPtr(ParentRef.Blk);
+        sbr_far_ptr* FarPtr = AllocateFarPtr(ParentRef.Blk);
         assert(nullptr != FarPtr);
         FarPtr->BlkIndex = (u32)ChildRef.Blk->Index;
         FarPtr->NodeOffset = ChildPtrBits;
@@ -379,7 +379,7 @@ GetOctantForPosition(vec3 P, vec3 ParentCentreP)
 // Seems like we could just remove UsedBlockCount altogether and
 // rely on relative positioning for blocks.
 static svo_block*
-AllocateAndLinkNewBlock(svo_block* const OldBlk, svo* const Tree)
+AllocateAndLinkNewBlock(svo_block* const OldBlk, sbr_svo* const Tree)
 {
     // TODO(Liam): Handle failure case
     svo_block* NewBlk = (svo_block*)calloc(1, sizeof(svo_block));
@@ -398,7 +398,7 @@ AllocateAndLinkNewBlock(svo_block* const OldBlk, svo* const Tree)
 }
 
 static inline node_ref
-AllocateNewNode(svo_block* const ParentBlk, svo* const Tree)
+AllocateNewNode(svo_block* const ParentBlk, sbr_svo* const Tree)
 {
     // Check if there is room in the parent block;
     // If there isn't any, we need to allocate a new
@@ -438,7 +438,7 @@ AllocateNode(svo_block* const Blk)
 }
 
 static void
-BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth, u32 Scale, svo_block* ParentBlk, vec3 Centre, intersector_fn SurfaceFn, normal_fn NormalFn, colour_fn ColourFn)
+BuildSubOctreeRecursive(svo_node* Parent, sbr_svo* Tree, svo_oct RootOct, u32 Depth, u32 Scale, svo_block* ParentBlk, vec3 Centre, intersector_fn SurfaceFn, normal_fn NormalFn, colour_fn ColourFn)
 {
     struct node_child
     {
@@ -467,7 +467,7 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
         vec3 OctMin = (OctCentre - vec3(Radius)) * Tree->Bias.InvScale;
         vec3 OctMax = (OctCentre + vec3(Radius)) * Tree->Bias.InvScale;
 
-        svo_surface_state SurfaceState = SurfaceFn(OctMin, OctMax, Tree);
+        sbr_surface SurfaceState = SurfaceFn(OctMin, OctMax, Tree);
         if (SURFACE_INTERSECTED == SurfaceState)
         {
             // Check if the NEXT depth is less than the tree max
@@ -533,15 +533,19 @@ BuildSubOctreeRecursive(svo_node* Parent, svo* Tree, svo_oct RootOct, u32 Depth,
     }
 }
 
-extern "C" svo*
-CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceFn, normal_fn NormalFn, colour_fn ColourFn)
+extern "C" sbr_svo*
+SBR_CreateScene(uint32_t ScaleExponent,
+                uint32_t MaxDepth,
+                intersector_fn SurfaceFn,
+                normal_fn NormalFn,
+                colour_fn ColourFn)
 {
-    svo* Tree = (svo*)calloc(1, sizeof(svo));
+    sbr_svo* Tree = (sbr_svo*)calloc(1, sizeof(sbr_svo));
     
     if (Tree)
     {
-        Tree->MaxDepth = MaxDepth;
         Tree->ScaleExponent = ScaleExponent;
+        Tree->MaxDepth = MaxDepth;
 
         // TODO(Liam): Check failure
         // No need to initialise indices, nodes, etc. to zero
@@ -560,7 +564,7 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
         // Begin building tree
         u32 RootScale = (1U << ScaleExponent);
         
-        Tree->Bias = ComputeScaleBias(MaxDepth, ScaleExponent);
+        Tree->Bias = SBR_ComputeScaleBias(MaxDepth, ScaleExponent);
 
         // Scale up by the bias
         RootScale <<= Tree->Bias.Scale;
@@ -596,7 +600,7 @@ CreateSparseVoxelOctree(u32 ScaleExponent, u32 MaxDepth, intersector_fn SurfaceF
 
 
 static inline node_ref
-ReAllocateNode(node_ref NodeRef, svo* const Tree)
+ReAllocateNode(node_ref NodeRef, sbr_svo* const Tree)
 {
     node_ref Result = { };
     // The block that the reallocated node will reside in.
@@ -620,7 +624,7 @@ ReAllocateNode(node_ref NodeRef, svo* const Tree)
         if (HasFarChildren(NodeRef.Node))
         {
             // Get this node's far ptr
-            far_ptr* FarPtr = GetFarPointer(NodeRef.Node, NodeRef.Blk);
+            sbr_far_ptr* FarPtr = GetFarPointer(NodeRef.Node, NodeRef.Blk);
 
             // Copy the far ptr into the new block
             PushFarPtr(*FarPtr, NewBlk);
@@ -632,7 +636,7 @@ ReAllocateNode(node_ref NodeRef, svo* const Tree)
         {
             // Need to convert local pointer into far pointer.
             u16 OldChildPtr = NodeRef.Node->ChildPtr;
-            far_ptr* NewFarPtr = AllocateFarPtr(NewBlk);
+            sbr_far_ptr* NewFarPtr = AllocateFarPtr(NewBlk);
 
             NewFarPtr->BlkIndex = NodeRef.Blk->Index;
             NewFarPtr->NodeOffset = OldChildPtr;
@@ -648,7 +652,7 @@ ReAllocateNode(node_ref NodeRef, svo* const Tree)
 
 
 static node_ref
-InsertChild(node_ref ParentRef, svo_oct ChildOct, svo* Tree, svo_voxel_type Type)
+InsertChild(node_ref ParentRef, svo_oct ChildOct, sbr_svo* Tree, svo_voxel_type Type)
 {
     svo_node PCopy = *ParentRef.Node;
     SetOctantOccupied(ChildOct, Type, &PCopy);
@@ -724,7 +728,7 @@ InsertChild(node_ref ParentRef, svo_oct ChildOct, svo* Tree, svo_voxel_type Type
 
 
 extern "C" void
-InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
+SBR_InsertVoxel(sbr_svo* Tree, vec3 P, u32 VoxelScale)
 {
     // Scale of the smallest voxel in the SVO. For biased
     // trees, this will always be 1. For non-biased trees,
@@ -737,7 +741,7 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
 
        // Re-scale the tree if the requested voxel scale is smaller than
        // the tree minimum scale.
-       Tree->Bias = ComputeScaleBias(Tree->MaxDepth, Tree->ScaleExponent);
+       Tree->Bias = SBR_ComputeScaleBias(Tree->MaxDepth, Tree->ScaleExponent);
     }
 
     // Obtain the original root scale of the tree, though
@@ -813,7 +817,7 @@ InsertVoxel(svo* Tree, vec3 P, u32 VoxelScale)
 }
 
 static node_ref
-DeleteLeafChild(svo_oct ChildOct, svo* const Tree, node_ref ParentRef)
+DeleteLeafChild(svo_oct ChildOct, sbr_svo* const Tree, node_ref ParentRef)
 {
     // Splits a former leaf node into 7 child leaves
     // and one non-leaf child.
@@ -897,7 +901,7 @@ GetNextOctant(float tMax, vec3 tMaxV, svo_oct CurrentOct)
 }
 
 static vec3
-GetVoxelPosition(vec3 RayOrigin, vec3 RayDir, svo* const Tree)
+GetVoxelPosition(vec3 RayOrigin, vec3 RayDir, sbr_svo* const Tree)
 {
     u32 MaxScale = GetTreeMaxScaleBiased(Tree);
     u32 LeafScale = GetTreeMinScaleBiased(Tree) << 1u;
@@ -1007,7 +1011,7 @@ GetVoxelPosition(vec3 RayOrigin, vec3 RayDir, svo* const Tree)
 }
 
 extern "C" void
-DeleteVoxel2(vec3 RayOrigin, vec3 RayDir, svo* const Tree)
+DeleteVoxel2(vec3 RayOrigin, vec3 RayDir, sbr_svo* const Tree)
 {
     vec3 DeletePos = GetVoxelPosition(RayOrigin, RayDir, Tree) * Tree->Bias.InvScale;
     printf("Position found: "); DEBUGPrintVec3(DeletePos); printf("\n");
@@ -1017,11 +1021,11 @@ DeleteVoxel2(vec3 RayOrigin, vec3 RayDir, svo* const Tree)
         return;
     }
 
-    DeleteVoxel(Tree, DeletePos);
+    SBR_DeleteVoxel(Tree, DeletePos);
 }
 
 extern "C" void
-InsertVoxel2(vec3 RayOrigin, vec3 RayDir, svo* const Tree)
+InsertVoxel2(vec3 RayOrigin, vec3 RayDir, sbr_svo* const Tree)
 {
     vec3 InsertPos = GetVoxelPosition(RayOrigin, RayDir, Tree) * Tree->Bias.InvScale;
 
@@ -1030,11 +1034,11 @@ InsertVoxel2(vec3 RayOrigin, vec3 RayDir, svo* const Tree)
         return;
     }
 
-    InsertVoxel(Tree, InsertPos, 8);
+    SBR_InsertVoxel(Tree, InsertPos, 8);
 }
 
 extern "C" void
-DeleteVoxel(svo* Tree, vec3 VoxelP)
+SBR_DeleteVoxel(sbr_svo* Tree, vec3 VoxelP)
 {
     // Scale the voxel position by the tree bias
     vec3 DeleteP = VoxelP * (1U << Tree->Bias.Scale);
@@ -1109,10 +1113,10 @@ DeleteVoxel(svo* Tree, vec3 VoxelP)
 
 
 extern "C" void
-OutputSvoToFile(const svo* const Svo, FILE* FileOut)
+OutputSvoToFile(const sbr_svo* const Svo, FILE* FileOut)
 {
     // First, write the header
-    fwrite(Svo, sizeof(svo), 1, FileOut);
+    fwrite(Svo, sizeof(sbr_svo), 1, FileOut);
 
     // Traverse tree and write blocks
     svo_block* CurrentBlk = Svo->RootBlock;
@@ -1124,14 +1128,14 @@ OutputSvoToFile(const svo* const Svo, FILE* FileOut)
 }
 
 
-extern "C" svo*
+extern "C" sbr_svo*
 LoadSvoFromFile(FILE* FileIn)
 {
     // Allocate a buffer to load into
-    svo* Svo = (svo*)calloc(1, sizeof(svo));
+    sbr_svo* Svo = (sbr_svo*)calloc(1, sizeof(sbr_svo));
 
     // Read the header
-    if (0 == fread(Svo, sizeof(svo), 1, FileIn))
+    if (0 == fread(Svo, sizeof(sbr_svo), 1, FileIn))
     {
         fprintf(stderr, "IO Error\n");
         return nullptr;
@@ -1174,7 +1178,7 @@ LoadSvoFromFile(FILE* FileIn)
 }
 
 extern "C" void
-DeleteSparseVoxelOctree(svo* Tree)
+SBR_DeleteScene(sbr_svo* Tree)
 {
     svo_block* CurrentBlk = Tree->RootBlock;
 
@@ -1189,13 +1193,13 @@ DeleteSparseVoxelOctree(svo* Tree)
 }
 
 extern "C" unsigned int
-GetSvoUsedBlockCount(const svo* const Svo)
+GetSvoUsedBlockCount(const sbr_svo* const Svo)
 {
     return Svo->UsedBlockCount;
 }
 
 extern "C" unsigned int
-GetSvoDepth(const svo* const Svo)
+GetSvoDepth(const sbr_svo* const Svo)
 {
     return Svo->MaxDepth;
 }
