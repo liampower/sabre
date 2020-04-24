@@ -304,7 +304,12 @@ UploadLeafDataSparse(std::vector<std::pair<uvec3, u32>> Data, int AttachmentInde
 
         glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA8_SNORM, 2048, 2048, 2048);
 
-        int MaxCellCount = 1;
+        int MaxTextureSize;
+        glGetIntegerv(GL_MAX_SPARSE_3D_TEXTURE_SIZE_ARB, &MaxTextureSize);
+        u64 MaxCellCount = ((u64)MaxTextureSize*MaxTextureSize*MaxTextureSize);
+        MaxCellCount /= (32*32*16);
+        printf("Max Pages: %zu\n", MaxCellCount);
+
         int CellCount = 0;
         for (auto It = Pages.begin(); It != Pages.end(); ++It)
         {

@@ -288,7 +288,7 @@ main(int ArgCount, const char** const Args)
     glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 #if 1
-    svo* WorldSvo = CreateImportedMeshTestScene("data/Showcase/sibenik.glb");
+    svo* WorldSvo = CreateImportedMeshTestScene("data/Showcase/bunny.glb");
 #else
     svo* WorldSvo = CreateCubeSphereTestScene();
 #endif
