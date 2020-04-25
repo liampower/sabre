@@ -231,14 +231,14 @@ CreateRenderImage(int ImgWidth, int ImgHeight)
 
 struct tex_page
 {
-    u32 Data[16][32][32];
+    packed_snorm3 Data[16][32][32];
 };
 
 static std::unordered_map<sbrv3u, tex_page, sbrv3u_hash>
-PartitionLeafDataToBuckets(const std::vector<std::pair<sbrv3u, u32>>& LeafData)
+PartitionLeafDataToBuckets(const std::vector<std::pair<sbrv3u, u32>>& LeafData, usize PageSizeX, usize PageSizeY, usize PageSizeZ)
 {
     std::unordered_map<sbrv3u, tex_page, sbrv3u_hash> Pages;
-    const sbrv3u PageSize = sbrv3u(32, 32, 16);
+    const sbrv3u PageSize = sbrv3u(PageSizeX, PageSizeY, PageSizeZ);
 
     for (auto It = LeafData.begin(); It != LeafData.end(); ++It)
     {
@@ -282,7 +282,6 @@ UploadLeafDataSparse(std::vector<std::pair<sbrv3u, u32>> Data, int AttachmentInd
         glBindTexture(GL_TEXTURE_3D, MapTexture);
         if (AttachmentIndex > 0) return MapTexture;
 
-        std::unordered_map<sbrv3u, tex_page, sbrv3u_hash> Pages = PartitionLeafDataToBuckets(Data);
 
         // Read the page sizes
         gl_int PageSizeX, PageSizeY, PageSizeZ;
@@ -291,6 +290,8 @@ UploadLeafDataSparse(std::vector<std::pair<sbrv3u, u32>> Data, int AttachmentInd
 		glGetInternalformativ(GL_TEXTURE_3D, GL_RGBA8_SNORM, GL_VIRTUAL_PAGE_SIZE_Z_ARB, 1, &PageSizeZ);
         assert(PageSizeX > 0 && PageSizeY > 0 && PageSizeZ > 0);
         fprintf(stderr, "Page size: %d %d %d\n", PageSizeX, PageSizeY, PageSizeZ);
+
+        std::unordered_map<sbrv3u, tex_page, sbrv3u_hash> Pages = PartitionLeafDataToBuckets(Data, PageSizeX, PageSizeY, PageSizeZ);
 
         glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);

@@ -44,10 +44,14 @@ EncodeMorton3(sbrv3u V)
 {
     return (Part1By2((uint64_t)V.Z) << 2) + (Part1By2((uint64_t)V.Y) << 1) + Part1By2((uint64_t)V.X);
 }
+
+static constexpr usize MSK_DIM = 1024U;
+
+
 struct bit_map
 {
     usize BucketCount;
-    uint64_t Msk[1024*1024*1024];
+    uint64_t Msk[MSK_DIM*MSK_DIM*MSK_DIM];
 };
 
 #if 0
@@ -589,14 +593,7 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
         TriVerts[1] = _mm_set_ps(0.0f, T.V1.Z, T.V1.Y, T.V1.X);
         TriVerts[2] = _mm_set_ps(0.0f, T.V2.Z, T.V2.Y, T.V2.X);
 
-        double TV[3][3] = {
-        { T.V0.X, T.V0.Y, T.V0.Z },
-        { T.V1.X, T.V2.Y, T.V2.Z },
-        { T.V2.X, T.V2.Y, T.V2.Z },
-        };
-
         morton_key RootCode = EncodeMorton3(sbrv3u(ParentCentreP));
-        //IndexOut.insert(RootCode);
         InsertBitmapElement(sbrv3u(ParentCentreP), BM);
 
         while (false == Stack.empty())
@@ -610,19 +607,10 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
                 // at the type level between scaled and unscaled vectors.
                 sbrv3 Centre = GetOctantCentre(Oct, CurrentCtx.Scale, CurrentCtx.ParentCentre);
 
-                bool A;
-                if (Centre.X == 249 && Centre.Y == 93 && Centre.Z == 165)
-                {
-                    A = true;
-                }
-
                 sbrv3 Radius = sbrv3(CurrentCtx.Scale >> 1) * InvBias;
 
                 m128 CentreM = _mm_set_ps(0.0f, Centre.Z*InvBias, Centre.Y*InvBias, Centre.X*InvBias);
                 m128 RadiusM = _mm_set_ps(0.0f, Radius.Z, Radius.Y, Radius.X);
-                double CD[3] = { Centre.X*InvBias, Centre.Y*InvBias, Centre.Z*InvBias };
-                double RD[3] = { Radius.X, Radius.Y, Radius.Z };
-
 
                 if (TriangleAABBIntersection(CentreM, RadiusM, TriVerts))
                 {
@@ -655,29 +643,6 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
 }
 
 
-#if 0
-static sbr_surface
-IntersectorFunction(sbrv3 vMin, sbrv3 vMax, const sbr_svo* const Tree, const void* const UserData)
-{
-    sbrv3 Halfsize = (vMax - vMin) * 0.5f;
-    sbrv3u Centre = sbrv3u((vMin + Halfsize) * (1 << Tree->Bias.Scale));
-    
-
-    std::unordered_set<morton_key>* TriangleIndex = (std::unordered_set<morton_key>*)UserData;
-
-    morton_key MortonCode = EncodeMorton3(sbrv3u(Centre));
-
-    if (TriangleIndex.find(MortonCode) != TriangleIndex.end())
-    {
-        return SURFACE_INTERSECTED;
-    }
-    else
-    {
-        return SURFACE_OUTSIDE;
-    }
-}
-#endif
-
 static bool
 IntersectorFunction(sbrv3 vMin, sbrv3 vMax, const sbr_svo* const Tree, const void* const UserData)
 {
@@ -697,12 +662,6 @@ IntersectorFunction(sbrv3 vMin, sbrv3 vMax, const sbr_svo* const Tree, const voi
 
 
     return LookupBitmapElement(Centre, Bitmap);
-    //morton_key MortonCode = EncodeMorton3(sbrv3u(Centre));
-    /*bool A = (GlobalTriangleIndex.find(MortonCode) != GlobalTriangleIndex.end());
-
-    return A;*/
-
-    //return LookupBitmapElement(Centre, Bitmap);
 }
 
 static inline f32

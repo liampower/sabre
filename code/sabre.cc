@@ -187,11 +187,6 @@ InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, sbr_svo* cons
         { Cam.Up.X, Cam.Up.Y, Cam.Up.Z },
         { -Cam.Forward.X, -Cam.Forward.Y, -Cam.Forward.Z },
     }};
-    /*mat3 CameraMatrix = mat3{{
-        { Cam.Right.Z, Cam.Up.X, -Cam.Forward.Z },
-        { Cam.Right.Y, Cam.Up.Y, -Cam.Forward.Y },
-        { Cam.Right.X, Cam.Up.Z, -Cam.Forward.X },
-    }};*/
 
     R = R * CameraMatrix;
 
@@ -226,11 +221,6 @@ DeleteVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, sbr_svo* cons
         { Cam.Up.X, Cam.Up.Y, Cam.Up.Z },
         { -Cam.Forward.X, -Cam.Forward.Y, -Cam.Forward.Z },
     }};
-    /*mat3 CameraMatrix = mat3{{
-        { Cam.Right.Z, Cam.Up.X, -Cam.Forward.Z },
-        { Cam.Right.Y, Cam.Up.Y, -Cam.Forward.Y },
-        { Cam.Right.X, Cam.Up.Z, -Cam.Forward.X },
-    }};*/
 
     R = R * CameraMatrix;
 
@@ -271,7 +261,7 @@ main(int ArgCount, const char** const Args)
         return EXIT_FAILURE;
     }
 
-    if (GLFW_FALSE == glfwExtensionSupported("GL_ARB_sparse_textur"))
+    if (GLFW_FALSE == glfwExtensionSupported("GL_ARB_sparse_texture"))
     {
         fprintf(stderr, "Failed to initialise application\n");
         MessageBox(NULL, "The application cannot start because your system does not support OpenGL sparse textures (ensure you are running this application with up-to-date graphics drivers)", "Error", MB_ICONWARNING);
