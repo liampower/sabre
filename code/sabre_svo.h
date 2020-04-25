@@ -6,15 +6,31 @@
 #include "sabre.h"
 #include "sabre_math.h"
 
-static constexpr u32 SVO_NODES_PER_BLK = 8192;
-static constexpr u32 SVO_FAR_PTRS_PER_BLK = 8192;
+static constexpr u32 SBR_NODES_PER_BLK = 8192;
+static constexpr u32 SBR_FAR_PTRS_PER_BLK = 8192;
 
-static_assert(SVO_FAR_PTRS_PER_BLK >= SVO_NODES_PER_BLK, "Far Ptrs Per Blk must be >= Entries per Blk");
+static_assert(SBR_FAR_PTRS_PER_BLK >= SBR_NODES_PER_BLK, "Far Ptrs Per Blk must be >= Entries per Blk");
 
 struct svo_block;
 
 typedef uint32_t packed_snorm3;
 typedef uint32_t packed_snorm3;
+struct sbr_svo;
+
+typedef sbrv3 (*data_sampler_fn)(sbrv3, const sbr_svo* const, const void* const);
+typedef bool (*shape_sampler_fn)(sbrv3, sbrv3, const sbr_svo* const, const void* const);
+
+struct shape_sampler
+{
+    const void* const UserData;
+    const shape_sampler_fn SamplerFn;
+};
+
+struct data_sampler
+{
+    const void* const UserData;
+    const data_sampler_fn SamplerFn;
+};
 
 enum sbr_surface
 {
@@ -65,8 +81,8 @@ struct svo_block
     uint32_t    Index;
     svo_block*  Prev;
     svo_block*  Next;
-    svo_node    Entries[SVO_NODES_PER_BLK];
-    sbr_far_ptr FarPtrs[SVO_FAR_PTRS_PER_BLK];
+    svo_node    Entries[SBR_NODES_PER_BLK];
+    sbr_far_ptr FarPtrs[SBR_FAR_PTRS_PER_BLK];
 };
 
 struct sbr_svo
@@ -108,9 +124,9 @@ struct sbr_svo
     std::vector<std::pair<sbrv3u, packed_snorm3>> Colours;
 };
 
-typedef sbr_surface (*intersector_fn)(sbrv3, sbrv3, const sbr_svo* const);
-typedef sbrv3 (*normal_fn)(sbrv3, const sbr_svo* const);
-typedef sbrv3 (*colour_fn)(sbrv3, const sbr_svo* const);
+typedef sbr_surface (*intersector_fn)(sbrv3, sbrv3, const sbr_svo* const, const void* const);
+typedef sbrv3 (*normal_fn)(sbrv3, const sbr_svo* const, const void* const);
+typedef sbrv3 (*colour_fn)(sbrv3, const sbr_svo* const, const void* const);
 
 
 extern "C" void
@@ -130,12 +146,21 @@ extern "C" sbr_svo*
 SBR_ImportGLBFile(uint32_t MaxDepth,
                   const char* const GLTFPath);
 
+#if 0
 extern "C" sbr_svo*
 SBR_CreateScene(u32 ScaleExponent,
                 u32 MaxDepth,
                 intersector_fn Surface,
                 normal_fn NormalFn,
                 colour_fn ColourFn);
+#endif
+
+extern "C" sbr_svo*
+SBR_CreateScene(uint32_t ScaleExp,
+                uint32_t MaxDepth,
+                shape_sampler* SurfaceFn,
+                data_sampler* NormalFn,
+                data_sampler* ColourFn);
 
 extern "C" void
 OutputSvoToFile(const sbr_svo* const Svo, FILE* FileOut);

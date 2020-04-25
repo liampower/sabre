@@ -38,8 +38,6 @@ struct node_ref
 };
 
 
-std::vector<std::pair<sbrv3u, packed_snorm3>> DEBUGLeafKeys;
-
 
 static inline u32
 CountSetBits(u32 Msk)
@@ -170,7 +168,7 @@ GetChildCount(svo_node* Parent)
 static inline int
 GetFreeSlotCount(svo_block* const Blk)
 {
-    return (int)SVO_NODES_PER_BLK - (int)Blk->NextFreeSlot;
+    return (int)SBR_NODES_PER_BLK - (int)Blk->NextFreeSlot;
 }
 
 
@@ -271,14 +269,14 @@ GetNodeChild(node_ref ParentRef, svo_oct ChildOct)
         FirstChildIndex = FarPtr->NodeOffset;
 
         i32 BlksFromParent = (i32)FarPtr->BlkIndex - (i32)ParentRef.Blk->Index;
-        i32 BlksFromFirst = (i32)((FirstChildIndex + ChildOffset) / SVO_NODES_PER_BLK);
+        i32 BlksFromFirst = (i32)((FirstChildIndex + ChildOffset) / SBR_NODES_PER_BLK);
 
         BlksToJump = BlksFromParent + BlksFromFirst;
     }
     else
     {
         FirstChildIndex = ParentRef.Node->ChildPtr & CHILD_PTR_MSK;
-        i32 BlksFromFirst = (i32)((FirstChildIndex + ChildOffset) / SVO_NODES_PER_BLK);
+        i32 BlksFromFirst = (i32)((FirstChildIndex + ChildOffset) / SBR_NODES_PER_BLK);
 
         BlksToJump = BlksFromFirst;
     }
@@ -299,7 +297,7 @@ GetNodeChild(node_ref ParentRef, svo_oct ChildOct)
         }
     }
 
-    u32 ChildIndex = (FirstChildIndex + ChildOffset) % SVO_NODES_PER_BLK;
+    u32 ChildIndex = (FirstChildIndex + ChildOffset) % SBR_NODES_PER_BLK;
 
     return node_ref{ ChildBlk, &ChildBlk->Entries[ChildIndex] };
 }
@@ -309,7 +307,7 @@ static sbr_far_ptr*
 AllocateFarPtr(svo_block* const ContainingBlk)
 {
     usize NextFarPtrSlot = ContainingBlk->NextFarPtrSlot;
-    assert(NextFarPtrSlot < SVO_FAR_PTRS_PER_BLK);
+    assert(NextFarPtrSlot < SBR_FAR_PTRS_PER_BLK);
     sbr_far_ptr* Ptr = &ContainingBlk->FarPtrs[NextFarPtrSlot];
     ++ContainingBlk->NextFarPtrSlot;
 
@@ -438,7 +436,16 @@ AllocateNode(svo_block* const Blk)
 }
 
 static void
-BuildSubOctreeRecursive(svo_node* Parent, sbr_svo* Tree, svo_oct RootOct, u32 Depth, u32 Scale, svo_block* ParentBlk, sbrv3 Centre, intersector_fn SurfaceFn, normal_fn NormalFn, colour_fn ColourFn)
+BuildSubOctreeRecursive(svo_node* Parent,
+        sbr_svo* Tree,
+        svo_oct RootOct,
+        u32 Depth,
+        u32 Scale,
+        svo_block* ParentBlk,
+        sbrv3 Centre,
+        shape_sampler* ShapeSampler,
+        data_sampler* NormalSampler,
+        data_sampler* ColourSampler)
 {
     struct node_child
     {
@@ -467,8 +474,8 @@ BuildSubOctreeRecursive(svo_node* Parent, sbr_svo* Tree, svo_oct RootOct, u32 De
         sbrv3 OctMin = (OctCentre - sbrv3(Radius)) * Tree->Bias.InvScale;
         sbrv3 OctMax = (OctCentre + sbrv3(Radius)) * Tree->Bias.InvScale;
 
-        sbr_surface SurfaceState = SurfaceFn(OctMin, OctMax, Tree);
-        if (SURFACE_INTERSECTED == SurfaceState)
+        bool Intersected = ShapeSampler->SamplerFn(OctMin, OctMax, Tree, ShapeSampler->UserData);
+        if (Intersected)
         {
             // Check if the NEXT depth is less than the tree max
             // depth.
@@ -498,21 +505,12 @@ BuildSubOctreeRecursive(svo_node* Parent, sbr_svo* Tree, svo_oct RootOct, u32 De
             else
             {
                 SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, Parent);
-                sbrv3 VoxelNormal = NormalFn(OctCentre, Tree);
-                sbrv3 VoxelColour = ColourFn(OctCentre, Tree);
+                sbrv3 VoxelNormal = NormalSampler->SamplerFn(OctCentre, Tree, NormalSampler->UserData);
+                sbrv3 VoxelColour = ColourSampler->SamplerFn(OctCentre, Tree, ColourSampler->UserData);
                 
                 Tree->Normals.push_back(std::make_pair(sbrv3u(OctCentre), PackVec3ToSnorm3(VoxelNormal)));
                 Tree->Colours.push_back(std::make_pair(sbrv3u(OctCentre), PackVec3ToSnorm3(VoxelColour)));
             }
-        }
-        else if (SURFACE_INSIDE == SurfaceState)
-        {
-            SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, Parent);
-            sbrv3 VoxelNormal = NormalFn(OctCentre, Tree);
-            sbrv3 VoxelColour = ColourFn(OctCentre, Tree);
-
-            Tree->Normals.push_back(std::make_pair(sbrv3u(OctCentre), PackVec3ToSnorm3(VoxelNormal)));
-            Tree->Colours.push_back(std::make_pair(sbrv3u(OctCentre), PackVec3ToSnorm3(VoxelColour)));
         }
     }
 
@@ -527,18 +525,19 @@ BuildSubOctreeRecursive(svo_node* Parent, sbr_svo* Tree, svo_oct RootOct, u32 De
                                 NextScale,
                                 Child.Blk,
                                 Child.Centre,
-                                SurfaceFn,
-                                NormalFn,
-                                ColourFn);
+                                ShapeSampler,
+                                NormalSampler,
+                                ColourSampler);
     }
 }
 
 extern "C" sbr_svo*
 SBR_CreateScene(uint32_t ScaleExponent,
                 uint32_t MaxDepth,
-                intersector_fn SurfaceFn,
-                normal_fn NormalFn,
-                colour_fn ColourFn)
+                shape_sampler* ShapeSampler,
+                data_sampler* NormalSampler,
+                data_sampler* ColourSampler)
+
 {
     sbr_svo* Tree = (sbr_svo*)calloc(1, sizeof(sbr_svo));
     
@@ -586,9 +585,9 @@ SBR_CreateScene(uint32_t ScaleExponent,
                                 RootScale >> 1,
                                 RootBlk,
                                 RootCentre,
-                                SurfaceFn,
-                                NormalFn,
-                                ColourFn);
+                                ShapeSampler,
+                                NormalSampler,
+                                ColourSampler);
 
         return Tree;
     }
@@ -1203,4 +1202,3 @@ GetSvoDepth(const sbr_svo* const Svo)
 {
     return Svo->MaxDepth;
 }
-

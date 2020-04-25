@@ -198,8 +198,8 @@ SetUniformData(const sbr_svo* const Tree, sbr_render_data* const RenderData)
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "MaxDepthUniform"), Tree->MaxDepth);
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "ScaleExponentUniform"), Tree->ScaleExponent);
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "BlockCountUniform"), Tree->UsedBlockCount);
-    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "EntriesPerBlockUniform"), SVO_NODES_PER_BLK);
-    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "FarPtrsPerBlockUniform"), SVO_FAR_PTRS_PER_BLK);
+    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "EntriesPerBlockUniform"), SBR_NODES_PER_BLK);
+    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "FarPtrsPerBlockUniform"), SBR_FAR_PTRS_PER_BLK);
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "BiasUniform"), Tree->Bias.Scale);
     glUniform1f(glGetUniformLocation(RenderData->RenderShader, "InvBiasUniform"), Tree->Bias.InvScale);
     glUniform1i(glGetUniformLocation(RenderData->RenderShader, "MapDataUniform"), RenderData->MapTexture);
@@ -304,20 +304,24 @@ UploadLeafDataSparse(std::vector<std::pair<sbrv3u, u32>> Data, int AttachmentInd
 
         glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA8_SNORM, 2048, 2048, 2048);
 
-        int MaxTextureSize;
+        gl_int MaxTextureSize;
         glGetIntegerv(GL_MAX_SPARSE_3D_TEXTURE_SIZE_ARB, &MaxTextureSize);
-        u64 MaxCellCount = ((u64)MaxTextureSize*MaxTextureSize*MaxTextureSize);
-        MaxCellCount /= (32*32*16);
+
+        size_t MaxCellCount = ((size_t)MaxTextureSize*(size_t)MaxTextureSize*(size_t)MaxTextureSize);
+        MaxCellCount /= ((size_t)PageSizeX*(size_t)PageSizeY*(size_t)PageSizeZ);
+
         printf("Max Pages: %zu\n", MaxCellCount);
 
-        int CellCount = 0;
+        size_t CellCount = 0;
+        //MaxCellCount = 1024;
         for (auto It = Pages.begin(); It != Pages.end(); ++It)
         {
             if (CellCount == MaxCellCount) break;
+
             auto Element = *It;
-            gl_int PageX = Element.first.X*PageSizeX;
-            gl_int PageY = Element.first.Y*PageSizeY;
-            gl_int PageZ = Element.first.Z*PageSizeZ;
+            gl_int PageX = (gl_int)Element.first.X*PageSizeX;
+            gl_int PageY = (gl_int)Element.first.Y*PageSizeY;
+            gl_int PageZ = (gl_int)Element.first.Z*PageSizeZ;
 
             // Mark the page containing this point as backed by physical
             // memory.
@@ -368,11 +372,11 @@ UploadOctreeBlockData(const sbr_svo* const Svo)
 
     if (SvoBuffer && FarPtrBuffer)
     {
-        usize SvoBlockDataSize = sizeof(svo_node) * SVO_NODES_PER_BLK;
+        usize SvoBlockDataSize = sizeof(svo_node) * SBR_NODES_PER_BLK;
         // TODO(Liam): Waste here on the last block
         usize MaxSvoDataSize = SvoBlockDataSize * Svo->UsedBlockCount;
 
-        usize FarPtrBlockDataSize = sizeof(sbr_far_ptr) * SVO_FAR_PTRS_PER_BLK;
+        usize FarPtrBlockDataSize = sizeof(sbr_far_ptr) * SBR_FAR_PTRS_PER_BLK;
         usize MaxFarPtrDataSize = FarPtrBlockDataSize * Svo->UsedBlockCount;
 
         // Allocate space for the far ptr buffer
@@ -401,8 +405,8 @@ UploadOctreeBlockData(const sbr_svo* const Svo)
             memcpy(GPUSvoBuffer + NextSvoDataOffset, CurrentBlk->Entries, CurrentBlk->NextFreeSlot * sizeof(svo_node));
             NextSvoDataOffset += CurrentBlk->NextFreeSlot;
 
-            memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SVO_FAR_PTRS_PER_BLK * sizeof(sbr_far_ptr)); 
-            NextFarPtrDataOffset += SVO_FAR_PTRS_PER_BLK;
+            memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SBR_FAR_PTRS_PER_BLK * sizeof(sbr_far_ptr)); 
+            NextFarPtrDataOffset += SBR_FAR_PTRS_PER_BLK;
 
             CurrentBlk = CurrentBlk->Next;
         }
@@ -541,11 +545,11 @@ SBR_DeleteRenderData(sbr_render_data* RenderData)
 extern "C" void
 SBR_UpdateRenderData(const sbr_svo* const Svo, sbr_render_data* const RenderDataOut)
 {
-    usize SvoBlockDataSize = sizeof(svo_node) * SVO_NODES_PER_BLK;
+    usize SvoBlockDataSize = sizeof(svo_node) * SBR_NODES_PER_BLK;
     // TODO(Liam): Waste here on the last block
     usize MaxSvoDataSize = SvoBlockDataSize * Svo->UsedBlockCount;
 
-    usize FarPtrBlockDataSize = sizeof(sbr_far_ptr) * SVO_FAR_PTRS_PER_BLK;
+    usize FarPtrBlockDataSize = sizeof(sbr_far_ptr) * SBR_FAR_PTRS_PER_BLK;
     usize MaxFarPtrDataSize = FarPtrBlockDataSize * Svo->UsedBlockCount;
 
     // Allocate space for the far ptr buffer
@@ -573,8 +577,8 @@ SBR_UpdateRenderData(const sbr_svo* const Svo, sbr_render_data* const RenderData
         memcpy(GPUSvoBuffer + NextSvoDataOffset, CurrentBlk->Entries, CurrentBlk->NextFreeSlot * sizeof(svo_node));
         NextSvoDataOffset += CurrentBlk->NextFreeSlot;
 
-        memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SVO_FAR_PTRS_PER_BLK * sizeof(sbr_far_ptr)); 
-        NextFarPtrDataOffset += SVO_FAR_PTRS_PER_BLK;
+        memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SBR_FAR_PTRS_PER_BLK * sizeof(sbr_far_ptr)); 
+        NextFarPtrDataOffset += SBR_FAR_PTRS_PER_BLK;
 
         CurrentBlk = CurrentBlk->Next;
     }

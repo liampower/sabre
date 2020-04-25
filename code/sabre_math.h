@@ -338,6 +338,18 @@ Max(float A, float B)
     return (A > B) ? A : B;
 }
 
+static inline uint32_t
+Min(uint32_t A, uint32_t B)
+{
+    return (A > B) ? B : A;
+}
+
+static inline uint32_t
+Max(uint32_t A, uint32_t B)
+{
+    return (A > B) ? A : B;
+}
+
 
 static inline sbrv3
 Min(sbrv3 A, sbrv3 B)
@@ -355,6 +367,30 @@ static inline sbrv3
 Max(sbrv3 A, sbrv3 B)
 {
     sbrv3 Out;
+
+    Out.X = Max(A.X, B.X);
+    Out.Y = Max(A.Y, B.Y);
+    Out.Z = Max(A.Z, B.Z);
+
+    return Out;
+}
+
+static inline sbrv3u
+Min(sbrv3u A, sbrv3u B)
+{
+    sbrv3u Out;
+
+    Out.X = Min(A.X, B.X);
+    Out.Y = Min(A.Y, B.Y);
+    Out.Z = Min(A.Z, B.Z);
+
+    return Out;
+}
+
+static inline sbrv3u
+Max(sbrv3u A, sbrv3u B)
+{
+    sbrv3u Out;
 
     Out.X = Max(A.X, B.X);
     Out.Y = Max(A.Y, B.Y);

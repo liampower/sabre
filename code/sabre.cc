@@ -1,3 +1,6 @@
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+
 #include <imgui/imgui.h>
 #include <imgui/imgui_impl_glfw.h>
 #include <imgui/imgui_impl_opengl3.h>
@@ -7,6 +10,7 @@
 #include <stdint.h>
 #include <assert.h>
 #include <vector>
+#include <string>
 
 #include <glad/glad.h>
 #include <glfw/glfw3.h>
@@ -17,7 +21,7 @@
 #include "sabre_data.h"
 #include "sabre_render.h"
 
-static constexpr u32 DEMO_MAX_TREE_DEPTH = 8;
+static constexpr u32 DEMO_MAX_TREE_DEPTH = 10;
 static constexpr u32 DEMO_SCALE_EXPONENT = 5;
 
 static constexpr u32 DisplayWidth = 1280;
@@ -67,8 +71,8 @@ OutputGraphicsDeviceInfo(void)
 // max corners.
 //
 // Tree parameter ignored here.
-static sbr_surface
-CubeSphereIntersection(sbrv3 Min, sbrv3 Max, const sbr_svo* const)
+static bool
+CubeSphereIntersection(sbrv3 Min, sbrv3 Max, const sbr_svo* const, const void* const)
 {
     const sbrv3 S = sbrv3(16);
     const f32 R = 8;
@@ -85,16 +89,12 @@ CubeSphereIntersection(sbrv3 Min, sbrv3 Max, const sbr_svo* const)
     if (S.Z < Min.Z) DistanceSqToCube -= Squared(S.Z - Min.Z);
     else if (S.Z > Max.Z) DistanceSqToCube -= Squared(S.Z - Max.Z);
 
-    if (DistanceSqToCube >= 0)
-    {
-        return SURFACE_INTERSECTED;
-    }
-    else return SURFACE_OUTSIDE;
+    return DistanceSqToCube >= 0;
 }
 
 
 static inline sbrv3
-SphereNormal(sbrv3 C, const sbr_svo* const)
+SphereNormal(sbrv3 C, const sbr_svo* const, const void* const)
 {
     const sbrv3 S = sbrv3(16);
 
@@ -104,7 +104,7 @@ SphereNormal(sbrv3 C, const sbr_svo* const)
 }
 
 static inline sbrv3
-SphereColour(sbrv3 C, const sbr_svo* const)
+SphereColour(sbrv3 C, const sbr_svo* const, const void* const)
 {
     return sbrv3(1, 0, 0);
 }
@@ -113,11 +113,15 @@ SphereColour(sbrv3 C, const sbr_svo* const)
 static inline sbr_svo*
 CreateCubeSphereTestScene(void)
 {
+    shape_sampler ShapeSampler = shape_sampler{ nullptr, &CubeSphereIntersection };
+    data_sampler NormalSampler = data_sampler{ nullptr, &SphereNormal };
+    data_sampler ColourSampler = data_sampler{ nullptr, &SphereColour };
+
     sbr_svo* WorldSvo = SBR_CreateScene(DEMO_SCALE_EXPONENT,
                                     DEMO_MAX_TREE_DEPTH,
-                                    &CubeSphereIntersection,
-                                    &SphereNormal,
-                                    &SphereColour);
+                                    &ShapeSampler,
+                                    &NormalSampler,
+                                    &ColourSampler);
 
     SBR_InsertVoxel(WorldSvo, sbrv3(0, 0, 0), 16);
     //InsertVoxel(WorldSvo, sbrv3(0, 17, 0), 16);
@@ -169,14 +173,12 @@ InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, sbr_svo* cons
 {
     // Unproject the MouseX & Y positions into worldspace.
     
-    //sbrv3 DeleteP = (Cam.Position - sbrv3(256, 256, 512)) + sbrv3((f32)MouseX, (f32)MouseY, 0);
     sbrv3 D = sbrv3(f32(512) / 2.0f, f32(512) / 2.0f, 0.0f);
     
     // Origin of the screen plane in world-space
     sbrv3 WorldVOrigin = Cam.Position - sbrv3(256, 256, 512);
 
     D = WorldVOrigin + D;
-    //D.X *= 1280.0/720.0;
 
     sbrv3 R = Normalize(D - Cam.Position);
 
@@ -239,12 +241,14 @@ DeleteVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, sbr_svo* cons
 }
 
 
+
 extern int
 main(int ArgCount, const char** const Args)
 {
     if (GLFW_FALSE == glfwInit())
     {
         fprintf(stderr, "Failed to initialise GLFW\n");
+        MessageBox(NULL, "Failed to initialise GLFW\n", "Error", MB_ICONWARNING);
 
         return EXIT_FAILURE;
     }
@@ -262,11 +266,21 @@ main(int ArgCount, const char** const Args)
     if (0 == gladLoadGL())
     {
         fprintf(stderr, "Failed to initialise GLAD\n");
+        MessageBox(NULL, "Failed to initialise OpenGL context, make sure you are running this application with up-to-date graphics drivers", "Error", MB_ICONWARNING);
+        glfwTerminate();
+        return EXIT_FAILURE;
+    }
+
+    if (GLFW_FALSE == glfwExtensionSupported("GL_ARB_sparse_textur"))
+    {
+        fprintf(stderr, "Failed to initialise application\n");
+        MessageBox(NULL, "The application cannot start because your system does not support OpenGL sparse textures (ensure you are running this application with up-to-date graphics drivers)", "Error", MB_ICONWARNING);
         glfwTerminate();
         return EXIT_FAILURE;
     }
 
     OutputGraphicsDeviceInfo();
+
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
@@ -288,13 +302,14 @@ main(int ArgCount, const char** const Args)
     glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 #if 1
-    sbr_svo* WorldSvo = CreateImportedMeshTestScene("data/Showcase/bunny.glb");
+    sbr_svo* WorldSvo = CreateImportedMeshTestScene("data/Showcase/serapis.glb");
 #else
     svo* WorldSvo = CreateCubeSphereTestScene();
 #endif
     if (nullptr == WorldSvo)
     {
         fprintf(stderr, "Failed to load World SVO\n");
+        MessageBox(NULL, "Failed to create world scene\n", "Error", MB_ICONWARNING);
         glfwTerminate();
         
         return EXIT_FAILURE;
@@ -316,7 +331,9 @@ main(int ArgCount, const char** const Args)
     if (nullptr == RenderData)
     {
         fprintf(stderr, "Failed to initialise render data\n");
+        MessageBox(NULL, "Failed to initialise render data\n", "Error", MB_ICONWARNING);
 
+        SBR_DeleteScene(WorldSvo);
         glfwTerminate();
         return EXIT_FAILURE;
     }
@@ -343,6 +360,8 @@ main(int ArgCount, const char** const Args)
     f64 LastMouseLTime = 0.0;
     f64 LastMouseRTime = 0.0;
 
+    /* int k = 0x7fffffff;
+      k += ArgCount;*/
     while (GLFW_FALSE == glfwWindowShouldClose(Window))
     {
         FrameStartTime = glfwGetTime();
