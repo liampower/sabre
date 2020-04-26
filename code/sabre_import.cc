@@ -10,6 +10,7 @@
 #include <assert.h>
 #include <math.h>
 #include <unordered_set>
+#include <set>
 #include <unordered_map>
 #include <stack>
 #include <deque>
@@ -402,6 +403,7 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
 static std::unordered_set<morton_key, u64_hash> GlobalTriangleIndex;
 static std::unordered_map<morton_key, sbrv3> GlobalNormalIndex;
 static std::unordered_map<morton_key, sbrv3> GlobalColourIndex;
+static std::set<morton_key> Omsk;
 
 static inline sbrv3
 NormalSampler(sbrv3 C, const sbr_svo* const, const void* const UserData)
@@ -420,7 +422,8 @@ NormalSampler(sbrv3 C, const sbr_svo* const, const void* const UserData)
         return sbrv3(1, 1, 1);
     }*/
     f32 A = C.X;
-    return GlobalNormalIndex.at(MortonCode);
+    std::unordered_map<morton_key, sbrv3>** Index = (std::unordered_map<morton_key, sbrv3>**)UserData;
+    return (*Index)->at(MortonCode);
 }
 
 static inline sbrv3
@@ -594,7 +597,8 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
         TriVerts[2] = _mm_set_ps(0.0f, T.V2.Z, T.V2.Y, T.V2.X);
 
         morton_key RootCode = EncodeMorton3(sbrv3u(ParentCentreP));
-        InsertBitmapElement(sbrv3u(ParentCentreP), BM);
+        //InsertBitmapElement(sbrv3u(ParentCentreP), BM);
+        Omsk.insert(RootCode);
 
         while (false == Stack.empty())
         {
@@ -615,7 +619,8 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
                 if (TriangleAABBIntersection(CentreM, RadiusM, TriVerts))
                 {
                     morton_key ChildVoxelCode = EncodeMorton3(sbrv3u(Centre)); 
-                    InsertBitmapElement(sbrv3u(Centre), BM);
+                    //InsertBitmapElement(sbrv3u(Centre), BM);
+                    Omsk.insert(ChildVoxelCode);
 
                     //InsertIndexEntry(sbrv3u(Centre), Triangles[TriIndex].Normal, AttribIndex);
                     if (CurrentCtx.Depth + 1 >= MaxDepth)
@@ -660,8 +665,10 @@ IntersectorFunction(sbrv3 vMin, sbrv3 vMax, const sbr_svo* const Tree, const voi
 
     const bit_map* const Bitmap = (const bit_map* const)UserData;
 
+    morton_key MortonCode = EncodeMorton3(sbrv3u(Centre));
+    return (Omsk.find(MortonCode) != Omsk.end());
 
-    return LookupBitmapElement(Centre, Bitmap);
+    //return LookupBitmapElement(Centre, Bitmap);
 }
 
 static inline f32
@@ -756,8 +763,10 @@ SBR_ImportGLBFile(uint32_t MaxDepth, const char* const GLTFPath)
         //GlobalTriangleIndex.reserve(TriangleData->TriangleCount);
         BuildTriangleIndex(MaxDepth, ScaleExponent, TriangleData, GlobalTriangleIndex, BM);
 
+        auto A = &GlobalNormalIndex;
+
         shape_sampler ShapeS = shape_sampler{ BM, IntersectorFunction };
-        data_sampler NormalS = data_sampler{ &GlobalNormalIndex, NormalSampler };
+        data_sampler NormalS = data_sampler{ &A, NormalSampler };
         data_sampler ColourS = data_sampler{ &GlobalColourIndex, ColourSampler };
         bool C = LookupBitmapElement(sbrv3u(249, 93, 165), BM);
 

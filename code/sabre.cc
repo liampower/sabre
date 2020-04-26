@@ -357,6 +357,9 @@ main(int ArgCount, const char** const Args)
         FrameStartTime = glfwGetTime();
         glfwPollEvents();
 
+        glClearColor(0.02f, 0.02f, 0.02f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
@@ -368,8 +371,15 @@ main(int ArgCount, const char** const Args)
 
         if (ShowMenu)
         {
+            if (! ImGui::Begin("Sabre Viewer Demo"))
+            {
+                ImGui::End();
+            }
             static int Lod;
-            ImGui::InputInt("input int", &Lod);
+            ImGui::SliderInt("Level of Detail", &Lod, 0, 10);
+            ImGui::TextUnformatted("Higher levels will take longer to generate");
+            ImGui::Separator();
+
             if (ImGui::Button("Load rabbit scene"))
             {
                 WorldSvo = SBR_ImportGLBFile(Lod, "data/Showcase/bunny.glb");
@@ -418,6 +428,7 @@ main(int ArgCount, const char** const Args)
                     return EXIT_FAILURE;
                 }
             }
+            ImGui::End();
         }
 
         if (WorldSvo)
@@ -428,8 +439,6 @@ main(int ArgCount, const char** const Args)
                 ImGui::EndMainMenuBar();
             }
 
-            glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
             if (glfwGetKey(Window, GLFW_KEY_Q))
             {
