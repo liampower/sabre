@@ -247,7 +247,6 @@ GetNodeChildOffset(svo_node* Parent, svo_oct ChildOct)
     return ChildOffset;
 }
 
-
 static node_ref
 GetNodeChild(node_ref ParentRef, svo_oct ChildOct)
 {
@@ -505,6 +504,7 @@ BuildSubOctreeRecursive(svo_node* Parent,
             else
             {
                 SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, Parent);
+
                 sbrv3 VoxelNormal = NormalSampler->SamplerFn(OctCentre, Tree, NormalSampler->UserData);
                 sbrv3 VoxelColour = ColourSampler->SamplerFn(OctCentre, Tree, ColourSampler->UserData);
                 
@@ -1179,16 +1179,19 @@ LoadSvoFromFile(FILE* FileIn)
 extern "C" void
 SBR_DeleteScene(sbr_svo* Tree)
 {
-    svo_block* CurrentBlk = Tree->RootBlock;
-
-    while (CurrentBlk)
+    if (nullptr != Tree)
     {
-        svo_block* NextBlk = CurrentBlk->Next;
-        free(CurrentBlk);
-        CurrentBlk = NextBlk;
-    }
+        svo_block* CurrentBlk = Tree->RootBlock;
 
-    free(Tree);
+        while (CurrentBlk)
+        {
+            svo_block* NextBlk = CurrentBlk->Next;
+            free(CurrentBlk);
+            CurrentBlk = NextBlk;
+        }
+
+        free(Tree);
+    }
 }
 
 extern "C" unsigned int

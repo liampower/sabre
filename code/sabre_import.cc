@@ -45,7 +45,7 @@ EncodeMorton3(sbrv3u V)
     return (Part1By2((uint64_t)V.Z) << 2) + (Part1By2((uint64_t)V.Y) << 1) + Part1By2((uint64_t)V.X);
 }
 
-static constexpr usize MSK_DIM = 1024U;
+static constexpr usize MSK_DIM = 256U;
 
 
 struct bit_map
@@ -547,7 +547,7 @@ NextPowerOf2Exponent(u32 X)
 { 
     return 32U - (u32)__builtin_clz(X - 1U);
 }  
-   
+
 
 static void
 BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unordered_set<morton_key, u64_hash>& IndexOut, bit_map* BM)
@@ -738,6 +738,7 @@ SBR_ImportGLBFile(uint32_t MaxDepth, const char* const GLTFPath)
         if (nullptr == TriangleData)
         {
             fprintf(stderr, "Failed to load triangle data");
+            MessageBox(NULL, "Failed to load file (missing data?)", "Error", MB_ICONWARNING);
             cgltf_free(Data);
 
             return nullptr;

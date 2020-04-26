@@ -1,6 +1,6 @@
 Compiler = clang
 DisabledWarnings = -Wno-unused-parameter -Wno-c++98-compat -Wno-gnu-anonymous-struct -Wno-old-style-cast -Wno-unused-function
-Optimisation = -static -Os
+Optimisation = -g -gcodeview
 CompilerFlags = -isystem include -Wall -Wextra -pedantic -Weverything -Wpadded -std=c++14 -mavx2 $Optimisation -fno-omit-frame-pointer -fno-exceptions -fno-rtti -ffast-math $DisabledWarnings
 Linker = link -nologo
 Libs = imgui.lib glad.lib glfw3.lib opengl32.lib kernel32.lib user32.lib gdi32.lib shell32.lib

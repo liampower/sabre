@@ -83,6 +83,7 @@ struct svo_block
     svo_block*  Next;
     svo_node    Entries[SBR_NODES_PER_BLK];
     sbr_far_ptr FarPtrs[SBR_FAR_PTRS_PER_BLK];
+    uint32_t    LeafDataPtrs[8192];
 };
 
 struct sbr_svo
