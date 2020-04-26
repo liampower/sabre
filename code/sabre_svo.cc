@@ -899,8 +899,122 @@ GetNextOctant(float tMax, sbrv3 tMaxV, svo_oct CurrentOct)
     return svo_oct(CurrentOct ^ XorMsk);
 }
 
-static sbrv3
-GetVoxelPosition(sbrv3 RayOrigin, sbrv3 RayDir, sbr_svo* const Tree)
+extern "C" sbrv3
+SBR_GetNearestFreeSlot(sbrv3 RayOrigin, sbrv3 RayDir, const sbr_svo* const Tree)
+{
+    u32 MaxScale = GetTreeMaxScaleBiased(Tree);
+    u32 LeafScale = GetTreeMinScaleBiased(Tree) << 1u;
+
+    sbrv3 RaySgn = Sign(RayDir);
+    st_frame Stack[64 + 1];
+    uint Scale = MaxScale;
+    sbrv3 RayInvDir = 1.0f / RayDir;
+    sbrv3 RootMin = sbrv3(0);
+    sbrv3 RootMax = sbrv3(Scale) * Tree->Bias.InvScale;
+    const float BiasScale = (1.0f / Tree->Bias.InvScale);
+    sbrv3 LastCentre = sbrv3(0);
+
+    ray_intersection CurrentIntersection = ComputeRayBoxIntersection(RayOrigin, RayInvDir, RootMin, RootMax);
+    if (CurrentIntersection.tMin <= CurrentIntersection.tMax || true)    // Raycast to find voxel position
+    {
+        sbrv3 RayP = RayOrigin + CurrentIntersection.tMin * RayDir;
+        sbrv3 ParentCentre = sbrv3(Scale >> 1);
+        svo_oct CurrentOct = GetOctantForPosition(RayP, ParentCentre*Tree->Bias.InvScale);
+        node_ref ParentNodeRef = GetTreeRootNodeRef(Tree);
+        uint CurrentDepth = 1;
+        Scale >>= 1;
+
+        Stack[CurrentDepth] = { ParentNodeRef, Scale, ParentCentre };
+
+        for (int Step = 0; Step < 64; ++Step)
+        {
+            sbrv3 Rad = sbrv3(Scale >> 1);
+            sbrv3 NodeCentre = GetOctantCentre(CurrentOct, Scale, ParentCentre);
+            sbrv3 NodeMin = (NodeCentre - Rad) * Tree->Bias.InvScale;
+            sbrv3 NodeMax = (NodeCentre + Rad) * Tree->Bias.InvScale;
+
+            CurrentIntersection = ComputeRayBoxIntersection(RayOrigin, RayInvDir, NodeMin, NodeMax);
+
+            if (CurrentIntersection.tMin <= CurrentIntersection.tMax)
+            {
+                if (IsOctantOccupied(ParentNodeRef.Node, CurrentOct))
+                {
+                    // {{{ 
+                    if (IsOctantLeaf(ParentNodeRef.Node, CurrentOct))
+                    {
+                        // Leaf hit; return nodecentre.
+                        // Return centre of the *previous* oct we visited
+                        //return NodeCentre * Tree->Bias.InvScale;
+                        return LastCentre * Tree->Bias.InvScale;
+                    }
+                    else
+                    {
+                        Stack[CurrentDepth] = { ParentNodeRef, Scale, ParentCentre };
+
+                        ParentNodeRef = GetNodeChild(ParentNodeRef, CurrentOct);
+                        CurrentOct = GetOctantForPosition(RayP, NodeCentre*Tree->Bias.InvScale);
+                        ParentCentre = NodeCentre;
+                        Scale >>= 1;
+                        ++CurrentDepth;
+
+                        continue;
+                    }
+                    // }}}
+                }
+
+                RayP = RayOrigin + (CurrentIntersection.tMax + 0.015625f) * RayDir;
+                const svo_oct NextOct = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
+
+                if (IsAdvanceValid(NextOct, CurrentOct, RaySgn))
+                {
+                    CurrentOct = NextOct;
+                    LastCentre = NodeCentre;
+                }
+                else
+                {
+                    // {{{ 
+                    // Determined that NodeCentre is never < 0
+                    sbrv3u NodeCentreBits = sbrv3u(NodeCentre);
+                    sbrv3u RayPBits = sbrv3u(RayP * BiasScale);
+
+                    // NOTE(Liam): It is **okay** to have negative values here
+                    // because the HDB will end up being equal to ScaleExponentUniform.
+                    //
+                    // Find the highest differing bit
+                    sbrv3u HDB = FindHighestSetBit(NodeCentreBits ^ RayPBits);
+                    sbrv3b B = LessThan(HDB, sbrv3u(Tree->ScaleExponent + Tree->Bias.Scale));
+
+                    uint M = HorzMax(Select(HDB, sbrv3u(0), B));
+
+                    uint NextDepth = ((Tree->ScaleExponent + Tree->Bias.Scale) - M);
+
+                    if (NextDepth <= 64 && NextDepth < CurrentDepth)
+                    {
+                        CurrentDepth = NextDepth;
+                        Scale = Stack[CurrentDepth].Scale;
+                        ParentCentre = Stack[CurrentDepth].ParentCentre;
+                        ParentNodeRef = Stack[CurrentDepth].Node;
+
+                        CurrentOct = GetOctantForPosition(RayP, ParentCentre*Tree->Bias.InvScale);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                    /// }}}
+                }
+            }
+        }
+
+    }
+
+    printf("Position not found\n");
+
+    return sbrv3(FLT_MAX);
+}
+
+extern "C" sbrv3
+SBR_GetNearestLeafSlot(sbrv3 RayOrigin, sbrv3 RayDir, const sbr_svo* const Tree)
 {
     u32 MaxScale = GetTreeMaxScaleBiased(Tree);
     u32 LeafScale = GetTreeMinScaleBiased(Tree) << 1u;
@@ -942,7 +1056,7 @@ GetVoxelPosition(sbrv3 RayOrigin, sbrv3 RayDir, sbr_svo* const Tree)
                     if (IsOctantLeaf(ParentNodeRef.Node, CurrentOct))
                     {
                         // Leaf hit; return nodecentre.
-                        return NodeCentre;
+                        return NodeCentre * Tree->Bias.InvScale;
                     }
                     else
                     {
@@ -1009,10 +1123,10 @@ GetVoxelPosition(sbrv3 RayOrigin, sbrv3 RayDir, sbr_svo* const Tree)
     return sbrv3(FLT_MAX);
 }
 
-extern "C" void
+/*extern "C" void
 DeleteVoxel2(sbrv3 RayOrigin, sbrv3 RayDir, sbr_svo* const Tree)
 {
-    sbrv3 DeletePos = GetVoxelPosition(RayOrigin, RayDir, Tree) * Tree->Bias.InvScale;
+    sbrv3 DeletePos = GetVoxelPosition(RayOrigin, RayDir, Tree);
     printf("Position found: "); DEBUGPrintVec3(DeletePos); printf("\n");
 
     if (DeletePos.X == FLT_MAX)
@@ -1021,9 +1135,9 @@ DeleteVoxel2(sbrv3 RayOrigin, sbrv3 RayDir, sbr_svo* const Tree)
     }
 
     SBR_DeleteVoxel(Tree, DeletePos);
-}
+}*/
 
-extern "C" void
+/*extern "C" void
 InsertVoxel2(sbrv3 RayOrigin, sbrv3 RayDir, sbr_svo* const Tree)
 {
     sbrv3 InsertPos = GetVoxelPosition(RayOrigin, RayDir, Tree) * Tree->Bias.InvScale;
@@ -1034,7 +1148,7 @@ InsertVoxel2(sbrv3 RayOrigin, sbrv3 RayDir, sbr_svo* const Tree)
     }
 
     SBR_InsertVoxel(Tree, InsertPos, 8);
-}
+}*/
 
 extern "C" void
 SBR_DeleteVoxel(sbr_svo* Tree, sbrv3 VoxelP)

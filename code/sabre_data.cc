@@ -323,12 +323,11 @@ vec3 Raycast(in ray R)
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
                         vec3 N = texelFetch(MapDataUniform, ivec3(NodeCentre.xyz), 0).xyz;
-                        if (N == vec3(1)) return vec3(1, 0, 0);
-                        //vec3 C = texelFetch(ColourDataUniform, ivec3(NodeCentre.xyz), 0).bgr;
+                        vec3 C = texelFetch(ColourDataUniform, ivec3(NodeCentre.xyz), 0).bgr;
                         
                         vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(32, 0, 0));
 
-                        return vec3(dot(Ldir, N));
+                        return vec3(dot(Ldir, N)) * C;
 
                     }
                     else

@@ -206,8 +206,8 @@ SetUniformData(const sbr_svo* const Tree, sbr_render_data* const RenderData)
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "FarPtrsPerBlockUniform"), SBR_FAR_PTRS_PER_BLK);
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "BiasUniform"), Tree->Bias.Scale);
     glUniform1f(glGetUniformLocation(RenderData->RenderShader, "InvBiasUniform"), Tree->Bias.InvScale);
-    glUniform1i(glGetUniformLocation(RenderData->RenderShader, "MapDataUniform"), RenderData->MapTexture);
-    glUniform1i(glGetUniformLocation(RenderData->RenderShader, "ColourDataUniform"), RenderData->ColourTexture);
+    glUniform1i(glGetUniformLocation(RenderData->RenderShader, "MapDataUniform"), 1);
+    glUniform1i(glGetUniformLocation(RenderData->RenderShader, "ColourDataUniform"), 0);
 
     printf("Inv Bias: %f\n", (f64)Tree->Bias.InvScale);
     printf("Bias Scale: %u\n", 1U << Tree->Bias.Scale);
@@ -372,7 +372,6 @@ UploadLeafDataSparse(std::vector<std::pair<sbrv3u, packed_snorm3>> Data, int Att
     {
         glActiveTexture(GL_TEXTURE0 + AttachmentIndex);
         glBindTexture(GL_TEXTURE_3D, MapTexture);
-        if (AttachmentIndex > 0) return MapTexture;
 
         // Read the page sizes
         gl_int PageSizeX, PageSizeY, PageSizeZ;
@@ -407,6 +406,7 @@ UploadLeafDataSparse(std::vector<std::pair<sbrv3u, packed_snorm3>> Data, int Att
         size_t CellCount = 0;
         for (auto It = Pages.begin(); It != Pages.end(); ++It)
         {
+            // Too many pages; avoid exhausting the GPU memory
             if (CellCount == MaxCellCount) break;
 
             auto Element = *It;
@@ -581,10 +581,16 @@ SBR_CreateRenderData(const sbr_svo* const Tree, const sbr_view_data* const ViewD
     RenderData->CanvasVAO = CanvasBuffers.VAO;
     RenderData->CanvasVBO = CanvasBuffers.VBO;
 
-    RenderData->MapTexture = UploadLeafDataSparse(Tree->Normals, 0);
-    //RenderData->ColourTexture = UploadLeafDataSparse(Tree->Colours, 1);
+    RenderData->ColourTexture = UploadLeafDataSparse(Tree->Colours, 0);
+    RenderData->MapTexture = UploadLeafDataSparse(Tree->Normals, 1);
 
     if (0 == RenderData->MapTexture)
+    {
+        SBR_DeleteRenderData(RenderData);
+        return nullptr;
+    }
+
+    if (0 == RenderData->ColourTexture)
     {
         SBR_DeleteRenderData(RenderData);
         return nullptr;

@@ -410,29 +410,16 @@ NormalSampler(sbrv3 C, const sbr_svo* const, const void* const UserData)
 {
     morton_key MortonCode = EncodeMorton3(sbrv3u(C));
 
-
-    //return sbrv3(1, 1, 1);
-    //return GlobalNormalIndex.at(MortonCode);
-    /*if (GlobalNormalIndex.find(MortonCode) != GlobalNormalIndex.end())
-    {
-        return GlobalNormalIndex.at(MortonCode);
-    }
-    else
-    {
-        return sbrv3(1, 1, 1);
-    }*/
-    f32 A = C.X;
     std::unordered_map<morton_key, sbrv3>** Index = (std::unordered_map<morton_key, sbrv3>**)UserData;
     return (*Index)->at(MortonCode);
 }
 
 static inline sbrv3
-ColourSampler(sbrv3 C, const sbr_svo* const, const void* const UserData)
+ColourSampler(sbrv3 C, const sbr_svo* const, const void* const)
 {
-    morton_key MortonCode = EncodeMorton3(sbrv3u(C));
-
-
-    return sbrv3(1, 1, 1);
+    // Loading mesh colours isn't implemented, however it would
+    // be simple to implement in the same manner as the normals.
+    return Normalize(C);
 }
 
 static tri_buffer*
@@ -626,9 +613,9 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
                     if (CurrentCtx.Depth + 1 >= MaxDepth)
                     {
                         GlobalNormalIndex.insert(std::make_pair(ChildVoxelCode, Tris->Triangles[TriIndex].Normal));
+                        GlobalColourIndex.insert(std::make_pair(ChildVoxelCode, Tris->Triangles[TriIndex].Colour));
                     }
 
-                    //GlobalColourIndex.insert(std::make_pair(ChildVoxelCode, Tris->Triangles[TriIndex].Colour));
 
                     if (CurrentCtx.Depth < MaxDepth)
                     {
@@ -719,7 +706,7 @@ extern "C" sbr_svo*
 SBR_ImportGLBFile(uint32_t MaxDepth, const char* const GLTFPath)
 {
     // TODO error checking
-    bit_map* BM = (bit_map*)calloc(1, sizeof(bit_map));
+    bit_map* BM = nullptr;//(bit_map*)calloc(1, sizeof(bit_map));
 
     /*sbrv3u V = sbrv3u(10, 10, 10);
     sbrv3u V2 = sbrv3u(11, 11, 10);
@@ -768,7 +755,7 @@ SBR_ImportGLBFile(uint32_t MaxDepth, const char* const GLTFPath)
         shape_sampler ShapeS = shape_sampler{ BM, IntersectorFunction };
         data_sampler NormalS = data_sampler{ &A, NormalSampler };
         data_sampler ColourS = data_sampler{ &GlobalColourIndex, ColourSampler };
-        bool C = LookupBitmapElement(sbrv3u(249, 93, 165), BM);
+        //bool C = LookupBitmapElement(sbrv3u(249, 93, 165), BM);
 
         sbr_svo* Svo = SBR_CreateScene(ScaleExponent,
                                    MaxDepth,
@@ -777,7 +764,7 @@ SBR_ImportGLBFile(uint32_t MaxDepth, const char* const GLTFPath)
                                    &ColourS);
 
         free(TriangleData);
-        free(BM);
+        //free(BM);
         cgltf_free(Data);
 
         return Svo;

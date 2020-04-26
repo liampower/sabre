@@ -43,6 +43,12 @@ struct camera
     sbrv3 Position;
 };
 
+struct sphere
+{
+    sbrv3 Centre;
+    float Radius;
+};
+
 
 static void
 HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei Length, const GLchar* Msg, const void*)
@@ -72,10 +78,10 @@ OutputGraphicsDeviceInfo(void)
 //
 // Tree parameter ignored here.
 static bool
-CubeSphereIntersection(sbrv3 Min, sbrv3 Max, const sbr_svo* const, const void* const)
+CubeSphereIntersection(sbrv3 Min, sbrv3 Max, const sbr_svo* const, const void* const UserData)
 {
-    const sbrv3 S = sbrv3(16);
-    const f32 R = 8;
+    const sbrv3 S = ((sphere*)UserData)->Centre;//sbrv3(16);
+    const f32 R = ((sphere*)UserData)->Radius;//8;
 
     f32 DistanceSqToCube = R * R;
 
@@ -94,28 +100,29 @@ CubeSphereIntersection(sbrv3 Min, sbrv3 Max, const sbr_svo* const, const void* c
 
 
 static inline sbrv3
-SphereNormal(sbrv3 C, const sbr_svo* const, const void* const)
+SphereNormal(sbrv3 C, const sbr_svo* const, const void* const UserData)
 {
     const sbrv3 S = sbrv3(16);
+    const sbrv3 SphereCentre = ((sphere*)UserData)->Centre;
 
-    sbrv3 Normal = Normalize(C - S);
-
-    return Normal;
+    return Normalize(C - S);
 }
 
 static inline sbrv3
 SphereColour(sbrv3 C, const sbr_svo* const, const void* const)
 {
-    return sbrv3(1, 0, 0);
+    return sbrv3(1, 0, 1);
 }
 
 
 static inline sbr_svo*
 CreateCubeSphereTestScene(int Lod)
 {
-    shape_sampler ShapeSampler = shape_sampler{ nullptr, &CubeSphereIntersection };
-    data_sampler NormalSampler = data_sampler{ nullptr, &SphereNormal };
-    data_sampler ColourSampler = data_sampler{ nullptr, &SphereColour };
+    sphere Sphere = { sbrv3{16.0f, 16.0f, 16.0f}, 8.0f };
+
+    shape_sampler ShapeSampler = shape_sampler{ &Sphere, &CubeSphereIntersection };
+    data_sampler NormalSampler = data_sampler{ &Sphere, &SphereNormal };
+    data_sampler ColourSampler = data_sampler{ &Sphere, &SphereColour };
 
     sbr_svo* WorldSvo = SBR_CreateScene(DEMO_SCALE_EXPONENT,
                                     Lod,
@@ -165,19 +172,15 @@ CreateLoadedMeshTestScene(const char* const SvoMeshFileName)
     }
 }
 
-extern "C" void
-InsertVoxel2(sbrv3 CastOrigin, sbrv3 Ray, sbr_svo* const Tree);
 
-static void
-InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, sbr_svo* const Svo)
+static sbrv3
+UnprojectViewDirection(const camera& Cam)
 {
     // Unproject the MouseX & Y positions into worldspace.
-    
     sbrv3 D = sbrv3(f32(512) / 2.0f, f32(512) / 2.0f, 0.0f);
     
     // Origin of the screen plane in world-space
     sbrv3 WorldVOrigin = Cam.Position - sbrv3(256, 256, 512);
-
     D = WorldVOrigin + D;
 
     sbrv3 R = Normalize(D - Cam.Position);
@@ -190,44 +193,25 @@ InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, sbr_svo* cons
 
     R = R * CameraMatrix;
 
-    printf("D: "); DEBUGPrintVec3(D); printf("\n");
-    printf("R: "); DEBUGPrintVec3(R); printf("\n");
-
-    InsertVoxel2(Cam.Position, R, Svo);
+    return R;
 }
 
-extern "C" void
-DeleteVoxel2(sbrv3 CastOrigin, sbrv3 Ray, sbr_svo* const Tree);
+static void
+InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, sbr_svo* const Svo)
+{
+    sbrv3 R = UnprojectViewDirection(Cam);
+    sbrv3 VoxelPos = SBR_GetNearestFreeSlot(Cam.Position, R, Svo);
+    SBR_InsertVoxel(Svo, VoxelPos, 1);
+}
+
 
 
 static void
 DeleteVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, sbr_svo* const Svo)
 {
-    // Unproject the MouseX & Y positions into worldspace.
-    
-    //sbrv3 DeleteP = (Cam.Position - sbrv3(256, 256, 512)) + sbrv3((f32)MouseX, (f32)MouseY, 0);
-    sbrv3 D = sbrv3(f32(512) / 2.0f, f32(512) / 2.0f, 0.0f);
-    
-    // Origin of the screen plane in world-space
-    sbrv3 WorldVOrigin = Cam.Position - sbrv3(256, 256, 512);
-
-    D = WorldVOrigin + D;
-    //D.X *= 1280.0/720.0;
-
-    sbrv3 R = Normalize(D - Cam.Position);
-
-    mat3 CameraMatrix = mat3{{
-        { Cam.Right.X, Cam.Right.Y, Cam.Right.Z },
-        { Cam.Up.X, Cam.Up.Y, Cam.Up.Z },
-        { -Cam.Forward.X, -Cam.Forward.Y, -Cam.Forward.Z },
-    }};
-
-    R = R * CameraMatrix;
-
-    printf("D: "); DEBUGPrintVec3(D); printf("\n");
-    printf("R: "); DEBUGPrintVec3(R); printf("\n");
-
-    DeleteVoxel2(Cam.Position, R, Svo);
+    sbrv3 R = UnprojectViewDirection(Cam);
+    sbrv3 VoxelPos = SBR_GetNearestLeafSlot(Cam.Position, R, Svo);
+    SBR_DeleteVoxel(Svo, VoxelPos);
 }
 
 
@@ -352,6 +336,7 @@ main(int ArgCount, const char** const Args)
     f64 LastMouseRTime = 0.0;
 
     bool ShowMenu = true;
+    int Lod = 0;
     while (GLFW_FALSE == glfwWindowShouldClose(Window))
     {
         FrameStartTime = glfwGetTime();
@@ -375,7 +360,7 @@ main(int ArgCount, const char** const Args)
             {
                 ImGui::End();
             }
-            static int Lod;
+
             ImGui::SliderInt("Level of Detail", &Lod, 0, 10);
             ImGui::TextUnformatted("Higher levels will take longer to generate");
             ImGui::Separator();

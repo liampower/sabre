@@ -130,6 +130,12 @@ typedef sbrv3 (*normal_fn)(sbrv3, const sbr_svo* const, const void* const);
 typedef sbrv3 (*colour_fn)(sbrv3, const sbr_svo* const, const void* const);
 
 
+extern "C" sbrv3
+SBR_GetNearestFreeSlot(sbrv3 Pos, sbrv3 Dir, const sbr_svo* const Tree);
+
+extern "C" sbrv3
+SBR_GetNearestLeafSlot(sbrv3 Pos, sbrv3 Dir, const sbr_svo* const Tree);
+
 extern "C" void
 SBR_InsertVoxel(sbr_svo* Tree, sbrv3 P, uint32_t VoxelScale);
 
