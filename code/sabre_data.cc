@@ -229,7 +229,7 @@ vec3 Oct2Cr(in uint Oct)
 struct st_frame
 {
     uint Node;
-    int Scale;
+    uint Scale;
     vec3 ParentCentre;
     uint BlkIndex;
 };
@@ -248,7 +248,7 @@ struct st_frame
 vec3 Raycast(in ray R)
 {
     // Scale up by the tree bias.
-    int Scale = (1 << ScaleExponentUniform) << BiasUniform;
+    uint Scale = (1 << ScaleExponentUniform) << BiasUniform;
 
     const float BiasScale = (1.0 / InvBiasUniform);
 
@@ -271,8 +271,16 @@ vec3 Raycast(in ray R)
         // Ray enters octree --- begin processing
 
 
+        vec3 RayP;//R.Origin;
         // Current position along the ray
-        vec3 RayP = R.Origin + CurrentIntersection.tMin * R.Dir;
+        if (CurrentIntersection.tMin >= 0)
+        {
+            RayP = R.Origin + (CurrentIntersection.tMin * R.Dir);
+        }
+        else
+        {
+            RayP = R.Origin;// + (CurrentIntersection.tMax * R.Dir);
+        }
 
         vec3 ParentCentre = vec3(Scale >> 1);
 
@@ -297,6 +305,7 @@ vec3 Raycast(in ray R)
                                        ParentCentre,
                                        BlkIndex);
 
+        //return Oct2Cr(CurrentOct);
         // Begin stepping along the ray
         for (Step = 0; Step < MAX_STEPS; ++Step)
         {
@@ -310,9 +319,14 @@ vec3 Raycast(in ray R)
             vec3 NodeMin = (NodeCentre - Rad) * InvBiasUniform;
             vec3 NodeMax = (NodeCentre + Rad) * InvBiasUniform;
 
+            //if (Rad == vec3(8)) return vec3(1);
             CurrentIntersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
+            //if (NodeMin == vec3(0)) return vec3(0, 1, 0);
+            //if (NodeMin == vec3(16, 0, 0)) return vec3(0, 1, 0);
+            
+            //if (CurrentIntersection.tMax < 0) return vec3(1, 0, 1);
 
-            if (CurrentIntersection.tMin <= CurrentIntersection.tMax)
+            if (CurrentIntersection.tMin <= CurrentIntersection.tMax && CurrentIntersection.tMax > 0)
             {
                 // Ray hit this voxel
                 
@@ -387,12 +401,14 @@ vec3 Raycast(in ray R)
                     }
                     else
                     {
+                        return vec3(0, 1, 0);
                         break;
                     }
                 }
             }
             else
             {
+                return vec3(1);
                 break;
             }
         }
@@ -403,6 +419,7 @@ vec3 Raycast(in ray R)
         return vec3(0.08);
     }
 
+    return vec3(0, 1, 1);
     return vec3(0.08);
 }
 
@@ -412,7 +429,8 @@ void main()
     // Ray XY coordinates of the screen pixels; goes from 0-512
     // in each dimension.
     vec2 PixelCoords = ivec2(gl_GlobalInvocationID.xy);
-    vec3 ScreenOrigin = vec3(ViewPosUniform.x - 256, ViewPosUniform.y - 256, ViewPosUniform.z - 512);
+    vec3 K = vec3(256, 256, 512);
+    vec3 ScreenOrigin = ViewPosUniform - K;//vec3(ViewPosUniform.x + 256, ViewPosUniform.y + 256, ViewPosUniform.z - 512);
 
 	vec3 ScreenCoord = ScreenOrigin + vec3(PixelCoords, 0);
     ScreenCoord.x *= 1280.0/720.0;
@@ -422,9 +440,20 @@ void main()
 
     RayD = RayD * ViewMatrixUniform;
 
-    RayD += 0.0001;
     ray R = { RayP, RayD, 1.0 / RayD };
 
+    /*vec3 Min = vec3(0);
+    vec3 Max = vec3(64);
+    ray_intersection Q = ComputeRayBoxIntersection(R, Min, Max);
+    vec3 OutCr;
+    if (Q.tMin <= Q.tMax && Q.tMax > 0)
+    {
+        OutCr = vec3(1);
+    }
+    else
+    {
+        OutCr = vec3(1, 0, 0);
+    }*/
     vec3 OutCr = Raycast(R);
 
     imageStore(OutputImgUniform, ivec2(PixelCoords), vec4(OutCr, 1.0));
