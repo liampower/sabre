@@ -130,13 +130,6 @@ CreateCubeSphereTestScene(int Lod)
                                     &NormalSampler,
                                     &ColourSampler);
 
-    //SBR_InsertVoxel(WorldSvo, sbrv3(0, 0, 0));
-    SBR_InsertVoxel(WorldSvo, sbrv3(12, 28, 28));
-    //InsertVoxel(WorldSvo, sbrv3(0, 17, 0), 16);
-    //InsertVoxel(WorldSvo, sbrv3(20, 20, 20), 16);
-    //InsertVoxel(WorldSvo, sbrv3(0, 0, 0), 16);
-    //SBR_DeleteVoxel(WorldSvo, sbrv3(0, 0, 0));
-
     return WorldSvo;
 }
 
@@ -145,32 +138,6 @@ static inline sbr_svo*
 CreateImportedMeshTestScene(const char* const GLBFileName)
 {
     return SBR_ImportGLBFile(DEMO_MAX_TREE_DEPTH, GLBFileName);
-}
-
-static inline sbr_svo*
-CreateLoadedMeshTestScene(const char* const SvoMeshFileName)
-{
-    FILE* SvoInFile;
-    errno_t Result = fopen_s(&SvoInFile, SvoMeshFileName, "rb");
-
-    if (0 == Result)
-    {
-        sbr_svo* WorldSvo = LoadSvoFromFile(SvoInFile);
-
-        if (nullptr == WorldSvo)
-        {
-            fprintf(stderr, "Failed to load SVO file\n");
-        }
-
-        fclose(SvoInFile);
-
-        return WorldSvo;
-
-    }
-    else
-    {
-        return nullptr;
-    }
 }
 
 
@@ -217,14 +184,21 @@ DeleteVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, sbr_svo* cons
 }
 
 
+static void
+HandleGLFWError(int, const char* const ErrorMsg)
+{
+    MessageBox(nullptr, ErrorMsg, "GLFW Error", MB_ICONWARNING);
+}
+
 
 extern int
 main(int ArgCount, const char** const Args)
 {
+    glfwSetErrorCallback(HandleGLFWError);
     if (GLFW_FALSE == glfwInit())
     {
         fprintf(stderr, "Failed to initialise GLFW\n");
-        MessageBox(NULL, "Failed to initialise GLFW\n", "Error", MB_ICONWARNING);
+        MessageBox(nullptr, "Failed to initialise GLFW\n", "Error", MB_ICONWARNING);
 
         return EXIT_FAILURE;
     }
@@ -242,7 +216,7 @@ main(int ArgCount, const char** const Args)
     if (0 == gladLoadGL())
     {
         fprintf(stderr, "Failed to initialise GLAD\n");
-        MessageBox(NULL, "Failed to initialise OpenGL context, make sure you are running this application with up-to-date graphics drivers", "Error", MB_ICONWARNING);
+        MessageBox(nullptr, "Failed to initialise OpenGL context, make sure you are running this application with up-to-date graphics drivers", "Error", MB_ICONWARNING);
         glfwTerminate();
         return EXIT_FAILURE;
     }
@@ -250,7 +224,7 @@ main(int ArgCount, const char** const Args)
     if (GLFW_FALSE == glfwExtensionSupported("GL_ARB_sparse_texture"))
     {
         fprintf(stderr, "Failed to initialise application\n");
-        MessageBox(NULL, "The application cannot start because your system does not support OpenGL sparse textures (ensure you are running this application with up-to-date graphics drivers)", "Error", MB_ICONWARNING);
+        MessageBox(nullptr, "The application cannot start because your system does not support OpenGL sparse textures (ensure you are running this application with up-to-date graphics drivers)", "Error", MB_ICONWARNING);
         glfwTerminate();
         return EXIT_FAILURE;
     }
@@ -273,47 +247,17 @@ main(int ArgCount, const char** const Args)
     int FramebufferWidth;
     int FramebufferHeight;
     glfwGetFramebufferSize(Window, &FramebufferWidth, &FramebufferHeight);
-
     glViewport(0, 0, FramebufferWidth, FramebufferHeight);
-    //glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-#if 1
-    sbr_svo* WorldSvo = nullptr;//CreateImportedMeshTestScene("data/Showcase/serapis.glb");
-#else
-    svo* WorldSvo = CreateCubeSphereTestScene();
-#endif
-    /*if (nullptr == WorldSvo)
-    {
-        fprintf(stderr, "Failed to load World SVO\n");
-        MessageBox(NULL, "Failed to create world scene\n", "Error", MB_ICONWARNING);
-        glfwTerminate();
-        
-        return EXIT_FAILURE;
-    }*/
+    sbr_svo* WorldSvo = nullptr;
 
     // Initialise the render data
     sbr_view_data ViewData = { };
     ViewData.ScreenWidth = 512;
     ViewData.ScreenHeight = 512;
 
-    //sbr_render_data* RenderData = SBR_CreateRenderData(WorldSvo, &ViewData);
     sbr_render_data* RenderData = nullptr;
 
-#if 0
-    FILE* File = fopen("logs/cs.nvasm", "wb");
-    if (File) DEBUGOutputRenderShaderAssembly(RenderData, File);
-    fclose(File);
-#endif
-
-    /*if (nullptr == RenderData)
-    {
-        fprintf(stderr, "Failed to initialise render data\n");
-        MessageBox(NULL, "Failed to initialise render data\n", "Error", MB_ICONWARNING);
-
-        SBR_DeleteScene(WorldSvo);
-        glfwTerminate();
-        return EXIT_FAILURE;
-    }*/
 
     camera Cam = { };
     Cam.Forward = sbrv3(0, 0, -1);
@@ -370,13 +314,22 @@ main(int ArgCount, const char** const Args)
             if (ImGui::Button("Load rabbit scene"))
             {
                 WorldSvo = SBR_ImportGLBFile(Lod, "data/Showcase/bunny.glb");
+                if (nullptr == WorldSvo)
+                {
+                    fprintf(stderr, "Failed to initialise render data\n");
+                    MessageBox(nullptr, "Failed to initialise render data\n", "Error", MB_ICONWARNING);
+
+                    SBR_DeleteScene(WorldSvo);
+                    glfwTerminate();
+                    return EXIT_FAILURE;
+                }
                 ShowMenu = false;
                 RenderData = SBR_CreateRenderData(WorldSvo, &ViewData);
                 glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
                 if (nullptr == RenderData)
                 {
                     fprintf(stderr, "Failed to initialise render data\n");
-                    MessageBox(NULL, "Failed to initialise render data\n", "Error", MB_ICONWARNING);
+                    MessageBox(nullptr, "Failed to initialise render data\n", "Error", MB_ICONWARNING);
 
                     SBR_DeleteScene(WorldSvo);
                     glfwTerminate();
@@ -385,14 +338,14 @@ main(int ArgCount, const char** const Args)
             }
             else if (ImGui::Button("Load Serapis scene"))
             {
-                WorldSvo = SBR_ImportGLBFile(Lod, "data/Showcase/sibenik.glb");
+                WorldSvo = SBR_ImportGLBFile(Lod, "data/Showcase/serapis.glb");
                 ShowMenu = false;
                 RenderData = SBR_CreateRenderData(WorldSvo, &ViewData);
                 glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
                 if (nullptr == RenderData)
                 {
                     fprintf(stderr, "Failed to initialise render data\n");
-                    MessageBox(NULL, "Failed to initialise render data\n", "Error", MB_ICONWARNING);
+                    MessageBox(nullptr, "Failed to initialise render data\n", "Error", MB_ICONWARNING);
 
                     SBR_DeleteScene(WorldSvo);
                     glfwTerminate();
@@ -408,7 +361,7 @@ main(int ArgCount, const char** const Args)
                 if (nullptr == RenderData)
                 {
                     fprintf(stderr, "Failed to initialise render data\n");
-                    MessageBox(NULL, "Failed to initialise render data\n", "Error", MB_ICONWARNING);
+                    MessageBox(nullptr, "Failed to initialise render data\n", "Error", MB_ICONWARNING);
 
                     SBR_DeleteScene(WorldSvo);
                     glfwTerminate();
@@ -425,7 +378,6 @@ main(int ArgCount, const char** const Args)
                 ImGui::Text("%fms CPU  %d BLKS  %d LVLS", 1000.0*DeltaTime, GetSvoUsedBlockCount(WorldSvo), GetSvoDepth(WorldSvo));
                 ImGui::EndMainMenuBar();
             }
-
 
             if (glfwGetKey(Window, GLFW_KEY_Q))
             {

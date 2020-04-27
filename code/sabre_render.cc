@@ -18,7 +18,6 @@ struct sbrv3u_hash
 {
 public:
     size_t operator()(const sbrv3u& Element) const{
-        //return Element.X + Element.Y + Element.Z;
         return EncodeMorton3(Element);
     }
 };
@@ -235,7 +234,12 @@ CreateRenderImage(int ImgWidth, int ImgHeight)
 
 struct tex_page
 {
-    packed_snorm3 Data[16][32][32];
+    packed_snorm3* Data;
+
+    /*tex_page(usize PageSizeX, usize PageSizeY, usize PageSizeZ)
+    {
+        Data = (packed_snorm3*) malloc(PageSizeX*PageSizeY*PageSizeZ);
+    }*/
 };
 
 static std::unordered_map<sbrv3u, tex_page, sbrv3u_hash>
@@ -250,116 +254,30 @@ PartitionLeafDataToBuckets(const std::vector<std::pair<sbrv3u, u32>>& LeafData, 
 
         // Subtexture coords
         sbrv3u Bucket = Element.first / PageSize;
+        sbrv3u PageCoords = Element.first % PageSize;
+        usize DataIndex = (PageSizeX*PageSizeY*PageCoords.Z) + (PageSizeX*PageCoords.Y) + PageCoords.X;
+        assert(DataIndex < (PageSizeX*PageSizeY*PageSizeZ));
 
         // Key already exists
         if (Pages.find(Bucket) != Pages.end())
         {
             tex_page* Page = &Pages.find(Bucket)->second;
-            sbrv3u PageCoords = Element.first % PageSize;
 
-            Page->Data[PageCoords.Z][PageCoords.Y][PageCoords.X] = Element.second;
+            Page->Data[DataIndex] = Element.second;
         }
         else
         {
-            tex_page Page = { };
+            tex_page Page = {};
 
-            sbrv3u PageCoords = Element.first % PageSize;
-
-            Page.Data[PageCoords.Z][PageCoords.Y][PageCoords.X] = Element.second;
-
+            // I really hate this, but can't risk distribution page sizes being different
+            Page.Data = (packed_snorm3*) malloc(PageSizeX*PageSizeY*PageSizeZ*sizeof(packed_snorm3));
+            Page.Data[DataIndex] = Element.second;
             Pages.insert(std::make_pair(Bucket, Page));
         }
     }
 
     return Pages;
 }
-
-#if 0
-static gl_uint
-UploadLeafDataSparse(std::vector<std::pair<sbrv3u, u32>> Data, int AttachmentIndex)
-{
-    gl_uint MapTexture;
-    glCreateTextures(GL_TEXTURE_3D, 1, &MapTexture);
-
-    if (MapTexture)
-    {
-        glActiveTexture(GL_TEXTURE0 + AttachmentIndex);
-        glBindTexture(GL_TEXTURE_3D, MapTexture);
-        if (AttachmentIndex > 0) return MapTexture;
-
-        // Read the page sizes
-        gl_int PageSizeX, PageSizeY, PageSizeZ;
-		glGetInternalformativ(GL_TEXTURE_3D, GL_RGBA8_SNORM, GL_VIRTUAL_PAGE_SIZE_X_ARB, 1, &PageSizeX);
-		glGetInternalformativ(GL_TEXTURE_3D, GL_RGBA8_SNORM, GL_VIRTUAL_PAGE_SIZE_Y_ARB, 1, &PageSizeY);
-		glGetInternalformativ(GL_TEXTURE_3D, GL_RGBA8_SNORM, GL_VIRTUAL_PAGE_SIZE_Z_ARB, 1, &PageSizeZ);
-        assert(PageSizeX > 0 && PageSizeY > 0 && PageSizeZ > 0);
-        fprintf(stderr, "Page size: %d %d %d\n", PageSizeX, PageSizeY, PageSizeZ);
-
-        std::unordered_map<sbrv3u, tex_page, sbrv3u_hash> Pages = PartitionLeafDataToBuckets(Data, PageSizeX, PageSizeY, PageSizeZ);
-
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
-        // Enable sparse texture storage
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_SPARSE_ARB, GL_TRUE);
-
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
-        glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA8_SNORM, 2048, 2048, 2048);
-
-        gl_int MaxTextureSize;
-        glGetIntegerv(GL_MAX_SPARSE_3D_TEXTURE_SIZE_ARB, &MaxTextureSize);
-
-        size_t MaxCellCount = ((size_t)MaxTextureSize*(size_t)MaxTextureSize*(size_t)MaxTextureSize);
-        MaxCellCount /= ((size_t)PageSizeX*(size_t)PageSizeY*(size_t)PageSizeZ);
-
-        printf("Max Pages: %zu\n", MaxCellCount);
-
-        size_t CellCount = 0;
-        for (auto It = Pages.begin(); It != Pages.end(); ++It)
-        {
-            if (CellCount == MaxCellCount) break;
-
-            auto Element = *It;
-            gl_int PageX = (gl_int)Element.first.X*PageSizeX;
-            gl_int PageY = (gl_int)Element.first.Y*PageSizeY;
-            gl_int PageZ = (gl_int)Element.first.Z*PageSizeZ;
-
-            // Mark the page containing this point as backed by physical
-            // memory.
-            glTexPageCommitmentARB(GL_TEXTURE_3D,
-                                   0,
-                                   PageX,
-                                   PageY,
-                                   PageZ,
-                                   PageSizeX,
-                                   PageSizeY,
-                                   PageSizeZ,
-                                   GL_TRUE);
-
-            // Upload the leaf data into the subtexture page
-            glTexSubImage3D(GL_TEXTURE_3D,
-                            0,
-                            PageX,
-                            PageY,
-                            PageZ,
-                            PageSizeX,
-                            PageSizeY,
-                            PageSizeZ,
-                            GL_RGBA,
-                            GL_BYTE,
-                            Element.second.Data);
-           ++CellCount;
-        }
-
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    }
-
-    return MapTexture;
-}
-#endif
 
 
 static gl_uint
@@ -398,16 +316,16 @@ UploadLeafDataSparse(std::vector<std::pair<sbrv3u, packed_snorm3>> Data, int Att
         gl_int MaxTextureSize;
         glGetIntegerv(GL_MAX_SPARSE_3D_TEXTURE_SIZE_ARB, &MaxTextureSize);
 
-        size_t MaxCellCount = ((size_t)MaxTextureSize*(size_t)MaxTextureSize*(size_t)MaxTextureSize);
-        MaxCellCount /= ((size_t)PageSizeX*(size_t)PageSizeY*(size_t)PageSizeZ);
+        size_t MaxPageCount = ((size_t)MaxTextureSize*(size_t)MaxTextureSize*(size_t)MaxTextureSize);
+        MaxPageCount /= ((size_t)PageSizeX*(size_t)PageSizeY*(size_t)PageSizeZ);
 
-        printf("Max Pages: %zu\n", MaxCellCount);
+        printf("Max Pages: %zu\n", MaxPageCount);
 
-        size_t CellCount = 0;
+        size_t PageCount = 0;
         for (auto It = Pages.begin(); It != Pages.end(); ++It)
         {
             // Too many pages; avoid exhausting the GPU memory
-            if (CellCount == MaxCellCount) break;
+            if (PageCount == MaxPageCount) break;
 
             auto Element = *It;
             gl_int PageX = (gl_int)Element.first.X*PageSizeX;
@@ -438,10 +356,12 @@ UploadLeafDataSparse(std::vector<std::pair<sbrv3u, packed_snorm3>> Data, int Att
                             GL_RGBA,
                             GL_BYTE,
                             Element.second.Data);
-           ++CellCount;
+
+           free(Element.second.Data);
+           ++PageCount;
         }
         
-        printf("Used cell count %zu\n", CellCount);
+        printf("Used cell count %zu\n", PageCount);
 
         glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     }
@@ -545,8 +465,12 @@ SBR_DrawScene(const sbr_render_data* const RenderData, const sbr_view_data* cons
 extern "C" sbr_render_data*
 SBR_CreateRenderData(const sbr_svo* const Tree, const sbr_view_data* const ViewData)
 {
-    // TODO(Liam): Error checking
     sbr_render_data* RenderData = (sbr_render_data*) calloc(1, sizeof(sbr_render_data));
+    if (nullptr == RenderData)
+    {
+        fprintf(stderr, "Failed to allocate render data\n");
+        return nullptr;
+    }
 
     RenderData->RenderShader = CompileComputeShader(RaycasterComputeKernel);
     if (0 == RenderData->RenderShader)

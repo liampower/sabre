@@ -907,7 +907,7 @@ SBR_GetNearestFreeSlot(sbrv3 RayOrigin, sbrv3 RayDir, const sbr_svo* const Tree)
     ray_intersection CurrentIntersection = ComputeRayBoxIntersection(RayOrigin, RayInvDir, RootMin, RootMax);
     if (CurrentIntersection.tMin <= CurrentIntersection.tMax)    // Raycast to find voxel position
     {
-        sbrv3 RayP = RayOrigin + CurrentIntersection.tMin * RayDir;
+        sbrv3 RayP = (CurrentIntersection.tMin >= 0) ? RayOrigin + (CurrentIntersection.tMin * RayDir) : RayOrigin;
         sbrv3 ParentCentre = sbrv3(Scale >> 1);
         svo_oct CurrentOct = GetOctantForPosition(RayP, ParentCentre*Tree->Bias.InvScale);
         node_ref ParentNodeRef = GetTreeRootNodeRef(Tree);
@@ -1018,9 +1018,9 @@ SBR_GetNearestLeafSlot(sbrv3 RayOrigin, sbrv3 RayDir, const sbr_svo* const Tree)
     const float BiasScale = (1.0f / Tree->Bias.InvScale);
 
     ray_intersection CurrentIntersection = ComputeRayBoxIntersection(RayOrigin, RayInvDir, RootMin, RootMax);
-    if (CurrentIntersection.tMin <= CurrentIntersection.tMax || true)    // Raycast to find voxel position
+    if (CurrentIntersection.tMin <= CurrentIntersection.tMax)    // Raycast to find voxel position
     {
-        sbrv3 RayP = RayOrigin + CurrentIntersection.tMin * RayDir;
+        sbrv3 RayP = (CurrentIntersection.tMin >= 0) ? RayOrigin + (CurrentIntersection.tMin * RayDir) : RayOrigin;
         sbrv3 ParentCentre = sbrv3(Scale >> 1);
         svo_oct CurrentOct = GetOctantForPosition(RayP, ParentCentre*Tree->Bias.InvScale);
         node_ref ParentNodeRef = GetTreeRootNodeRef(Tree);
@@ -1188,72 +1188,6 @@ SBR_DeleteVoxel(sbr_svo* Tree, sbrv3 VoxelP)
     }
 }
 
-
-extern "C" void
-OutputSvoToFile(const sbr_svo* const Svo, FILE* FileOut)
-{
-    // First, write the header
-    fwrite(Svo, sizeof(sbr_svo), 1, FileOut);
-
-    // Traverse tree and write blocks
-    svo_block* CurrentBlk = Svo->RootBlock;
-    while (CurrentBlk)
-    {
-        fwrite(CurrentBlk, sizeof(svo_block), 1, FileOut);
-        CurrentBlk = CurrentBlk->Next;
-    }
-}
-
-
-extern "C" sbr_svo*
-LoadSvoFromFile(FILE* FileIn)
-{
-    // Allocate a buffer to load into
-    sbr_svo* Svo = (sbr_svo*)calloc(1, sizeof(sbr_svo));
-
-    // Read the header
-    if (0 == fread(Svo, sizeof(sbr_svo), 1, FileIn))
-    {
-        fprintf(stderr, "IO Error\n");
-        return nullptr;
-    }
-
-    // Need to invalidate all pointers
-    Svo->RootBlock = nullptr;
-    Svo->LastBlock = nullptr;
-
-    // Start reading the blocks 
-    for (u32 BlkIndex = 0; BlkIndex < Svo->UsedBlockCount; ++BlkIndex)
-    {
-        // Read the block
-        svo_block* CurrentBlk = (svo_block*)calloc(1, sizeof(svo_block));
-
-        if (Svo->RootBlock == nullptr)
-        {
-            Svo->RootBlock = CurrentBlk;
-        }
-
-        CurrentBlk->Prev = Svo->LastBlock;
-        if (nullptr != Svo->LastBlock)
-        {
-            Svo->LastBlock->Next = CurrentBlk;
-        }
-
-        // TODO(Liam): Check failure
-        if (0 == fread(CurrentBlk, sizeof(svo_block), 1, FileIn))
-        {
-            // TODO(Liam): Free? (ugh)
-            fprintf(stderr, "IO Error\n");
-            return nullptr;
-        }
-        // Need to link prev block to this one
-        Svo->LastBlock = CurrentBlk;
-    }
-
-
-    return Svo;
-}
-
 extern "C" void
 SBR_DeleteScene(sbr_svo* Tree)
 {
@@ -1261,7 +1195,7 @@ SBR_DeleteScene(sbr_svo* Tree)
     {
         svo_block* CurrentBlk = Tree->RootBlock;
 
-        while (CurrentBlk)
+        while (nullptr != CurrentBlk)
         {
             svo_block* NextBlk = CurrentBlk->Next;
             free(CurrentBlk);

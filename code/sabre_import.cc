@@ -14,12 +14,11 @@
 #include <unordered_map>
 #include <stack>
 #include <deque>
+#include <chrono>
 #include <xmmintrin.h>
-#include <immintrin.h>
 #include <smmintrin.h>
 
 typedef __m128 m128;
-typedef __m256 m256;
 typedef uint64_t morton_key;
 
 struct tri3
@@ -29,6 +28,10 @@ struct tri3
     sbrv3 V2;
 };
 
+// Morton encoding by Fabien 'ryg' Giesen
+// Giesen 2009, "Decoding Morton Codes"
+// https://fgiesen.wordpress.com/2009/12/13/decoding-morton-codes/
+// Accessed Mar. 2020
 static inline uint64_t
 Part1By2(uint64_t X)
 {
@@ -45,110 +48,6 @@ EncodeMorton3(sbrv3u V)
 {
     return (Part1By2((uint64_t)V.Z) << 2) + (Part1By2((uint64_t)V.Y) << 1) + Part1By2((uint64_t)V.X);
 }
-
-static constexpr usize MSK_DIM = 256U;
-
-
-struct bit_map
-{
-    usize BucketCount;
-    uint64_t Msk[MSK_DIM*MSK_DIM*MSK_DIM];
-};
-
-#if 0
-struct index_entry
-{
-    morton_key Key;
-    sbrv3 Data;
-};
-
-struct attrib_index
-{
-    usize       PointCount;
-    bool        Ordered;
-    index_entry Entries[];
-};
-
-
-static inline attrib_index*
-InitAtrribIndex(usize InitialPointCount)
-{
-    usize AllocSize = sizeof(attrib_index) + (InitialPointCount*sizeof(index_entry));
-    attrib_index* Index = (attrib_index*)calloc(1, (sizeof(attrib_index));
-
-    if (Index)
-    {
-    }
-
-    return Index;
-}
-
-static inline void
-InsertIndexEntry(sbrv3u Key, sbrv3 Data, attrib_index* const Index)
-{
-    morton_key EncodedKey = EncodeMorton3(Key);
-    Index->Entries[Index->PointCount] = index_entry{ EncodedKey, Data };
-    ++Index->PointCount;
-}
-
-static int
-IndexCompareFunction(const void* A, const void* B)
-{
-    const index_entry* EntryA = (const index_entry*)A;
-    const index_entry* EntryB = (const index_entry*)B;
-
-    if (EntryA->Key > EntryB->Key) return -1;
-    if (EntryB->Key > EntryA->Key) return  1;
-    else                 return  0;
-}
-
-static inline sbrv3
-LookupIndexEntry(sbrv3u Key, attrib_index* const Index)
-{
-    assert(Index->Ordered);
-    morton_key EncodedKey = EncodeMorton3(Key);
-
-    bsearch(&EncodedKey, Index->Entries, Index->PointCount, sizeof(index_entry), IndexCompareFunction); 
-}
-#endif
-
-
-static inline void
-InsertBitmapElement(sbrv3u V, bit_map* const Bitmap)
-{
-    bool A;
-    if (V.X == 249 && V.Y == 93 && V.Z == 165)
-    {
-        A = true;
-    }
-    uint64_t D = 1024;
-    uint64_t Index = (uint64_t(V.Z) * D * D) + (uint64_t(V.Y)*D) + uint64_t(V.X);
-
-    uint64_t Bucket = Index / 64ULL;
-    assert(Bucket < (D*D*D));
-    uint64_t BitOffset = Index % 64ULL;
-
-    if (Bucket == 169335ULL && BitOffset == 57)
-    {
-        A = true;
-    }
-
-    Bitmap->Msk[Bucket] |= (1ULL << BitOffset);
-}
-
-static inline bool
-LookupBitmapElement(sbrv3u V, const bit_map* const Bitmap)
-{
-    uint64_t D = 1024ULL;
-    uint64_t Index = (uint64_t(V.Z) * D * D) + (uint64_t(V.Y)*D) + uint64_t(V.X);
-
-    uint64_t Bucket = Index / 64ULL;
-    assert(Bucket < (D*D*D));
-    uint64_t BitOffset = Index % 64ULL;
-
-    return Bitmap->Msk[Bucket] & (1ULL << (uint64_t)BitOffset);
-}
-
 
 
 static inline sbrv3
@@ -400,17 +299,12 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
 }
 
 
-static std::unordered_set<morton_key, u64_hash> GlobalTriangleIndex;
-static std::unordered_map<morton_key, sbrv3> GlobalNormalIndex;
-static std::unordered_map<morton_key, sbrv3> GlobalColourIndex;
-static std::set<morton_key> Omsk;
-
 static inline sbrv3
 NormalSampler(sbrv3 C, const sbr_svo* const, const void* const UserData)
 {
     morton_key MortonCode = EncodeMorton3(sbrv3u(C));
 
-    std::unordered_map<morton_key, sbrv3>** Index = (std::unordered_map<morton_key, sbrv3>**)UserData;
+    std::unordered_map<morton_key, sbrv3>* const* Index = (std::unordered_map<morton_key, sbrv3>* const*)UserData;
     return (*Index)->at(MortonCode);
 }
 
@@ -489,12 +383,7 @@ LoadMeshTriangles(cgltf_mesh* Mesh)
                             pos_attrib P1 = PosBuffer[I1];
                             pos_attrib P2 = PosBuffer[I2];
 
-                            // FIXME(Liam): MAJOR HACK ALERT MAJOR HACK ALERT!!!
-                            // I love Blender. Really, I do. But it does some incredibly
-                            // stupid things sometimes, like insisting that the Z axis
-                            // is inverted, despite my option selections. So, we abs the
-                            // Z coordinate here for no real reason other than to work around
-                            // Blender's brain damage.
+                            // TODO Hack here to get around blender exporting bug
                             T.V0 = sbrv3(P0.V[0], P0.V[1], fabsf(P0.V[2]));
                             T.V1 = sbrv3(P1.V[0], P1.V[1], fabsf(P1.V[2]));
                             T.V2 = sbrv3(P2.V[0], P2.V[1], fabsf(P2.V[2]));
@@ -540,7 +429,12 @@ NextPowerOf2Exponent(u32 X)
 
 
 static void
-BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unordered_set<morton_key, u64_hash>& IndexOut, bit_map* BM)
+BuildTriangleIndex(u32 MaxDepth,
+                   u32 ScaleExponent,
+                   tri_buffer* Tris,
+                   std::set<morton_key>& IndexOut,
+                   std::unordered_map<morton_key, sbrv3>& NormalsMap,
+                   std::unordered_map<morton_key, sbrv3>& ColourMap)
 {
     struct st_ctx
     {
@@ -560,22 +454,24 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
         InvBias = 1.0f / (1 << Bias);
     }
 
+    u32 RootScale = 1U << (ScaleExponent) << Bias;
+    sbrv3 ParentCentreP = sbrv3(RootScale >> 1);
+
+    st_ctx RootCtx = { };
+    RootCtx.Oct = 0;
+    RootCtx.Depth = 1;
+    RootCtx.Scale = RootScale >> 1;
+    RootCtx.ParentCentre = ParentCentreP;
+
+    morton_key RootCode = EncodeMorton3(sbrv3u(ParentCentreP));
+
+    IndexOut.insert(RootCode);
 
     for (size_t TriIndex = 0; TriIndex < Tris->TriangleCount; ++TriIndex)
     {
         tri3 T = Tris->Triangles[TriIndex].T;
 
         // For every triangle, check if it is enclosed in a bounding box
-        
-        u32 RootScale = 1U << (ScaleExponent) << Bias;
-        sbrv3 ParentCentreP = sbrv3(RootScale >> 1);
-
-        st_ctx RootCtx = { };
-        RootCtx.Oct = 0;
-        RootCtx.Depth = 1;
-        RootCtx.Scale = RootScale >> 1;
-        RootCtx.ParentCentre = ParentCentreP;
-
         Stack.push_front(RootCtx);
 
         alignas(16) m128 TriVerts[3];
@@ -583,38 +479,31 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
         TriVerts[1] = _mm_set_ps(0.0f, T.V1.Z, T.V1.Y, T.V1.X);
         TriVerts[2] = _mm_set_ps(0.0f, T.V2.Z, T.V2.Y, T.V2.X);
 
-        morton_key RootCode = EncodeMorton3(sbrv3u(ParentCentreP));
-        //InsertBitmapElement(sbrv3u(ParentCentreP), BM);
-        Omsk.insert(RootCode);
-
         while (false == Stack.empty())
         {
             st_ctx CurrentCtx = Stack.front();
             Stack.pop_front();
+
+            sbrv3 Radius = sbrv3(CurrentCtx.Scale >> 1) * InvBias;
+            m128 RadiusM = _mm_set_ps(0.0f, Radius.Z, Radius.Y, Radius.X);
 
             for (u32 Oct = 0; Oct < 8; ++Oct)
             {
                 // TODO(Liam): Make GetOctantCentre *only* return uvecs, then can differentiate
                 // at the type level between scaled and unscaled vectors.
                 sbrv3 Centre = GetOctantCentre(Oct, CurrentCtx.Scale, CurrentCtx.ParentCentre);
-
-                sbrv3 Radius = sbrv3(CurrentCtx.Scale >> 1) * InvBias;
-
                 m128 CentreM = _mm_set_ps(0.0f, Centre.Z*InvBias, Centre.Y*InvBias, Centre.X*InvBias);
-                m128 RadiusM = _mm_set_ps(0.0f, Radius.Z, Radius.Y, Radius.X);
 
                 if (TriangleAABBIntersection(CentreM, RadiusM, TriVerts))
                 {
                     morton_key ChildVoxelCode = EncodeMorton3(sbrv3u(Centre)); 
-                    //InsertBitmapElement(sbrv3u(Centre), BM);
-                    Omsk.insert(ChildVoxelCode);
-
-                    //InsertIndexEntry(sbrv3u(Centre), Triangles[TriIndex].Normal, AttribIndex);
                     if (CurrentCtx.Depth + 1 >= MaxDepth)
                     {
-                        GlobalNormalIndex.insert(std::make_pair(ChildVoxelCode, Tris->Triangles[TriIndex].Normal));
-                        GlobalColourIndex.insert(std::make_pair(ChildVoxelCode, Tris->Triangles[TriIndex].Colour));
+                        NormalsMap.insert(std::make_pair(ChildVoxelCode, Tris->Triangles[TriIndex].Normal));
+                        ColourMap.insert(std::make_pair(ChildVoxelCode, Tris->Triangles[TriIndex].Normal));
                     }
+
+                    IndexOut.insert(ChildVoxelCode);
 
                     if (CurrentCtx.Depth < MaxDepth)
                     {
@@ -628,8 +517,6 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
                 }
             }
         }
-
-        Stack.clear();
     }
 }
 
@@ -640,21 +527,10 @@ IntersectorFunction(sbrv3 vMin, sbrv3 vMax, const sbr_svo* const Tree, const voi
     sbrv3 Halfsize = (vMax - vMin) * 0.5f;
     sbrv3u Centre = sbrv3u((vMin + Halfsize) * (1 << Tree->Bias.Scale));
     
-
-    /*void* q = const_cast<void*>(UserData);
-
-    std::unordered_set<morton_key>* TriangleIndex = reinterpret_cast<std::unordered_set<morton_key>*>(q);
+    const std::set<morton_key>* const* OccupancyIndex = (const std::set<morton_key>* const*)UserData;
 
     morton_key MortonCode = EncodeMorton3(sbrv3u(Centre));
-
-    return (TriangleIndex->find(MortonCode) != TriangleIndex->end());*/
-
-    const bit_map* const Bitmap = (const bit_map* const)UserData;
-
-    morton_key MortonCode = EncodeMorton3(sbrv3u(Centre));
-    return (Omsk.find(MortonCode) != Omsk.end());
-
-    //return LookupBitmapElement(Centre, Bitmap);
+    return (*OccupancyIndex)->find(MortonCode) != (*OccupancyIndex)->end();
 }
 
 static inline f32
@@ -702,30 +578,9 @@ GetMeshMinDimension(const cgltf_primitive* const Prim)
 }
 
 
-static void
-BuildDataIndex(uint32_t MaxDepth, const tri_buffer* const Triangles)
-{
-    std::vector<std::deque<morton_key>> Queues{ MaxDepth };
-
-    //for (
-}
-
-
 extern "C" sbr_svo*
 SBR_ImportGLBFile(uint32_t MaxDepth, const char* const GLTFPath)
 {
-    // TODO error checking
-    bit_map* BM = nullptr;//(bit_map*)calloc(1, sizeof(bit_map));
-
-    /*sbrv3u V = sbrv3u(10, 10, 10);
-    sbrv3u V2 = sbrv3u(11, 11, 10);
-    InsertBitmapElement(V, &BM);
-
-    bool B = LookupBitmapElement(V, &BM);
-    B = LookupBitmapElement(V2, &BM);*/
-
-
-
 	cgltf_options Options = { };
     cgltf_data* Data = nullptr;
 
@@ -741,7 +596,6 @@ SBR_ImportGLBFile(uint32_t MaxDepth, const char* const GLTFPath)
         if (nullptr == TriangleData)
         {
             fprintf(stderr, "Failed to load triangle data");
-            MessageBox(NULL, "Failed to load file (missing data?)", "Error", MB_ICONWARNING);
             cgltf_free(Data);
 
             return nullptr;
@@ -749,22 +603,32 @@ SBR_ImportGLBFile(uint32_t MaxDepth, const char* const GLTFPath)
 
         // Compute max scale exponent from mesh max and min vertices.
         f32 MaxDim = GetMeshMaxDimension(&Data->meshes[0].primitives[0]);
-        f32 MinDim = GetMeshMinDimension(&Data->meshes[0].primitives[0]);
 
         assert(MaxDim > 0);
-        // TODO(Liam): Check here in case max < 0
         u32 ScaleExponent = NextPowerOf2Exponent((u32)ceilf(MaxDim));
         assert(ScaleExponent > 0);
 
-        //GlobalTriangleIndex.reserve(TriangleData->TriangleCount);
-        BuildTriangleIndex(MaxDepth, ScaleExponent, TriangleData, GlobalTriangleIndex, BM);
+        std::set<morton_key> OccupancyIndex{};
+        std::unordered_map<morton_key, sbrv3> NormalIndex{};
+        std::unordered_map<morton_key, sbrv3> ColourIndex{};
 
-        auto A = &GlobalNormalIndex;
+        NormalIndex.reserve(TriangleData->TriangleCount);
+        ColourIndex.reserve(TriangleData->TriangleCount);
+        BuildTriangleIndex(MaxDepth,
+                           ScaleExponent,
+                           TriangleData,
+                           OccupancyIndex,
+                           NormalIndex,
+                           ColourIndex);
 
-        shape_sampler ShapeS = shape_sampler{ BM, IntersectorFunction };
-        data_sampler NormalS = data_sampler{ &A, NormalSampler };
-        data_sampler ColourS = data_sampler{ &GlobalColourIndex, ColourSampler };
-        //bool C = LookupBitmapElement(sbrv3u(249, 93, 165), BM);
+
+        const std::unordered_map<morton_key, sbrv3>* const NormalsPtr = &NormalIndex;
+        const std::unordered_map<morton_key, sbrv3>* const ColoursPtr = &ColourIndex;
+        const std::set<morton_key>* const OccupancyIndexPtr = &OccupancyIndex;
+
+        shape_sampler ShapeS = shape_sampler{ &OccupancyIndexPtr, IntersectorFunction };
+        data_sampler NormalS = data_sampler{ &NormalsPtr, NormalSampler };
+        data_sampler ColourS = data_sampler{ &ColoursPtr, ColourSampler };
 
         sbr_svo* Svo = SBR_CreateScene(ScaleExponent,
                                    MaxDepth,
@@ -772,17 +636,16 @@ SBR_ImportGLBFile(uint32_t MaxDepth, const char* const GLTFPath)
                                    &NormalS,
                                    &ColourS);
 
+        NormalIndex.clear();
         free(TriangleData);
-        //free(BM);
         cgltf_free(Data);
 
         return Svo;
     }
     else
     {
-        // TODO(Liam): Handle failure case
+        fprintf(stderr, "Failed to load mesh data file\n");
 
-        MessageBox(NULL, "Failed to load file (missing data?)", "Error", MB_ICONWARNING);
         if (Data) cgltf_free(Data);
         return nullptr;
     }

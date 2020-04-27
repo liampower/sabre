@@ -6,8 +6,8 @@
 #include "sabre.h"
 #include "sabre_math.h"
 
-static constexpr u32 SBR_NODES_PER_BLK = 8192;
-static constexpr u32 SBR_FAR_PTRS_PER_BLK = 8192;
+static constexpr uint32_t SBR_NODES_PER_BLK = 8192;
+static constexpr uint32_t SBR_FAR_PTRS_PER_BLK = 8192;
 
 static_assert(SBR_FAR_PTRS_PER_BLK >= SBR_NODES_PER_BLK, "Far Ptrs Per Blk must be >= Entries per Blk");
 
@@ -83,7 +83,6 @@ struct svo_block
     svo_block*  Next;
     svo_node    Entries[SBR_NODES_PER_BLK];
     sbr_far_ptr FarPtrs[SBR_FAR_PTRS_PER_BLK];
-    uint32_t    LeafDataPtrs[8192];
 };
 
 struct sbr_svo
@@ -153,15 +152,6 @@ extern "C" sbr_svo*
 SBR_ImportGLBFile(uint32_t MaxDepth,
                   const char* const GLTFPath);
 
-#if 0
-extern "C" sbr_svo*
-SBR_CreateScene(u32 ScaleExponent,
-                u32 MaxDepth,
-                intersector_fn Surface,
-                normal_fn NormalFn,
-                colour_fn ColourFn);
-#endif
-
 extern "C" sbr_svo*
 SBR_CreateScene(uint32_t ScaleExp,
                 uint32_t MaxDepth,
@@ -172,8 +162,6 @@ SBR_CreateScene(uint32_t ScaleExp,
 extern "C" void
 OutputSvoToFile(const sbr_svo* const Svo, FILE* FileOut);
 
-extern "C" sbr_svo*
-LoadSvoFromFile(FILE* FileIn);
 
 extern "C" unsigned int
 GetSvoUsedBlockCount(const sbr_svo* const Svo);
