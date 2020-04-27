@@ -137,7 +137,7 @@ extern "C" sbrv3
 SBR_GetNearestLeafSlot(sbrv3 Pos, sbrv3 Dir, const sbr_svo* const Tree);
 
 extern "C" void
-SBR_InsertVoxel(sbr_svo* Tree, sbrv3 P, uint32_t VoxelScale);
+SBR_InsertVoxel(sbr_svo* Tree, sbrv3 P);
 
 extern "C" void
 SBR_DeleteVoxel(sbr_svo* Tree, sbrv3 P);

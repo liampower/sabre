@@ -130,11 +130,12 @@ CreateCubeSphereTestScene(int Lod)
                                     &NormalSampler,
                                     &ColourSampler);
 
-    SBR_InsertVoxel(WorldSvo, sbrv3(0, 0, 0), 16);
+    //SBR_InsertVoxel(WorldSvo, sbrv3(0, 0, 0));
+    SBR_InsertVoxel(WorldSvo, sbrv3(12, 28, 28));
     //InsertVoxel(WorldSvo, sbrv3(0, 17, 0), 16);
     //InsertVoxel(WorldSvo, sbrv3(20, 20, 20), 16);
     //InsertVoxel(WorldSvo, sbrv3(0, 0, 0), 16);
-    SBR_DeleteVoxel(WorldSvo, sbrv3(0, 0, 0));
+    //SBR_DeleteVoxel(WorldSvo, sbrv3(0, 0, 0));
 
     return WorldSvo;
 }
@@ -201,7 +202,8 @@ InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, sbr_svo* cons
 {
     sbrv3 R = UnprojectViewDirection(Cam);
     sbrv3 VoxelPos = SBR_GetNearestFreeSlot(Cam.Position, R, Svo);
-    SBR_InsertVoxel(Svo, VoxelPos, 1);
+    DEBUGPrintVec3(VoxelPos);
+    SBR_InsertVoxel(Svo, VoxelPos);
 }
 
 
@@ -383,7 +385,7 @@ main(int ArgCount, const char** const Args)
             }
             else if (ImGui::Button("Load Serapis scene"))
             {
-                WorldSvo = SBR_ImportGLBFile(Lod, "data/Showcase/serapis.glb");
+                WorldSvo = SBR_ImportGLBFile(Lod, "data/Showcase/sibenik.glb");
                 ShowMenu = false;
                 RenderData = SBR_CreateRenderData(WorldSvo, &ViewData);
                 glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);

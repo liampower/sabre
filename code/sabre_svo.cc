@@ -727,21 +727,13 @@ InsertChild(node_ref ParentRef, svo_oct ChildOct, sbr_svo* Tree, svo_voxel_type 
 
 
 extern "C" void
-SBR_InsertVoxel(sbr_svo* Tree, sbrv3 P, u32 VoxelScale)
+SBR_InsertVoxel(sbr_svo* Tree, sbrv3 P)
 {
     // Scale of the smallest voxel in the SVO. For biased
     // trees, this will always be 1. For non-biased trees,
     // this will be the scale at the tree's MaxDepth.
     u32 TreeMinScale = GetTreeMinScaleBiased(Tree);
-
-    if (VoxelScale < TreeMinScale)
-    {
-       Tree->MaxDepth += TreeMinScale - VoxelScale; 
-
-       // Re-scale the tree if the requested voxel scale is smaller than
-       // the tree minimum scale.
-       Tree->Bias = SBR_ComputeScaleBias(Tree->MaxDepth, Tree->ScaleExponent);
-    }
+    u32 VoxelScale = TreeMinScale;
 
     // Obtain the original root scale of the tree, though
     // this may need to be biased further if the inserted
@@ -769,40 +761,38 @@ SBR_InsertVoxel(sbr_svo* Tree, sbrv3 P, u32 VoxelScale)
 
     // Need to bias the voxel scale in case of upscaled
     // trees.
-    u32 EditScale = (VoxelScale << Tree->Bias.Scale);
+    u32 EditScale = (VoxelScale << 1);
 
     // Beginning at the root scale, descend the tree until we get
     // to the desired scale, or we hit a leaf octant (which means
     // we can't go any further).
     u32 CurrentScale = RootScale >> 1;
+
     while (CurrentScale > EditScale)
     {
-        CurrentScale >>= 1;
-
         if (IsOctantOccupied(ParentRef.Node, CurrentOct))
         {
             if (IsOctantLeaf(ParentRef.Node, CurrentOct))
             {
+                printf("LL\n");
                 return;
             }
             else
             {
-                ParentCentreP = GetOctantCentre(CurrentOct, CurrentScale, ParentCentreP);
-                CurrentOct = GetOctantForPosition(InsertP, ParentCentreP);
                 ParentRef = GetNodeChild(ParentRef, CurrentOct);
-
-                continue;
             }
         }
         else
         {
             // If the current octant isn't occupied, we will need to build a new subtree
             // containing our inserted voxel.
-            ParentCentreP = GetOctantCentre(CurrentOct, CurrentScale, ParentCentreP);
-            CurrentOct = GetOctantForPosition(InsertP, ParentCentreP);
             ParentRef = InsertChild(ParentRef, CurrentOct, Tree, VOXEL_PARENT);
             AllocatedParent = true;
         }
+
+        ParentCentreP = GetOctantCentre(CurrentOct, CurrentScale, ParentCentreP);
+        CurrentOct = GetOctantForPosition(InsertP, ParentCentreP);
+        CurrentScale >>= 1;
     }
 
     if (AllocatedParent)
@@ -915,7 +905,7 @@ SBR_GetNearestFreeSlot(sbrv3 RayOrigin, sbrv3 RayDir, const sbr_svo* const Tree)
     sbrv3 LastCentre = sbrv3(0);
 
     ray_intersection CurrentIntersection = ComputeRayBoxIntersection(RayOrigin, RayInvDir, RootMin, RootMax);
-    if (CurrentIntersection.tMin <= CurrentIntersection.tMax || true)    // Raycast to find voxel position
+    if (CurrentIntersection.tMin <= CurrentIntersection.tMax)    // Raycast to find voxel position
     {
         sbrv3 RayP = RayOrigin + CurrentIntersection.tMin * RayDir;
         sbrv3 ParentCentre = sbrv3(Scale >> 1);
@@ -1123,32 +1113,6 @@ SBR_GetNearestLeafSlot(sbrv3 RayOrigin, sbrv3 RayDir, const sbr_svo* const Tree)
     return sbrv3(FLT_MAX);
 }
 
-/*extern "C" void
-DeleteVoxel2(sbrv3 RayOrigin, sbrv3 RayDir, sbr_svo* const Tree)
-{
-    sbrv3 DeletePos = GetVoxelPosition(RayOrigin, RayDir, Tree);
-    printf("Position found: "); DEBUGPrintVec3(DeletePos); printf("\n");
-
-    if (DeletePos.X == FLT_MAX)
-    {
-        return;
-    }
-
-    SBR_DeleteVoxel(Tree, DeletePos);
-}*/
-
-/*extern "C" void
-InsertVoxel2(sbrv3 RayOrigin, sbrv3 RayDir, sbr_svo* const Tree)
-{
-    sbrv3 InsertPos = GetVoxelPosition(RayOrigin, RayDir, Tree) * Tree->Bias.InvScale;
-
-    if (InsertPos.X == FLT_MAX)
-    {
-        return;
-    }
-
-    SBR_InsertVoxel(Tree, InsertPos, 8);
-}*/
 
 extern "C" void
 SBR_DeleteVoxel(sbr_svo* Tree, sbrv3 VoxelP)

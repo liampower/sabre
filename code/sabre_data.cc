@@ -259,29 +259,18 @@ vec3 Raycast(in ray R)
     vec3 RaySgn = sign(R.Dir);
 
     // Intersection of the ray with the root cube (i.e. entire tree)
-    ray_intersection CurrentIntersection = ComputeRayBoxIntersection(R, RootMin, RootMax);
+    ray_intersection RaySpan = ComputeRayBoxIntersection(R, RootMin, RootMax);
 
     int Step;
     uint CurrentOct;
     uint CurrentDepth;
 
     // Check if the ray is within the octree at all
-    if (CurrentIntersection.tMin <= CurrentIntersection.tMax && CurrentIntersection.tMax > 0)
+    if (RaySpan.tMin <= RaySpan.tMax && RaySpan.tMax > 0)
     {
         // Ray enters octree --- begin processing
 
-
-        vec3 RayP;//R.Origin;
-        // Current position along the ray
-        if (CurrentIntersection.tMin >= 0)
-        {
-            RayP = R.Origin + (CurrentIntersection.tMin * R.Dir);
-        }
-        else
-        {
-            RayP = R.Origin;// + (CurrentIntersection.tMax * R.Dir);
-        }
-
+        vec3 RayP = (RaySpan.tMin >= 0) ? R.Origin + (RaySpan.tMin * R.Dir) : R.Origin;
         vec3 ParentCentre = vec3(Scale >> 1);
 
         // Current octant the ray is in (confirmed good)
@@ -320,13 +309,13 @@ vec3 Raycast(in ray R)
             vec3 NodeMax = (NodeCentre + Rad) * InvBiasUniform;
 
             //if (Rad == vec3(8)) return vec3(1);
-            CurrentIntersection = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
+            RaySpan = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
             //if (NodeMin == vec3(0)) return vec3(0, 1, 0);
             //if (NodeMin == vec3(16, 0, 0)) return vec3(0, 1, 0);
             
-            //if (CurrentIntersection.tMax < 0) return vec3(1, 0, 1);
+            //if (RaySpan.tMax < 0) return vec3(1, 0, 1);
 
-            if (CurrentIntersection.tMin <= CurrentIntersection.tMax && CurrentIntersection.tMax > 0)
+            if (RaySpan.tMin <= RaySpan.tMax && RaySpan.tMax > 0)
             {
                 // Ray hit this voxel
                 
@@ -365,8 +354,8 @@ vec3 Raycast(in ray R)
                 }
 
                 // Octant not occupied, need to handle advance/pop
-                uint NextOct = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
-                RayP = R.Origin + (CurrentIntersection.tMax + 0.0078125) * R.Dir;
+                uint NextOct = GetNextOctant(RaySpan.tMax, RaySpan.tMaxV, CurrentOct);
+                RayP = R.Origin + (RaySpan.tMax + 0.0078125) * R.Dir;
 
                 if (IsAdvanceValid(NextOct, CurrentOct, RaySgn))
                 {
@@ -401,14 +390,12 @@ vec3 Raycast(in ray R)
                     }
                     else
                     {
-                        return vec3(0, 1, 0);
                         break;
                     }
                 }
             }
             else
             {
-                return vec3(1);
                 break;
             }
         }
@@ -419,7 +406,6 @@ vec3 Raycast(in ray R)
         return vec3(0.08);
     }
 
-    return vec3(0, 1, 1);
     return vec3(0.08);
 }
 

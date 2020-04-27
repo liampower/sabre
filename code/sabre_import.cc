@@ -430,7 +430,7 @@ LoadMeshTriangles(cgltf_mesh* Mesh)
 
     // Locate the primitive entry for the mesh's triangle data block.
     // We do not handle non-triangle meshes.
-    for (u32 PrimIndex = 0; PrimIndex < Mesh->primitives_count; ++PrimIndex)
+    for (cgltf_size PrimIndex = 0; PrimIndex < Mesh->primitives_count; ++PrimIndex)
     {
         cgltf_primitive* Prim = &Mesh->primitives[PrimIndex];
 
@@ -442,12 +442,12 @@ LoadMeshTriangles(cgltf_mesh* Mesh)
                 u32* IndexBuffer = (u32*) malloc(IndexCount * sizeof(u32));
 
                 // Copy the indices into the index buffer.
-                for (u32 Elem = 0; Elem < Prim->indices->count; ++Elem)
+                for (cgltf_size Elem = 0; Elem < Prim->indices->count; ++Elem)
                 {
                     IndexBuffer[Elem] = (u32) cgltf_accessor_read_index(Prim->indices, Elem);
                 }
 
-                for (u32 AttribIndex = 0; AttribIndex < Prim->attributes_count; ++AttribIndex)
+                for (cgltf_size AttribIndex = 0; AttribIndex < Prim->attributes_count; ++AttribIndex)
                 {
                     cgltf_attribute* Attrib = &Prim->attributes[AttribIndex];
 
@@ -477,7 +477,7 @@ LoadMeshTriangles(cgltf_mesh* Mesh)
                         TriBuffer->TriangleCount += TriCount;
 
 
-                        for (u32 TriIndex = 0; TriIndex < TriCount; TriIndex += 3)
+                        for (cgltf_size TriIndex = 0; TriIndex < TriCount; TriIndex += 3)
                         {
                             tri3 T;
 
@@ -616,7 +616,6 @@ BuildTriangleIndex(u32 MaxDepth, u32 ScaleExponent, tri_buffer* Tris, std::unord
                         GlobalColourIndex.insert(std::make_pair(ChildVoxelCode, Tris->Triangles[TriIndex].Colour));
                     }
 
-
                     if (CurrentCtx.Depth < MaxDepth)
                     {
                         st_ctx NewCtx = { };
@@ -701,6 +700,16 @@ GetMeshMinDimension(const cgltf_primitive* const Prim)
 
     return Min(Min(MinX, MinY), MinZ);
 }
+
+
+static void
+BuildDataIndex(uint32_t MaxDepth, const tri_buffer* const Triangles)
+{
+    std::vector<std::deque<morton_key>> Queues{ MaxDepth };
+
+    //for (
+}
+
 
 extern "C" sbr_svo*
 SBR_ImportGLBFile(uint32_t MaxDepth, const char* const GLTFPath)
