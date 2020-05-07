@@ -307,13 +307,13 @@ main(int ArgCount, const char** const Args)
                 ImGui::End();
             }
 
-            ImGui::SliderInt("Level of Detail", &Lod, 0, 10);
+            ImGui::SliderInt("Level of Detail", &Lod, 0, 11);
             ImGui::TextUnformatted("Higher levels will take longer to generate");
             ImGui::Separator();
 
             if (ImGui::Button("Load rabbit scene"))
             {
-                WorldSvo = SBR_ImportGLBFile(Lod, "data/Showcase/bunny.glb");
+                WorldSvo = SBR_ImportGLBFile(Lod, "data/Showcase/sib2.glb");
                 if (nullptr == WorldSvo)
                 {
                     fprintf(stderr, "Failed to initialise render data\n");

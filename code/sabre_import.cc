@@ -18,6 +18,10 @@
 #include <xmmintrin.h>
 #include <smmintrin.h>
 
+
+#define BIG_CONSTANT(x) (x)
+
+
 typedef __m128 m128;
 typedef uint64_t morton_key;
 
@@ -35,18 +39,128 @@ struct tri3
 static inline uint64_t
 Part1By2(uint64_t X)
 {
-    X &= 0X000003ff;                  // X = ---- ---- ---- ---- ---- --98 7654 3210
-    X = (X ^ (X << 16)) & 0Xff0000ff; // X = ---- --98 ---- ---- ---- ---- 7654 3210
-    X = (X ^ (X <<  8)) & 0X0300f00f; // X = ---- --98 ---- ---- 7654 ---- ---- 3210
-    X = (X ^ (X <<  4)) & 0X030c30c3; // X = ---- --98 ---- 76-- --54 ---- 32-- --10
-    X = (X ^ (X <<  2)) & 0X09249249; // X = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
+    X &= 0X000003ffULL;                  // X = ---- ---- ---- ---- ---- --98 7654 3210
+    X = (X ^ (X << 16ULL)) & 0Xff0000ffULL; // X = ---- --98 ---- ---- ---- ---- 7654 3210
+    X = (X ^ (X <<  8ULL)) & 0X0300f00fULL; // X = ---- --98 ---- ---- 7654 ---- ---- 3210
+    X = (X ^ (X <<  4ULL)) & 0X030c30c3ULL; // X = ---- --98 ---- 76-- --54 ---- 32-- --10
+    X = (X ^ (X <<  2ULL)) & 0X09249249ULL; // X = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
     return X;
+}
+
+static inline uint64_t
+rotl64 (uint64_t x, int8_t r)
+{
+  return (x << r) | (x >> (64 - r));
+}
+
+static inline uint64_t
+fmix (uint64_t k)
+{
+  k ^= k >> 33;
+  k *= BIG_CONSTANT(0xff51afd7ed558ccd);
+
+  k ^= k >> 33;
+  k *= BIG_CONSTANT(0xc4ceb9fe1a85ec53);
+  
+  k ^= k >> 33;
+
+  return k;
+}
+
+
+
+void
+MurmurHash3_128(const void* key, const int len, const uint32_t seed, void* out)
+{
+  const uint8_t * data = (const uint8_t*)key;
+  const int nblocks = len / 16;
+
+  uint64_t h1 = seed;
+  uint64_t h2 = seed;
+
+  uint64_t c1 = BIG_CONSTANT(0x87c37b91114253d5);
+  uint64_t c2 = BIG_CONSTANT(0x4cf5ad432745937f);
+
+  //----------
+  // body
+
+  const uint64_t * blocks = (const uint64_t *)(data); 
+
+  for(int i = 0; i < nblocks; i++)
+  {
+    uint64_t k1 = blocks[i*2+0];
+    uint64_t k2 = blocks[i*2+1];
+
+    k1 *= c1; k1  = rotl64(k1,31); k1 *= c2; h1 ^= k1;
+
+    h1 = rotl64(h1,27); h1 += h2; h1 = h1*5+0x52dce729;
+
+    k2 *= c2; k2  = rotl64(k2,33); k2 *= c1; h2 ^= k2;
+
+    h2 = rotl64(h2,31); h2 += h1; h2 = h2*5+0x38495ab5;
+  }
+  
+  //----------
+  // tail
+
+  const uint8_t * tail = (const uint8_t*)(data + nblocks*16);
+
+  uint64_t k1 = 0;
+  uint64_t k2 = 0;
+
+  switch(len & 15)
+  {
+  case 15: k2 ^= ((uint64_t)tail[14]) << 48;
+  case 14: k2 ^= ((uint64_t)tail[13]) << 40;
+  case 13: k2 ^= ((uint64_t)tail[12]) << 32;
+  case 12: k2 ^= ((uint64_t)tail[11]) << 24;
+  case 11: k2 ^= ((uint64_t)tail[10]) << 16;
+  case 10: k2 ^= ((uint64_t)tail[ 9]) << 8;
+  case  9: k2 ^= ((uint64_t)tail[ 8]) << 0;
+           k2 *= c2; k2  = rotl64(k2,33); k2 *= c1; h2 ^= k2;
+
+  case  8: k1 ^= ((uint64_t)tail[ 7]) << 56;
+  case  7: k1 ^= ((uint64_t)tail[ 6]) << 48;
+  case  6: k1 ^= ((uint64_t)tail[ 5]) << 40;
+  case  5: k1 ^= ((uint64_t)tail[ 4]) << 32;
+  case  4: k1 ^= ((uint64_t)tail[ 3]) << 24;
+  case  3: k1 ^= ((uint64_t)tail[ 2]) << 16;
+  case  2: k1 ^= ((uint64_t)tail[ 1]) << 8;
+  case  1: k1 ^= ((uint64_t)tail[ 0]) << 0;
+           k1 *= c1; k1  = rotl64(k1,31); k1 *= c2; h1 ^= k1;
+  };
+
+  //----------
+  // finalization
+
+  h1 ^= len; h2 ^= len;
+
+  h1 += h2;
+  h2 += h1;
+
+  h1 = fmix(h1);
+  h2 = fmix(h2);
+
+  h1 += h2;
+  h2 += h1;
+
+  ((uint64_t*)out)[0] = h1;
+  ((uint64_t*)out)[1] = h2;
+}
+
+uint64_t
+MurmurHash3_64(const void* key, const int len, const uint32_t seed)
+{
+	uint64_t hash[2];
+	MurmurHash3_128(key, len, seed, hash);
+	return *hash;
 }
 
 extern morton_key
 EncodeMorton3(sbrv3u V)
 {
-    return (Part1By2((uint64_t)V.Z) << 2) + (Part1By2((uint64_t)V.Y) << 1) + Part1By2((uint64_t)V.X);
+    uint64_t M = (Part1By2((uint64_t)V.Z) << 2ULL) + (Part1By2((uint64_t)V.Y) << 1ULL) + Part1By2((uint64_t)V.X);
+    return MurmurHash3_64(&M, 8, 0);
 }
 
 

@@ -322,6 +322,7 @@ UploadLeafDataSparse(std::vector<std::pair<sbrv3u, packed_snorm3>> Data, int Att
         printf("Max Pages: %zu\n", MaxPageCount);
 
         size_t PageCount = 0;
+        MaxPageCount = 1024;
         for (auto It = Pages.begin(); It != Pages.end(); ++It)
         {
             // Too many pages; avoid exhausting the GPU memory
