@@ -37,15 +37,15 @@ struct camera
 {
     f32  Velocity;
 
-    sbrv3 Up;
-    sbrv3 Right;
-    sbrv3 Forward;
-    sbrv3 Position;
+    vec3 Up;
+    vec3 Right;
+    vec3 Forward;
+    vec3 Position;
 };
 
 struct sphere
 {
-    sbrv3 Centre;
+    vec3 Centre;
     float Radius;
 };
 
@@ -78,9 +78,9 @@ OutputGraphicsDeviceInfo(void)
 //
 // Tree parameter ignored here.
 static bool
-CubeSphereIntersection(sbrv3 Min, sbrv3 Max, const sbr_svo* const, const void* const UserData)
+CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const, const void* const UserData)
 {
-    const sbrv3 S = ((sphere*)UserData)->Centre;//sbrv3(16);
+    const vec3 S = ((sphere*)UserData)->Centre;//vec3(16);
     const f32 R = ((sphere*)UserData)->Radius;//8;
 
     f32 DistanceSqToCube = R * R;
@@ -99,32 +99,32 @@ CubeSphereIntersection(sbrv3 Min, sbrv3 Max, const sbr_svo* const, const void* c
 }
 
 
-static inline sbrv3
-SphereNormal(sbrv3 C, const sbr_svo* const, const void* const UserData)
+static inline vec3
+SphereNormal(vec3 C, const svo* const, const void* const UserData)
 {
-    const sbrv3 S = sbrv3(16);
-    const sbrv3 SphereCentre = ((sphere*)UserData)->Centre;
+    const vec3 S = vec3(16);
+    const vec3 SphereCentre = ((sphere*)UserData)->Centre;
 
     return Normalize(C - S);
 }
 
-static inline sbrv3
-SphereColour(sbrv3 C, const sbr_svo* const, const void* const)
+static inline vec3
+SphereColour(vec3 C, const svo* const, const void* const)
 {
-    return sbrv3(1, 0, 1);
+    return vec3(1, 0, 1);
 }
 
 
-static inline sbr_svo*
+static inline svo*
 CreateCubeSphereTestScene(int Lod)
 {
-    sphere Sphere = { sbrv3{16.0f, 16.0f, 16.0f}, 8.0f };
+    sphere Sphere = { vec3{16.0f, 16.0f, 16.0f}, 8.0f };
 
     shape_sampler ShapeSampler = shape_sampler{ &Sphere, &CubeSphereIntersection };
     data_sampler NormalSampler = data_sampler{ &Sphere, &SphereNormal };
     data_sampler ColourSampler = data_sampler{ &Sphere, &SphereColour };
 
-    sbr_svo* WorldSvo = SBR_CreateScene(DEMO_SCALE_EXPONENT,
+    svo* WorldSvo = CreateScene(DEMO_SCALE_EXPONENT,
                                     Lod,
                                     &ShapeSampler,
                                     &NormalSampler,
@@ -134,24 +134,24 @@ CreateCubeSphereTestScene(int Lod)
 }
 
 
-static inline sbr_svo*
+static inline svo*
 CreateImportedMeshTestScene(const char* const GLBFileName)
 {
-    return SBR_ImportGLBFile(DEMO_MAX_TREE_DEPTH, GLBFileName);
+    return ImportGLBFile(DEMO_MAX_TREE_DEPTH, GLBFileName);
 }
 
 
-static sbrv3
+static vec3
 UnprojectViewDirection(const camera& Cam)
 {
     // Unproject the MouseX & Y positions into worldspace.
-    sbrv3 D = sbrv3(f32(512) / 2.0f, f32(512) / 2.0f, 0.0f);
+    vec3 D = vec3(f32(512) / 2.0f, f32(512) / 2.0f, 0.0f);
     
     // Origin of the screen plane in world-space
-    sbrv3 WorldVOrigin = Cam.Position - sbrv3(256, 256, 512);
+    vec3 WorldVOrigin = Cam.Position - vec3(256, 256, 512);
     D = WorldVOrigin + D;
 
-    sbrv3 R = Normalize(D - Cam.Position);
+    vec3 R = Normalize(D - Cam.Position);
 
     mat3 CameraMatrix = mat3{{
         { Cam.Right.X, Cam.Right.Y, Cam.Right.Z },
@@ -165,22 +165,22 @@ UnprojectViewDirection(const camera& Cam)
 }
 
 static void
-InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, sbr_svo* const Svo)
+InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, svo* const Svo)
 {
-    sbrv3 R = UnprojectViewDirection(Cam);
-    sbrv3 VoxelPos = SBR_GetNearestFreeSlot(Cam.Position, R, Svo);
+    vec3 R = UnprojectViewDirection(Cam);
+    vec3 VoxelPos = GetNearestFreeSlot(Cam.Position, R, Svo);
     DEBUGPrintVec3(VoxelPos);
-    SBR_InsertVoxel(Svo, VoxelPos);
+    InsertVoxel(Svo, VoxelPos);
 }
 
 
 
 static void
-DeleteVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, sbr_svo* const Svo)
+DeleteVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, svo* const Svo)
 {
-    sbrv3 R = UnprojectViewDirection(Cam);
-    sbrv3 VoxelPos = SBR_GetNearestLeafSlot(Cam.Position, R, Svo);
-    SBR_DeleteVoxel(Svo, VoxelPos);
+    vec3 R = UnprojectViewDirection(Cam);
+    vec3 VoxelPos = GetNearestLeafSlot(Cam.Position, R, Svo);
+    DeleteVoxel(Svo, VoxelPos);
 }
 
 
@@ -249,24 +249,24 @@ main(int ArgCount, const char** const Args)
     glfwGetFramebufferSize(Window, &FramebufferWidth, &FramebufferHeight);
     glViewport(0, 0, FramebufferWidth, FramebufferHeight);
 
-    sbr_svo* WorldSvo = nullptr;
+    svo* WorldSvo = nullptr;
 
     // Initialise the render data
-    sbr_view_data ViewData = { };
+    view_data ViewData = { };
     ViewData.ScreenWidth = 512;
     ViewData.ScreenHeight = 512;
 
-    sbr_render_data* RenderData = nullptr;
+    render_data* RenderData = nullptr;
 
 
     camera Cam = { };
-    Cam.Forward = sbrv3(0, 0, -1);
-    Cam.Right = sbrv3(1, 0, 0);
-    Cam.Up = sbrv3(0, 1, 0);
-    Cam.Position = sbrv3(4, 4, 96);
+    Cam.Forward = vec3(0, 0, -1);
+    Cam.Right = vec3(1, 0, 0);
+    Cam.Up = vec3(0, 1, 0);
+    Cam.Position = vec3(4, 4, 96);
     Cam.Velocity = 1.32f;
 
-    const sbrv3 WorldYAxis = sbrv3(0, 1, 0);
+    const vec3 WorldYAxis = vec3(0, 1, 0);
 
     f64 LastMouseX, LastMouseY;
     glfwGetCursorPos(Window, &LastMouseX, &LastMouseY);
@@ -313,41 +313,41 @@ main(int ArgCount, const char** const Args)
 
             if (ImGui::Button("Load rabbit scene"))
             {
-                WorldSvo = SBR_ImportGLBFile(Lod, "data/Showcase/sib2.glb");
+                WorldSvo = ImportGLBFile(Lod, "data/Showcase/sib2.glb");
                 if (nullptr == WorldSvo)
                 {
                     fprintf(stderr, "Failed to initialise render data\n");
                     MessageBox(nullptr, "Failed to initialise render data\n", "Error", MB_ICONWARNING);
 
-                    SBR_DeleteScene(WorldSvo);
+                    DeleteScene(WorldSvo);
                     glfwTerminate();
                     return EXIT_FAILURE;
                 }
                 ShowMenu = false;
-                RenderData = SBR_CreateRenderData(WorldSvo, &ViewData);
+                RenderData = CreateRenderData(WorldSvo, &ViewData);
                 glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
                 if (nullptr == RenderData)
                 {
                     fprintf(stderr, "Failed to initialise render data\n");
                     MessageBox(nullptr, "Failed to initialise render data\n", "Error", MB_ICONWARNING);
 
-                    SBR_DeleteScene(WorldSvo);
+                    DeleteScene(WorldSvo);
                     glfwTerminate();
                     return EXIT_FAILURE;
                 }
             }
             else if (ImGui::Button("Load Serapis scene"))
             {
-                WorldSvo = SBR_ImportGLBFile(Lod, "data/Showcase/serapis.glb");
+                WorldSvo = ImportGLBFile(Lod, "data/Showcase/serapis.glb");
                 ShowMenu = false;
-                RenderData = SBR_CreateRenderData(WorldSvo, &ViewData);
+                RenderData = CreateRenderData(WorldSvo, &ViewData);
                 glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
                 if (nullptr == RenderData)
                 {
                     fprintf(stderr, "Failed to initialise render data\n");
                     MessageBox(nullptr, "Failed to initialise render data\n", "Error", MB_ICONWARNING);
 
-                    SBR_DeleteScene(WorldSvo);
+                    DeleteScene(WorldSvo);
                     glfwTerminate();
                     return EXIT_FAILURE;
                 }
@@ -356,14 +356,14 @@ main(int ArgCount, const char** const Args)
             {
                 WorldSvo = CreateCubeSphereTestScene(Lod);
                 ShowMenu = false;
-                RenderData = SBR_CreateRenderData(WorldSvo, &ViewData);
+                RenderData = CreateRenderData(WorldSvo, &ViewData);
                 glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
                 if (nullptr == RenderData)
                 {
                     fprintf(stderr, "Failed to initialise render data\n");
                     MessageBox(nullptr, "Failed to initialise render data\n", "Error", MB_ICONWARNING);
 
-                    SBR_DeleteScene(WorldSvo);
+                    DeleteScene(WorldSvo);
                     glfwTerminate();
                     return EXIT_FAILURE;
                 }
@@ -433,14 +433,14 @@ main(int ArgCount, const char** const Args)
                 if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_RIGHT) && ((CurrentTime - LastMouseRTime)) >= 1)
                 {
                     InsertVoxelAtMousePoint(MouseX, MouseY, Cam, WorldSvo);
-                    SBR_UpdateRenderData(WorldSvo, RenderData);
+                    UpdateRenderData(WorldSvo, RenderData);
                     LastMouseRTime = CurrentTime;
                 }
                 
                 if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_LEFT) && ((CurrentTime - LastMouseLTime)) >= 1)
                 {
                     DeleteVoxelAtMousePoint(MouseX, MouseY, Cam, WorldSvo);
-                    SBR_UpdateRenderData(WorldSvo, RenderData);
+                    UpdateRenderData(WorldSvo, RenderData);
                     LastMouseLTime = CurrentTime;
                 }
 
@@ -469,7 +469,7 @@ main(int ArgCount, const char** const Args)
             ViewData.CamTransform = (float*)CameraMatrix;
             ViewData.CamPos = F;
 
-            SBR_DrawScene(RenderData, &ViewData);
+            DrawScene(RenderData, &ViewData);
         }
 
         ImGui::Render();
@@ -481,8 +481,8 @@ main(int ArgCount, const char** const Args)
         DeltaTime = FrameEndTime - FrameStartTime;
     }
 
-    SBR_DeleteScene(WorldSvo);
-    SBR_DeleteRenderData(RenderData);
+    DeleteScene(WorldSvo);
+    DeleteRenderData(RenderData);
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();

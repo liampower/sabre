@@ -12,12 +12,12 @@ static constexpr uint WORK_SIZE_X = 512;
 static constexpr uint WORK_SIZE_Y = 512;
 
 typedef uint64_t morton_key;
-extern morton_key EncodeMorton3(sbrv3u V);
+extern morton_key EncodeMorton3(uvec3 V);
 
-struct sbrv3u_hash
+struct uvec3_hash
 {
 public:
-    size_t operator()(const sbrv3u& Element) const{
+    size_t operator()(const uvec3& Element) const{
         return EncodeMorton3(Element);
     }
 };
@@ -28,15 +28,15 @@ typedef GLint  gl_int;
 typedef GLsizei gl_sizei;
 typedef GLenum gl_enum;
 
-enum cs_bindings : gl_uint
+enum cs_bindings
 {
-    BINDING_RENDERIMG = 0,
-    BINDING_NORMALS = 1
+    BIND_RENDER_TEX = 0,
+    BIND_NORMALS_TEX = 1
 };
 
 // Holds the contextual data required to render a SVO voxel
 // scene with OpenGL.
-struct sbr_render_data
+struct render_data
 {
     gl_uint CanvasShader; // Shader program ID for canvas
     gl_uint CanvasVAO;    // VAO holding canvas vertices
@@ -193,7 +193,7 @@ CompileShader(const char* VertSrc, const char* FragSrc)
 }
 
 static inline void
-SetUniformData(const sbr_svo* const Tree, sbr_render_data* const RenderData)
+SetUniformData(const svo* const Tree, render_data* const RenderData)
 {
     glUseProgram(RenderData->RenderShader);
 
@@ -226,7 +226,7 @@ CreateRenderImage(int ImgWidth, int ImgHeight)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, ImgWidth, ImgHeight, 0, GL_RGBA, GL_FLOAT, nullptr);
 
-    glBindImageTexture(BINDING_RENDERIMG, OutputTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+    glBindImageTexture(BIND_RENDER_TEX, OutputTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
     
     return OutputTexture;
 }
@@ -242,19 +242,19 @@ struct tex_page
     }*/
 };
 
-static std::unordered_map<sbrv3u, tex_page, sbrv3u_hash>
-PartitionLeafDataToBuckets(const std::vector<std::pair<sbrv3u, u32>>& LeafData, usize PageSizeX, usize PageSizeY, usize PageSizeZ)
+static std::unordered_map<uvec3, tex_page, uvec3_hash>
+PartitionLeafDataToBuckets(const std::vector<std::pair<uvec3, u32>>& LeafData, usize PageSizeX, usize PageSizeY, usize PageSizeZ)
 {
-    std::unordered_map<sbrv3u, tex_page, sbrv3u_hash> Pages;
-    const sbrv3u PageSize = sbrv3u(PageSizeX, PageSizeY, PageSizeZ);
+    std::unordered_map<uvec3, tex_page, uvec3_hash> Pages;
+    const uvec3 PageSize = uvec3(PageSizeX, PageSizeY, PageSizeZ);
 
     for (auto It = LeafData.begin(); It != LeafData.end(); ++It)
     {
         auto Element = *It;
 
         // Subtexture coords
-        sbrv3u Bucket = Element.first / PageSize;
-        sbrv3u PageCoords = Element.first % PageSize;
+        uvec3 Bucket = Element.first / PageSize;
+        uvec3 PageCoords = Element.first % PageSize;
         usize DataIndex = (PageSizeX*PageSizeY*PageCoords.Z) + (PageSizeX*PageCoords.Y) + PageCoords.X;
         assert(DataIndex < (PageSizeX*PageSizeY*PageSizeZ));
 
@@ -281,7 +281,7 @@ PartitionLeafDataToBuckets(const std::vector<std::pair<sbrv3u, u32>>& LeafData, 
 
 
 static gl_uint
-UploadLeafDataSparse(std::vector<std::pair<sbrv3u, packed_snorm3>> Data, int AttachmentIndex)
+UploadLeafDataSparse(std::vector<std::pair<uvec3, packed_snorm3>> Data, int AttachmentIndex)
 {
     gl_uint MapTexture;
     glCreateTextures(GL_TEXTURE_3D, 1, &MapTexture);
@@ -299,7 +299,7 @@ UploadLeafDataSparse(std::vector<std::pair<sbrv3u, packed_snorm3>> Data, int Att
         assert(PageSizeX > 0 && PageSizeY > 0 && PageSizeZ > 0);
         fprintf(stderr, "Page size: %d %d %d\n", PageSizeX, PageSizeY, PageSizeZ);
 
-        std::unordered_map<sbrv3u, tex_page, sbrv3u_hash> Pages = PartitionLeafDataToBuckets(Data, PageSizeX, PageSizeY, PageSizeZ);
+        std::unordered_map<uvec3, tex_page, uvec3_hash> Pages = PartitionLeafDataToBuckets(Data, PageSizeX, PageSizeY, PageSizeZ);
 
         glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -371,7 +371,7 @@ UploadLeafDataSparse(std::vector<std::pair<sbrv3u, packed_snorm3>> Data, int Att
 }
 
 static svo_buffers
-UploadOctreeBlockData(const sbr_svo* const Svo)
+UploadOctreeBlockData(const svo* const Svo)
 {
     svo_buffers RenderData = { };
     gl_uint SvoBuffer, FarPtrBuffer;
@@ -390,13 +390,13 @@ UploadOctreeBlockData(const sbr_svo* const Svo)
         // TODO(Liam): Waste here on the last block
         usize MaxSvoDataSize = SvoBlockDataSize * Svo->UsedBlockCount;
 
-        usize FarPtrBlockDataSize = sizeof(sbr_far_ptr) * SBR_FAR_PTRS_PER_BLK;
+        usize FarPtrBlockDataSize = sizeof(far_ptr) * SBR_FAR_PTRS_PER_BLK;
         usize MaxFarPtrDataSize = FarPtrBlockDataSize * Svo->UsedBlockCount;
 
         // Allocate space for the far ptr buffer
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, FarPtrBuffer);
         glBufferData(GL_SHADER_STORAGE_BUFFER, MaxFarPtrDataSize, nullptr, GL_DYNAMIC_COPY);
-        sbr_far_ptr* GPUFarPtrBuffer = (sbr_far_ptr*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+        far_ptr* GPUFarPtrBuffer = (far_ptr*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
 
         // Allocate space for the node data buffer
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, SvoBuffer);
@@ -419,7 +419,7 @@ UploadOctreeBlockData(const sbr_svo* const Svo)
             memcpy(GPUSvoBuffer + NextSvoDataOffset, CurrentBlk->Entries, CurrentBlk->NextFreeSlot * sizeof(svo_node));
             NextSvoDataOffset += CurrentBlk->NextFreeSlot;
 
-            memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SBR_FAR_PTRS_PER_BLK * sizeof(sbr_far_ptr)); 
+            memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SBR_FAR_PTRS_PER_BLK * sizeof(far_ptr)); 
             NextFarPtrDataOffset += SBR_FAR_PTRS_PER_BLK;
 
             CurrentBlk = CurrentBlk->Next;
@@ -443,8 +443,9 @@ UploadOctreeBlockData(const sbr_svo* const Svo)
     return RenderData;
 }
 
+
 extern "C" void
-SBR_DrawScene(const sbr_render_data* const RenderData, const sbr_view_data* const ViewData)
+DrawScene(const render_data* const RenderData, const view_data* const ViewData)
 {
     glUseProgram(RenderData->RenderShader);
     glUniformMatrix3fv(RenderData->ViewMatUniformLocation, 1, GL_TRUE, ViewData->CamTransform);
@@ -463,10 +464,11 @@ SBR_DrawScene(const sbr_render_data* const RenderData, const sbr_view_data* cons
     glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
-extern "C" sbr_render_data*
-SBR_CreateRenderData(const sbr_svo* const Tree, const sbr_view_data* const ViewData)
+
+extern "C" render_data*
+CreateRenderData(const svo* const Tree, const view_data* const ViewData)
 {
-    sbr_render_data* RenderData = (sbr_render_data*) calloc(1, sizeof(sbr_render_data));
+    render_data* RenderData = (render_data*) calloc(1, sizeof(render_data));
     if (nullptr == RenderData)
     {
         fprintf(stderr, "Failed to allocate render data\n");
@@ -478,7 +480,7 @@ SBR_CreateRenderData(const sbr_svo* const Tree, const sbr_view_data* const ViewD
     {
         fprintf(stderr, "Failed to compile compute shader\n");
 
-        SBR_DeleteRenderData(RenderData);
+        DeleteRenderData(RenderData);
         return nullptr;
     }
 
@@ -487,7 +489,7 @@ SBR_CreateRenderData(const sbr_svo* const Tree, const sbr_view_data* const ViewD
     {
         fprintf(stderr, "Failed to compile compute shader\n");
 
-        SBR_DeleteRenderData(RenderData);
+        DeleteRenderData(RenderData);
         return nullptr;
     }
 
@@ -499,7 +501,7 @@ SBR_CreateRenderData(const sbr_svo* const Tree, const sbr_view_data* const ViewD
     {
         fprintf(stderr, "Failed to upload canvas vertices\n");
 
-        SBR_DeleteRenderData(RenderData);
+        DeleteRenderData(RenderData);
         return nullptr;
     }
 
@@ -511,20 +513,20 @@ SBR_CreateRenderData(const sbr_svo* const Tree, const sbr_view_data* const ViewD
 
     if (0 == RenderData->MapTexture)
     {
-        SBR_DeleteRenderData(RenderData);
+        DeleteRenderData(RenderData);
         return nullptr;
     }
 
     if (0 == RenderData->ColourTexture)
     {
-        SBR_DeleteRenderData(RenderData);
+        DeleteRenderData(RenderData);
         return nullptr;
     }
 
     svo_buffers SvoBuffers = UploadOctreeBlockData(Tree);
     if (0 == SvoBuffers.SvoBuffer || 0 == SvoBuffers.FarPtrBuffer)
     {
-        SBR_DeleteRenderData(RenderData);
+        DeleteRenderData(RenderData);
         return nullptr;
     }
 
@@ -541,7 +543,7 @@ SBR_CreateRenderData(const sbr_svo* const Tree, const sbr_view_data* const ViewD
 }
 
 extern "C" void
-SBR_DeleteRenderData(sbr_render_data* RenderData)
+DeleteRenderData(render_data* RenderData)
 {
     if (RenderData)
     {
@@ -566,20 +568,21 @@ SBR_DeleteRenderData(sbr_render_data* RenderData)
     }
 }
 
+
 extern "C" void
-SBR_UpdateRenderData(const sbr_svo* const Svo, sbr_render_data* const RenderDataOut)
+UpdateRenderData(const svo* const Svo, render_data* const RenderDataOut)
 {
     usize SvoBlockDataSize = sizeof(svo_node) * SBR_NODES_PER_BLK;
     // TODO(Liam): Waste here on the last block
     usize MaxSvoDataSize = SvoBlockDataSize * Svo->UsedBlockCount;
 
-    usize FarPtrBlockDataSize = sizeof(sbr_far_ptr) * SBR_FAR_PTRS_PER_BLK;
+    usize FarPtrBlockDataSize = sizeof(far_ptr) * SBR_FAR_PTRS_PER_BLK;
     usize MaxFarPtrDataSize = FarPtrBlockDataSize * Svo->UsedBlockCount;
 
     // Allocate space for the far ptr buffer
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, RenderDataOut->FarPtrBuffer);
     glBufferData(GL_SHADER_STORAGE_BUFFER, MaxFarPtrDataSize, nullptr, GL_DYNAMIC_COPY);
-    sbr_far_ptr* GPUFarPtrBuffer = (sbr_far_ptr*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+    far_ptr* GPUFarPtrBuffer = (far_ptr*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
 
     // Allocate space for the node data buffer
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, RenderDataOut->SvoBuffer);
@@ -601,7 +604,7 @@ SBR_UpdateRenderData(const sbr_svo* const Svo, sbr_render_data* const RenderData
         memcpy(GPUSvoBuffer + NextSvoDataOffset, CurrentBlk->Entries, CurrentBlk->NextFreeSlot * sizeof(svo_node));
         NextSvoDataOffset += CurrentBlk->NextFreeSlot;
 
-        memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SBR_FAR_PTRS_PER_BLK * sizeof(sbr_far_ptr)); 
+        memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SBR_FAR_PTRS_PER_BLK * sizeof(far_ptr)); 
         NextFarPtrDataOffset += SBR_FAR_PTRS_PER_BLK;
 
         CurrentBlk = CurrentBlk->Next;
@@ -617,20 +620,65 @@ SBR_UpdateRenderData(const sbr_svo* const Svo, sbr_render_data* const RenderData
 
 
 extern "C" bool
-DEBUGOutputRenderShaderAssembly(const sbr_render_data* const RenderData, FILE* OutFile)
+DEBUGOutputRenderShaderAssembly(const render_data* const RenderData, FILE* OutFile)
 {
     gl_sizei DataLength = 0;
     gl_enum BinFormats[64];
     gl_int AsmLength = 0;
 
     glGetProgramiv(RenderData->RenderShader, GL_PROGRAM_BINARY_LENGTH, &AsmLength);
-    unsigned char* ShaderAssembly = (unsigned char*) malloc((usize)AsmLength);
+    byte* ShaderAssembly = (byte*)malloc((usize)AsmLength);
     glGetProgramBinary(RenderData->RenderShader, AsmLength, &DataLength, BinFormats, ShaderAssembly);
 
-    fwrite(ShaderAssembly, sizeof(unsigned char), (usize)DataLength, OutFile);
+    fwrite(ShaderAssembly, sizeof(byte), (usize)DataLength, OutFile);
 
     free(ShaderAssembly);
 
     // TODO(Liam): Error checking
     return true;
+}
+
+
+extern "C" render_data*
+CreateRenderData2(const svo* const Svo)
+{
+    usize NodeBlkSize = (SBR_NODES_PER_BLK * sizeof(svo_node));
+    usize FarPtrBlkSize = (SBR_FAR_PTRS_PER_BLK * sizeof(far_ptr));
+    usize BlkSize = NodeBlkSize + FarPtrBlkSize;
+
+    // The minimum SSBO size guaranteed by the implementation is 128MiB. To be
+    // safe (and to avoid gratuitous memory hogging) we allocate 16MiB for the
+    // view buffer.
+    usize MaxSSBOSize = 16777216ULL;
+    usize MaxViewableBlkCount = (MaxSSBOSize / BlkSize);
+    usize ViewableBlkCount = Min(MaxViewableBlkCount, Svo->UsedBlockCount);
+    usize NodeBufferSize = NodeBlkSize * ViewableBlkCount;
+    usize FarPtrBufferSize = FarPtrBlkSize * ViewableBlkCount;
+
+    // 0: Svo nodes buffer
+    // 1: svo far ptr buffer
+    gl_uint BlkBuffers[2] = { 0, 0 };
+    glGenBuffers(2, BlkBuffers);
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, BlkBuffers[1]);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, FarPtrBufferSize, nullptr, GL_DYNAMIC_COPY);
+    far_ptr* GPUFarPtrBuffer = (far_ptr*)glMapBuffer(GL_SHADER_STORAGE_BUFFER,
+                                                     GL_WRITE_ONLY);
+
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, BlkBuffers[0]);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, NodeBufferSize, nullptr, GL_DYNAMIC_COPY);
+    svo_node* GPUNodeBuffer = (svo_node*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+
+    if (BlkBuffers[0] && BlkBuffers[1])
+    {
+        svo_block* CurrentBlk = Svo->RootBlock;
+
+        for (usize BlkIndex = 0; BlkIndex < ViewableBlkCount; ++BlkIndex)
+        {
+            CurrentBlk = CurrentBlk->Next;
+        }
+    }
+
+    return nullptr;
 }

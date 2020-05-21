@@ -6,19 +6,20 @@
 #include "sabre.h"
 #include "sabre_math.h"
 
-static constexpr uint32_t SBR_NODES_PER_BLK = 8192;
-static constexpr uint32_t SBR_FAR_PTRS_PER_BLK = 8192;
+static constexpr u32 SBR_NODES_PER_BLK = 8192;
+static constexpr u32 SBR_FAR_PTRS_PER_BLK = 8192;
 
 static_assert(SBR_FAR_PTRS_PER_BLK >= SBR_NODES_PER_BLK, "Far Ptrs Per Blk must be >= Entries per Blk");
 
 struct svo_block;
 
-typedef uint32_t packed_snorm3;
-typedef uint32_t packed_snorm3;
-struct sbr_svo;
+typedef u32 packed_snorm3;
+typedef u32 packed_snorm3;
 
-typedef sbrv3 (*data_sampler_fn)(sbrv3, const sbr_svo* const, const void* const);
-typedef bool (*shape_sampler_fn)(sbrv3, sbrv3, const sbr_svo* const, const void* const);
+struct svo;
+
+typedef vec3 (*data_sampler_fn)(vec3, const svo* const, const void* const);
+typedef bool (*shape_sampler_fn)(vec3, vec3, const svo* const, const void* const);
 
 struct shape_sampler
 {
@@ -39,14 +40,14 @@ enum sbr_surface
     SURFACE_OUTSIDE
 };
 
-struct sbr_far_ptr
+struct far_ptr
 {
     // Index of the child node's block
-    uint32_t BlkIndex;
+    u32 BlkIndex;
 
     // Which slot in the child block the 
     // particular child node resides at
-    uint32_t NodeOffset;
+    u32 NodeOffset;
 };
 
 enum svo_blk_flags
@@ -58,43 +59,43 @@ union alignas(4) svo_node
 {
     struct
     {
-        uint8_t  LeafMask;
-        uint8_t  OccupiedMask;
-        uint16_t ChildPtr;
+        u8  LeafMask;
+        u8  OccupiedMask;
+        u16 ChildPtr;
     };
 
-    uint32_t Packed;
+    u32 Packed;
 };
 
 
 struct svo_bias
 {
     float    InvScale;
-    uint32_t Scale;
+    u32 Scale;
 };
 
 
 struct svo_block
 {
-    size_t      NextFreeSlot;
-    size_t      NextFarPtrSlot;
-    uint32_t    Index;
+    usize       NextFreeSlot;
+    usize       NextFarPtrSlot;
+    u32         Index;
     svo_block*  Prev;
     svo_block*  Next;
     svo_node    Entries[SBR_NODES_PER_BLK];
-    sbr_far_ptr FarPtrs[SBR_FAR_PTRS_PER_BLK];
+    far_ptr     FarPtrs[SBR_FAR_PTRS_PER_BLK];
 };
 
-struct sbr_svo
+struct svo
 {
     // How many total blocks are used in the tree.
-    uint32_t UsedBlockCount;
+    u32 UsedBlockCount;
 
     // The maximum depth of the svo to traverse
-    uint32_t MaxDepth;
+    u32 MaxDepth;
 
     // Extant of the octree in world space.
-    uint32_t ScaleExponent;
+    u32 ScaleExponent;
 
     // Required to maintain subtree-scale values as
     // integers. 
@@ -118,59 +119,63 @@ struct sbr_svo
     svo_block* RootBlock;
 
 
-    std::vector<std::pair<sbrv3u, packed_snorm3>> Normals;
+    std::vector<std::pair<uvec3, packed_snorm3>> Normals;
 
     // TODO Use unorms
-    std::vector<std::pair<sbrv3u, packed_snorm3>> Colours;
+    std::vector<std::pair<uvec3, packed_snorm3>> Colours;
 };
 
-typedef sbr_surface (*intersector_fn)(sbrv3, sbrv3, const sbr_svo* const, const void* const);
-typedef sbrv3 (*normal_fn)(sbrv3, const sbr_svo* const, const void* const);
-typedef sbrv3 (*colour_fn)(sbrv3, const sbr_svo* const, const void* const);
+typedef sbr_surface (*intersector_fn)(vec3, vec3, const svo* const, const void* const);
+typedef vec3 (*normal_fn)(vec3, const svo* const, const void* const);
+typedef vec3 (*colour_fn)(vec3, const svo* const, const void* const);
 
 
-extern "C" sbrv3
-SBR_GetNearestFreeSlot(sbrv3 Pos, sbrv3 Dir, const sbr_svo* const Tree);
+extern "C" vec3
+GetNearestFreeSlot(vec3 Pos, vec3 Dir, const svo* const Tree);
 
-extern "C" sbrv3
-SBR_GetNearestLeafSlot(sbrv3 Pos, sbrv3 Dir, const sbr_svo* const Tree);
-
-extern "C" void
-SBR_InsertVoxel(sbr_svo* Tree, sbrv3 P);
+extern "C" vec3
+GetNearestLeafSlot(vec3 Pos, vec3 Dir, const svo* const Tree);
 
 extern "C" void
-SBR_DeleteVoxel(sbr_svo* Tree, sbrv3 P);
+InsertVoxel(svo* Tree, vec3 P);
+
+extern "C" void
+DeleteVoxel(svo* Tree, vec3 P);
 
 extern "C" svo_bias
-SBR_ComputeScaleBias(uint32_t MaxDepth,
-                     uint32_t ScaleExponent);
+ComputeScaleBias(u32 MaxDepth,
+                 u32 ScaleExponent);
 
 extern "C" void
-SBR_DeleteScene(sbr_svo* Tree);
+DeleteScene(svo* Tree);
 
-extern "C" sbr_svo*
-SBR_ImportGLBFile(uint32_t MaxDepth,
-                  const char* const GLTFPath);
+extern "C" svo*
+ImportGLBFile(u32 MaxDepth,
+              const char* const GLTFPath);
 
-extern "C" sbr_svo*
-SBR_CreateScene(uint32_t ScaleExp,
-                uint32_t MaxDepth,
-                shape_sampler* SurfaceFn,
-                data_sampler* NormalFn,
-                data_sampler* ColourFn);
+extern "C" svo*
+CreateScene(u32 ScaleExp,
+            u32 MaxDepth,
+            shape_sampler* SurfaceFn,
+            data_sampler* NormalFn,
+            data_sampler* ColourFn);
 
 extern "C" void
-OutputSvoToFile(const sbr_svo* const Svo, FILE* FileOut);
+OutputSvoToFile(const svo* const Svo, FILE* FileOut);
 
 
 extern "C" unsigned int
-GetSvoUsedBlockCount(const sbr_svo* const Svo);
+GetSvoUsedBlockCount(const svo* const Svo);
 
 extern "C" unsigned int
-GetSvoDepth(const sbr_svo* const Svo);
+GetSvoDepth(const svo* const Svo);
+
+extern "C" void*
+CopyRawBlockData(const svo_block* const Blk, usize CopySize, void* const BlkDataOut);
+
 
 static inline void
-DEBUGPrintVec3(sbrv3 V)
+DEBUGPrintVec3(vec3 V)
 {
     printf("(%f, %f, %f)", (f64)V.X, (f64)V.Y, (f64)V.Z);
 }

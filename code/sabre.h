@@ -7,6 +7,7 @@
 
 typedef unsigned  uint;
 typedef size_t    usize;
+typedef unsigned char byte;
 
 typedef uint8_t   u8;   
 typedef uint16_t  u16;

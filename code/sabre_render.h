@@ -2,9 +2,9 @@
 #define SABRE_RENDER_H
 
 
-struct sbr_render_data;
+struct render_data;
 
-struct sbr_view_data
+struct view_data
 {
     int ScreenWidth;
     int ScreenHeight;
@@ -14,25 +14,25 @@ struct sbr_view_data
     float* CamPos;
 };
 
-extern "C" sbr_render_data*
-SBR_CreateRenderData(const sbr_svo* const Tree,
-                     const sbr_view_data* const ViewData);
+extern "C" render_data*
+CreateRenderData(const svo* const Tree, const view_data* const ViewData);
 
 
 extern "C" void
-SBR_UpdateRenderData(const sbr_svo* const Tree, sbr_render_data* RenderData);
+UpdateRenderData(const svo* const Tree, render_data* RenderData);
 
 
 extern "C" void
-SBR_DrawScene(const sbr_render_data* const RenderData, 
-              const sbr_view_data* const ViewData);
+DrawScene(const render_data* const RenderData,
+          const view_data* const ViewData);
+
 
 extern "C" void
-SBR_DeleteRenderData(sbr_render_data* RenderData);
+DeleteRenderData(render_data* RenderData);
 
 
 extern "C" bool
-DEBUGOutputRenderShaderAssembly(const sbr_render_data* const RenderData,
+DEBUGOutputRenderShaderAssembly(const render_data* const RenderData,
                                 FILE* OutFile);
 
 #endif

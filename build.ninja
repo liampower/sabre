@@ -4,8 +4,8 @@ Optimisation = -O3
 CompilerFlags = -isystem include -Wall -Wextra -pedantic -Weverything -Wpadded -std=c++14 -msse4 $Optimisation -fno-omit-frame-pointer -fno-exceptions -fno-rtti -ffast-math $DisabledWarnings
 Linker = link -nologo
 Libs = imgui.lib glad.lib glfw3.lib opengl32.lib kernel32.lib user32.lib gdi32.lib shell32.lib
-#LinkerFlags = -incremental:no -debug -entry:mainCRTStartup -libpath:libs -machine:x64 -nodefaultlib:libcmt $Libs -natvis:misc/svo.natvis
-LinkerFlags = -incremental:no -release -opt:ref -entry:mainCRTStartup -libpath:libs -machine:x64 -nodefaultlib:libcmt $Libs -natvis:misc/svo.natvis
+LinkerFlags = -incremental:no -debug -entry:mainCRTStartup -libpath:libs -machine:x64 -nodefaultlib:libcmt $Libs -natvis:misc/svo.natvis
+#LinkerFlags = -incremental:no -release -opt:ref -entry:mainCRTStartup -libpath:libs -machine:x64 -nodefaultlib:libcmt $Libs -natvis:misc/svo.natvis
 
 rule compile
   command = $Compiler $CompilerFlags -c $in -o $out

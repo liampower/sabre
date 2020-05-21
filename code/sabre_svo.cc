@@ -25,10 +25,10 @@ enum svo_oct
 };
 
 
-enum svo_voxel_type
+enum voxel_type
 {
-    VOXEL_PARENT = 0U,
-    VOXEL_LEAF   = 1U
+    VOXEL_PARENT,
+    VOXEL_LEAF
 };
 
 struct node_ref
@@ -49,8 +49,17 @@ CountSetBits(u32 Msk)
 #endif
 }
 
+
+static inline node_ref
+HighestVisibleNode(vec3 ViewP, vec3 ViewDim)
+{
+    vec3x8 ViewP8 = Cloned3x8(ViewP);
+
+
+}
+
 static inline packed_snorm3
-PackVec3ToSnorm3(sbrv3 V)
+PackVec3ToSnorm3(vec3 V)
 {
     f32 Exp = 127.0f;
 
@@ -76,10 +85,10 @@ FindHighestSetBit(u32 Msk)
 #endif
 }
 
-static inline sbrv3u
-FindHighestSetBit(sbrv3u Msk)
+static inline uvec3
+FindHighestSetBit(uvec3 Msk)
 {
-    sbrv3u Out;
+    uvec3 Out;
     Out.X = FindHighestSetBit(Msk.X);
     Out.Y = FindHighestSetBit(Msk.Y);
     Out.Z = FindHighestSetBit(Msk.Z);
@@ -88,13 +97,13 @@ FindHighestSetBit(sbrv3u Msk)
 }
 
 static inline u32
-GetTreeMaxScaleBiased(const sbr_svo* const Tree)
+GetTreeMaxScaleBiased(const svo* const Tree)
 {
     return (1U << Tree->ScaleExponent) << Tree->Bias.Scale;
 }
 
 static inline u32
-GetTreeMinScaleBiased(const sbr_svo* const Tree)
+GetTreeMinScaleBiased(const svo* const Tree)
 {
     return (Tree->MaxDepth > Tree->ScaleExponent) ? 
             1U : 
@@ -102,7 +111,7 @@ GetTreeMinScaleBiased(const sbr_svo* const Tree)
 }
 
 static inline bool
-PointInCube(sbrv3 P, sbrv3 Min, sbrv3 Max)
+PointInCube(vec3 P, vec3 Min, vec3 Max)
 {
     return All(GreaterThanEqual(P, Min) && LessThanEqual(P, Max));
 }
@@ -126,11 +135,11 @@ HasFarChildren(svo_node* Node)
     return (Node->ChildPtr & FAR_PTR_BIT_MSK) != 0;
 }
 
-static inline sbr_far_ptr*
-PushFarPtr(sbr_far_ptr FarPtr, svo_block* Blk)
+static inline far_ptr*
+PushFarPtr(far_ptr FarPtr, svo_block* Blk)
 {
     Blk->FarPtrs[Blk->NextFarPtrSlot] = FarPtr;
-    sbr_far_ptr* AllocatedFarPtr = &Blk->FarPtrs[Blk->NextFarPtrSlot];
+    far_ptr* AllocatedFarPtr = &Blk->FarPtrs[Blk->NextFarPtrSlot];
     ++Blk->NextFarPtrSlot;
 
     return AllocatedFarPtr;
@@ -138,13 +147,13 @@ PushFarPtr(sbr_far_ptr FarPtr, svo_block* Blk)
 
 
 static inline node_ref
-GetTreeRootNodeRef(const sbr_svo* const Tree)
+GetTreeRootNodeRef(const svo* const Tree)
 {
     return node_ref{ Tree->RootBlock, &Tree->RootBlock->Entries[0] };
 }
 
 
-static inline sbr_far_ptr*
+static inline far_ptr*
 GetFarPointer(svo_node* Node, svo_block* Blk)
 {
     if (HasFarChildren(Node))
@@ -185,7 +194,7 @@ IsOctantLeaf(svo_node* ContainingNode, svo_oct Oct)
 }
 
 static inline void
-SetOctantOccupied(svo_oct SubOctant, svo_voxel_type Type, svo_node* OutEntry)
+SetOctantOccupied(svo_oct SubOctant, voxel_type Type, svo_node* OutEntry)
 {
     u32 OctMsk = 1U << SubOctant;
 
@@ -203,7 +212,7 @@ SetOctantOccupied(svo_oct SubOctant, svo_voxel_type Type, svo_node* OutEntry)
 
 
 extern "C" svo_bias
-SBR_ComputeScaleBias(uint32_t MaxDepth, uint32_t ScaleExponent)
+ComputeScaleBias(uint32_t MaxDepth, uint32_t ScaleExponent)
 {
     if (MaxDepth > ScaleExponent)
     {
@@ -247,6 +256,7 @@ GetNodeChildOffset(svo_node* Parent, svo_oct ChildOct)
     return ChildOffset;
 }
 
+
 static node_ref
 GetNodeChild(node_ref ParentRef, svo_oct ChildOct)
 {
@@ -264,7 +274,7 @@ GetNodeChild(node_ref ParentRef, svo_oct ChildOct)
     if (HasFarChildren(ParentRef.Node))
     {
         u32 FarPtrIndex = ParentRef.Node->ChildPtr & CHILD_PTR_MSK;
-        sbr_far_ptr* FarPtr = &ParentRef.Blk->FarPtrs[FarPtrIndex];
+        far_ptr* FarPtr = &ParentRef.Blk->FarPtrs[FarPtrIndex];
         FirstChildIndex = FarPtr->NodeOffset;
 
         i32 BlksFromParent = (i32)FarPtr->BlkIndex - (i32)ParentRef.Blk->Index;
@@ -302,12 +312,12 @@ GetNodeChild(node_ref ParentRef, svo_oct ChildOct)
 }
 
 
-static sbr_far_ptr*
+static far_ptr*
 AllocateFarPtr(svo_block* const ContainingBlk)
 {
     usize NextFarPtrSlot = ContainingBlk->NextFarPtrSlot;
     assert(NextFarPtrSlot < SBR_FAR_PTRS_PER_BLK);
-    sbr_far_ptr* Ptr = &ContainingBlk->FarPtrs[NextFarPtrSlot];
+    far_ptr* Ptr = &ContainingBlk->FarPtrs[NextFarPtrSlot];
     ++ContainingBlk->NextFarPtrSlot;
 
     assert(Ptr->NodeOffset == 0);
@@ -336,7 +346,7 @@ LinkParentAndChildNodes(node_ref ParentRef, node_ref ChildRef)
     {
         // Allocate a new far pointer in the parent
         // TODO(Liam): Error handling
-        sbr_far_ptr* FarPtr = AllocateFarPtr(ParentRef.Blk);
+        far_ptr* FarPtr = AllocateFarPtr(ParentRef.Blk);
         assert(nullptr != FarPtr);
         FarPtr->BlkIndex = (u32)ChildRef.Blk->Index;
         FarPtr->NodeOffset = ChildPtrBits;
@@ -348,8 +358,8 @@ LinkParentAndChildNodes(node_ref ParentRef, node_ref ChildRef)
 }
 
 
-static inline sbrv3
-GetOctantCentre(svo_oct Octant, u32 Scale, sbrv3 ParentCentreP)
+static inline vec3
+GetOctantCentre(svo_oct Octant, u32 Scale, vec3 ParentCentreP)
 {
     assert(Scale > 0);
     u32 Oct = (u32) Octant;
@@ -359,14 +369,14 @@ GetOctantCentre(svo_oct Octant, u32 Scale, sbrv3 ParentCentreP)
     f32 Y = (Oct & 2U) ? 1.0f : -1.0f;
     f32 Z = (Oct & 4U) ? 1.0f : -1.0f;
 
-    return ParentCentreP + (sbrv3(X, Y, Z) * Rad);
+    return ParentCentreP + (vec3(X, Y, Z) * Rad);
 }
 
 
 static inline svo_oct
-GetOctantForPosition(sbrv3 P, sbrv3 ParentCentreP)
+GetOctantForPosition(vec3 P, vec3 ParentCentreP)
 {
-    sbrv3u G = sbrv3u(GreaterThan(P, ParentCentreP));
+    uvec3 G = uvec3(GreaterThan(P, ParentCentreP));
 
     return (svo_oct) (G.X + G.Y*2 + G.Z*4);
 }
@@ -376,7 +386,7 @@ GetOctantForPosition(sbrv3 P, sbrv3 ParentCentreP)
 // Seems like we could just remove UsedBlockCount altogether and
 // rely on relative positioning for blocks.
 static svo_block*
-AllocateAndLinkNewBlock(svo_block* const OldBlk, sbr_svo* const Tree)
+AllocateAndLinkNewBlock(svo_block* const OldBlk, svo* const Tree)
 {
     // TODO(Liam): Handle failure case
     svo_block* NewBlk = (svo_block*)calloc(1, sizeof(svo_block));
@@ -395,7 +405,7 @@ AllocateAndLinkNewBlock(svo_block* const OldBlk, sbr_svo* const Tree)
 }
 
 static inline node_ref
-AllocateNewNode(svo_block* const ParentBlk, sbr_svo* const Tree)
+AllocateNewNode(svo_block* const ParentBlk, svo* const Tree)
 {
     // Check if there is room in the parent block;
     // If there isn't any, we need to allocate a new
@@ -436,12 +446,12 @@ AllocateNode(svo_block* const Blk)
 
 static void
 BuildSubOctreeRecursive(svo_node* Parent,
-        sbr_svo* Tree,
+        svo* Tree,
         svo_oct RootOct,
         u32 Depth,
         u32 Scale,
         svo_block* ParentBlk,
-        sbrv3 Centre,
+        vec3 Centre,
         shape_sampler* ShapeSampler,
         data_sampler* NormalSampler,
         data_sampler* ColourSampler)
@@ -449,7 +459,7 @@ BuildSubOctreeRecursive(svo_node* Parent,
     struct node_child
     {
         svo_oct Oct;
-        sbrv3    Centre;
+        vec3    Centre;
         svo_node* Node;
         svo_block* Blk;
     };
@@ -460,7 +470,7 @@ BuildSubOctreeRecursive(svo_node* Parent,
     node_child Children[8];
     u32 LastChildIndex = 0;
 
-    sbrv3u Radius = sbrv3u(Scale >> 1);
+    uvec3 Radius = uvec3(Scale >> 1);
 
     const node_ref ParentRef = node_ref{ ParentBlk, Parent };
 
@@ -469,9 +479,9 @@ BuildSubOctreeRecursive(svo_node* Parent,
         // Multiplying by the InvBias here transforms the octant cubes back 
         // into "real" space from the scaled space we operate in when
         // constructing the tree.
-        sbrv3 OctCentre = GetOctantCentre((svo_oct)Oct, Scale, Centre);
-        sbrv3 OctMin = (OctCentre - sbrv3(Radius)) * Tree->Bias.InvScale;
-        sbrv3 OctMax = (OctCentre + sbrv3(Radius)) * Tree->Bias.InvScale;
+        vec3 OctCentre = GetOctantCentre((svo_oct)Oct, Scale, Centre);
+        vec3 OctMin = (OctCentre - vec3(Radius)) * Tree->Bias.InvScale;
+        vec3 OctMax = (OctCentre + vec3(Radius)) * Tree->Bias.InvScale;
 
         bool Intersected = ShapeSampler->SamplerFn(OctMin, OctMax, Tree, ShapeSampler->UserData);
         if (Intersected)
@@ -505,11 +515,11 @@ BuildSubOctreeRecursive(svo_node* Parent,
             {
                 SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, Parent);
 
-                sbrv3 VoxelNormal = NormalSampler->SamplerFn(OctCentre, Tree, NormalSampler->UserData);
-                sbrv3 VoxelColour = ColourSampler->SamplerFn(OctCentre, Tree, ColourSampler->UserData);
+                vec3 VoxelNormal = NormalSampler->SamplerFn(OctCentre, Tree, NormalSampler->UserData);
+                vec3 VoxelColour = ColourSampler->SamplerFn(OctCentre, Tree, ColourSampler->UserData);
                 
-                Tree->Normals.push_back(std::make_pair(sbrv3u(OctCentre), PackVec3ToSnorm3(VoxelNormal)));
-                Tree->Colours.push_back(std::make_pair(sbrv3u(OctCentre), PackVec3ToSnorm3(VoxelColour)));
+                Tree->Normals.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelNormal)));
+                Tree->Colours.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelColour)));
             }
         }
     }
@@ -531,15 +541,15 @@ BuildSubOctreeRecursive(svo_node* Parent,
     }
 }
 
-extern "C" sbr_svo*
-SBR_CreateScene(uint32_t ScaleExponent,
+extern "C" svo*
+CreateScene(uint32_t ScaleExponent,
                 uint32_t MaxDepth,
                 shape_sampler* ShapeSampler,
                 data_sampler* NormalSampler,
                 data_sampler* ColourSampler)
 
 {
-    sbr_svo* Tree = (sbr_svo*)calloc(1, sizeof(sbr_svo));
+    svo* Tree = (svo*)calloc(1, sizeof(svo));
     
     if (Tree)
     {
@@ -563,14 +573,14 @@ SBR_CreateScene(uint32_t ScaleExponent,
         // Begin building tree
         u32 RootScale = (1U << ScaleExponent);
         
-        Tree->Bias = SBR_ComputeScaleBias(MaxDepth, ScaleExponent);
+        Tree->Bias = ComputeScaleBias(MaxDepth, ScaleExponent);
 
         // Scale up by the bias
         RootScale <<= Tree->Bias.Scale;
 
         printf("ROOTSCALE %u\n", RootScale);
 
-        sbrv3 RootCentre = sbrv3(RootScale >> 1);
+        vec3 RootCentre = vec3(RootScale >> 1);
 
         // Initiate the recursive construction process
         // The root depth is initialised to 1 because we are
@@ -599,7 +609,7 @@ SBR_CreateScene(uint32_t ScaleExponent,
 
 
 static inline node_ref
-ReAllocateNode(node_ref NodeRef, sbr_svo* const Tree)
+ReAllocateNode(node_ref NodeRef, svo* const Tree)
 {
     node_ref Result = { };
     // The block that the reallocated node will reside in.
@@ -623,7 +633,7 @@ ReAllocateNode(node_ref NodeRef, sbr_svo* const Tree)
         if (HasFarChildren(NodeRef.Node))
         {
             // Get this node's far ptr
-            sbr_far_ptr* FarPtr = GetFarPointer(NodeRef.Node, NodeRef.Blk);
+            far_ptr* FarPtr = GetFarPointer(NodeRef.Node, NodeRef.Blk);
 
             // Copy the far ptr into the new block
             PushFarPtr(*FarPtr, NewBlk);
@@ -635,7 +645,7 @@ ReAllocateNode(node_ref NodeRef, sbr_svo* const Tree)
         {
             // Need to convert local pointer into far pointer.
             u16 OldChildPtr = NodeRef.Node->ChildPtr;
-            sbr_far_ptr* NewFarPtr = AllocateFarPtr(NewBlk);
+            far_ptr* NewFarPtr = AllocateFarPtr(NewBlk);
 
             NewFarPtr->BlkIndex = NodeRef.Blk->Index;
             NewFarPtr->NodeOffset = OldChildPtr;
@@ -651,7 +661,7 @@ ReAllocateNode(node_ref NodeRef, sbr_svo* const Tree)
 
 
 static node_ref
-InsertChild(node_ref ParentRef, svo_oct ChildOct, sbr_svo* Tree, svo_voxel_type Type)
+InsertChild(node_ref ParentRef, svo_oct ChildOct, svo* Tree, voxel_type Type)
 {
     svo_node PCopy = *ParentRef.Node;
     SetOctantOccupied(ChildOct, Type, &PCopy);
@@ -727,7 +737,7 @@ InsertChild(node_ref ParentRef, svo_oct ChildOct, sbr_svo* Tree, svo_voxel_type 
 
 
 extern "C" void
-SBR_InsertVoxel(sbr_svo* Tree, sbrv3 P)
+InsertVoxel(svo* Tree, vec3 P)
 {
     // Scale of the smallest voxel in the SVO. For biased
     // trees, this will always be 1. For non-biased trees,
@@ -741,11 +751,11 @@ SBR_InsertVoxel(sbr_svo* Tree, sbrv3 P)
     u32 RootScale = GetTreeMaxScaleBiased(Tree);
 
     // Inserted voxel position, scaled by the tree bias.
-    sbrv3 InsertP = P * (1U << Tree->Bias.Scale);
+    vec3 InsertP = P * (1U << Tree->Bias.Scale);
 
     //RootScale = 1U << (Tree->ScaleExponent) << Tree->Bias;
-    const sbrv3 TreeMax = sbrv3(RootScale);
-    const sbrv3 TreeMin = sbrv3(0);
+    const vec3 TreeMax = vec3(RootScale);
+    const vec3 TreeMin = vec3(0);
 
     // TODO(Liam): Expand tree?
     if (false == PointInCube(InsertP, TreeMin, TreeMax))
@@ -753,7 +763,7 @@ SBR_InsertVoxel(sbr_svo* Tree, sbrv3 P)
         return;
     }
 
-    sbrv3 ParentCentreP = sbrv3(RootScale >> 1);
+    vec3 ParentCentreP = vec3(RootScale >> 1);
     svo_oct CurrentOct = GetOctantForPosition(InsertP, ParentCentreP);
 
     bool AllocatedParent = false;
@@ -806,7 +816,7 @@ SBR_InsertVoxel(sbr_svo* Tree, sbrv3 P)
 }
 
 static node_ref
-DeleteLeafChild(svo_oct ChildOct, sbr_svo* const Tree, node_ref ParentRef)
+DeleteLeafChild(svo_oct ChildOct, svo* const Tree, node_ref ParentRef)
 {
     // Splits a former leaf node into 7 child leaves
     // and one non-leaf child.
@@ -841,18 +851,18 @@ struct ray_intersection
 {
     float tMin;
     float tMax;
-    sbrv3 tMaxV;
-    sbrv3 tMinV;
+    vec3 tMaxV;
+    vec3 tMinV;
 };
 
 static ray_intersection
-ComputeRayBoxIntersection(sbrv3 ROrigin, sbrv3 RInvDir, sbrv3 vMin, sbrv3 vMax)
+ComputeRayBoxIntersection(vec3 ROrigin, vec3 RInvDir, vec3 vMin, vec3 vMax)
 {
-    sbrv3 t0 = (vMin - ROrigin) * RInvDir; // Distance along ray to vmin planes
-    sbrv3 t1 = (vMax - ROrigin) * RInvDir; // Distance along ray to vmax planes
+    vec3 t0 = (vMin - ROrigin) * RInvDir; // Distance along ray to vmin planes
+    vec3 t1 = (vMax - ROrigin) * RInvDir; // Distance along ray to vmax planes
 
-    sbrv3 tMin = Min(t0, t1); // Minimums of all distances
-    sbrv3 tMax = Max(t0, t1); // Maximums of all distances
+    vec3 tMin = Min(t0, t1); // Minimums of all distances
+    vec3 tMax = Max(t0, t1); // Maximums of all distances
 
     float ttMin = HorzMax(tMin); // Largest of the min distances (closest to box)
     float ttMax = HorzMin(tMax); // Smallest of max distances (closest to box)
@@ -865,50 +875,50 @@ struct st_frame
 {
     node_ref Node;
     uint Scale;
-    sbrv3 ParentCentre;
+    vec3 ParentCentre;
 };
 
 static bool
-IsAdvanceValid(svo_oct NewOct, svo_oct OldOct, sbrv3 RaySgn)
+IsAdvanceValid(svo_oct NewOct, svo_oct OldOct, vec3 RaySgn)
 {
-    isbrv3 NewOctBits = isbrv3(NewOct) & isbrv3(1, 2, 4);
-    isbrv3 OldOctBits = isbrv3(OldOct) & isbrv3(1, 2, 4);
+    ivec3 NewOctBits = ivec3(NewOct) & ivec3(1, 2, 4);
+    ivec3 OldOctBits = ivec3(OldOct) & ivec3(1, 2, 4);
 
-    sbrv3 OctSgn = Sign(NewOctBits - OldOctBits);
+    vec3 OctSgn = Sign(NewOctBits - OldOctBits);
 
     return Any(Equals(RaySgn, OctSgn, 0.0f));
 }
 
 static svo_oct
-GetNextOctant(float tMax, sbrv3 tMaxV, svo_oct CurrentOct)
+GetNextOctant(float tMax, vec3 tMaxV, svo_oct CurrentOct)
 {
-    sbrv3u XorMsk3 = sbrv3u(GreaterThanEqual(sbrv3(tMax), tMaxV)) * sbrv3u(1, 2, 4);
+    uvec3 XorMsk3 = uvec3(GreaterThanEqual(vec3(tMax), tMaxV)) * uvec3(1, 2, 4);
 
     uint XorMsk = XorMsk3.X + XorMsk3.Y + XorMsk3.Z;
 
     return svo_oct(CurrentOct ^ XorMsk);
 }
 
-extern "C" sbrv3
-SBR_GetNearestFreeSlot(sbrv3 RayOrigin, sbrv3 RayDir, const sbr_svo* const Tree)
+extern "C" vec3
+GetNearestFreeSlot(vec3 RayOrigin, vec3 RayDir, const svo* const Tree)
 {
     u32 MaxScale = GetTreeMaxScaleBiased(Tree);
     u32 LeafScale = GetTreeMinScaleBiased(Tree) << 1u;
 
-    sbrv3 RaySgn = Sign(RayDir);
+    vec3 RaySgn = Sign(RayDir);
     st_frame Stack[64 + 1];
     uint Scale = MaxScale;
-    sbrv3 RayInvDir = 1.0f / RayDir;
-    sbrv3 RootMin = sbrv3(0);
-    sbrv3 RootMax = sbrv3(Scale) * Tree->Bias.InvScale;
+    vec3 RayInvDir = 1.0f / RayDir;
+    vec3 RootMin = vec3(0);
+    vec3 RootMax = vec3(Scale) * Tree->Bias.InvScale;
     const float BiasScale = (1.0f / Tree->Bias.InvScale);
-    sbrv3 LastCentre = sbrv3(0);
+    vec3 LastCentre = vec3(0);
 
     ray_intersection CurrentIntersection = ComputeRayBoxIntersection(RayOrigin, RayInvDir, RootMin, RootMax);
     if (CurrentIntersection.tMin <= CurrentIntersection.tMax)    // Raycast to find voxel position
     {
-        sbrv3 RayP = (CurrentIntersection.tMin >= 0) ? RayOrigin + (CurrentIntersection.tMin * RayDir) : RayOrigin;
-        sbrv3 ParentCentre = sbrv3(Scale >> 1);
+        vec3 RayP = (CurrentIntersection.tMin >= 0) ? RayOrigin + (CurrentIntersection.tMin * RayDir) : RayOrigin;
+        vec3 ParentCentre = vec3(Scale >> 1);
         svo_oct CurrentOct = GetOctantForPosition(RayP, ParentCentre*Tree->Bias.InvScale);
         node_ref ParentNodeRef = GetTreeRootNodeRef(Tree);
         uint CurrentDepth = 1;
@@ -918,10 +928,10 @@ SBR_GetNearestFreeSlot(sbrv3 RayOrigin, sbrv3 RayDir, const sbr_svo* const Tree)
 
         for (int Step = 0; Step < 64; ++Step)
         {
-            sbrv3 Rad = sbrv3(Scale >> 1);
-            sbrv3 NodeCentre = GetOctantCentre(CurrentOct, Scale, ParentCentre);
-            sbrv3 NodeMin = (NodeCentre - Rad) * Tree->Bias.InvScale;
-            sbrv3 NodeMax = (NodeCentre + Rad) * Tree->Bias.InvScale;
+            vec3 Rad = vec3(Scale >> 1);
+            vec3 NodeCentre = GetOctantCentre(CurrentOct, Scale, ParentCentre);
+            vec3 NodeMin = (NodeCentre - Rad) * Tree->Bias.InvScale;
+            vec3 NodeMax = (NodeCentre + Rad) * Tree->Bias.InvScale;
 
             CurrentIntersection = ComputeRayBoxIntersection(RayOrigin, RayInvDir, NodeMin, NodeMax);
 
@@ -964,17 +974,17 @@ SBR_GetNearestFreeSlot(sbrv3 RayOrigin, sbrv3 RayDir, const sbr_svo* const Tree)
                 {
                     // {{{ 
                     // Determined that NodeCentre is never < 0
-                    sbrv3u NodeCentreBits = sbrv3u(NodeCentre);
-                    sbrv3u RayPBits = sbrv3u(RayP * BiasScale);
+                    uvec3 NodeCentreBits = uvec3(NodeCentre);
+                    uvec3 RayPBits = uvec3(RayP * BiasScale);
 
                     // NOTE(Liam): It is **okay** to have negative values here
                     // because the HDB will end up being equal to ScaleExponentUniform.
                     //
                     // Find the highest differing bit
-                    sbrv3u HDB = FindHighestSetBit(NodeCentreBits ^ RayPBits);
-                    sbrv3b B = LessThan(HDB, sbrv3u(Tree->ScaleExponent + Tree->Bias.Scale));
+                    uvec3 HDB = FindHighestSetBit(NodeCentreBits ^ RayPBits);
+                    bvec3 B = LessThan(HDB, uvec3(Tree->ScaleExponent + Tree->Bias.Scale));
 
-                    uint M = HorzMax(Select(HDB, sbrv3u(0), B));
+                    uint M = HorzMax(Select(HDB, uvec3(0), B));
 
                     uint NextDepth = ((Tree->ScaleExponent + Tree->Bias.Scale) - M);
 
@@ -1000,28 +1010,28 @@ SBR_GetNearestFreeSlot(sbrv3 RayOrigin, sbrv3 RayDir, const sbr_svo* const Tree)
 
     printf("Position not found\n");
 
-    return sbrv3(FLT_MAX);
+    return vec3(FLT_MAX);
 }
 
-extern "C" sbrv3
-SBR_GetNearestLeafSlot(sbrv3 RayOrigin, sbrv3 RayDir, const sbr_svo* const Tree)
+extern "C" vec3
+GetNearestLeafSlot(vec3 RayOrigin, vec3 RayDir, const svo* const Tree)
 {
     u32 MaxScale = GetTreeMaxScaleBiased(Tree);
     u32 LeafScale = GetTreeMinScaleBiased(Tree) << 1u;
 
-    sbrv3 RaySgn = Sign(RayDir);
+    vec3 RaySgn = Sign(RayDir);
     st_frame Stack[64 + 1];
     uint Scale = MaxScale;
-    sbrv3 RayInvDir = 1.0f / RayDir;
-    sbrv3 RootMin = sbrv3(0);
-    sbrv3 RootMax = sbrv3(Scale) * Tree->Bias.InvScale;
+    vec3 RayInvDir = 1.0f / RayDir;
+    vec3 RootMin = vec3(0);
+    vec3 RootMax = vec3(Scale) * Tree->Bias.InvScale;
     const float BiasScale = (1.0f / Tree->Bias.InvScale);
 
     ray_intersection CurrentIntersection = ComputeRayBoxIntersection(RayOrigin, RayInvDir, RootMin, RootMax);
     if (CurrentIntersection.tMin <= CurrentIntersection.tMax)    // Raycast to find voxel position
     {
-        sbrv3 RayP = (CurrentIntersection.tMin >= 0) ? RayOrigin + (CurrentIntersection.tMin * RayDir) : RayOrigin;
-        sbrv3 ParentCentre = sbrv3(Scale >> 1);
+        vec3 RayP = (CurrentIntersection.tMin >= 0) ? RayOrigin + (CurrentIntersection.tMin * RayDir) : RayOrigin;
+        vec3 ParentCentre = vec3(Scale >> 1);
         svo_oct CurrentOct = GetOctantForPosition(RayP, ParentCentre*Tree->Bias.InvScale);
         node_ref ParentNodeRef = GetTreeRootNodeRef(Tree);
         uint CurrentDepth = 1;
@@ -1031,10 +1041,10 @@ SBR_GetNearestLeafSlot(sbrv3 RayOrigin, sbrv3 RayDir, const sbr_svo* const Tree)
 
         for (int Step = 0; Step < 64; ++Step)
         {
-            sbrv3 Rad = sbrv3(Scale >> 1);
-            sbrv3 NodeCentre = GetOctantCentre(CurrentOct, Scale, ParentCentre);
-            sbrv3 NodeMin = (NodeCentre - Rad) * Tree->Bias.InvScale;
-            sbrv3 NodeMax = (NodeCentre + Rad) * Tree->Bias.InvScale;
+            vec3 Rad = vec3(Scale >> 1);
+            vec3 NodeCentre = GetOctantCentre(CurrentOct, Scale, ParentCentre);
+            vec3 NodeMin = (NodeCentre - Rad) * Tree->Bias.InvScale;
+            vec3 NodeMax = (NodeCentre + Rad) * Tree->Bias.InvScale;
 
             CurrentIntersection = ComputeRayBoxIntersection(RayOrigin, RayInvDir, NodeMin, NodeMax);
 
@@ -1074,17 +1084,17 @@ SBR_GetNearestLeafSlot(sbrv3 RayOrigin, sbrv3 RayDir, const sbr_svo* const Tree)
                 {
                     // {{{ 
                     // Determined that NodeCentre is never < 0
-                    sbrv3u NodeCentreBits = sbrv3u(NodeCentre);
-                    sbrv3u RayPBits = sbrv3u(RayP * BiasScale);
+                    uvec3 NodeCentreBits = uvec3(NodeCentre);
+                    uvec3 RayPBits = uvec3(RayP * BiasScale);
 
                     // NOTE(Liam): It is **okay** to have negative values here
                     // because the HDB will end up being equal to ScaleExponentUniform.
                     //
                     // Find the highest differing bit
-                    sbrv3u HDB = FindHighestSetBit(NodeCentreBits ^ RayPBits);
-                    sbrv3b B = LessThan(HDB, sbrv3u(Tree->ScaleExponent + Tree->Bias.Scale));
+                    uvec3 HDB = FindHighestSetBit(NodeCentreBits ^ RayPBits);
+                    bvec3 B = LessThan(HDB, uvec3(Tree->ScaleExponent + Tree->Bias.Scale));
 
-                    uint M = HorzMax(Select(HDB, sbrv3u(0), B));
+                    uint M = HorzMax(Select(HDB, uvec3(0), B));
 
                     uint NextDepth = ((Tree->ScaleExponent + Tree->Bias.Scale) - M);
 
@@ -1110,21 +1120,21 @@ SBR_GetNearestLeafSlot(sbrv3 RayOrigin, sbrv3 RayDir, const sbr_svo* const Tree)
 
     printf("Position not found\n");
 
-    return sbrv3(FLT_MAX);
+    return vec3(FLT_MAX);
 }
 
 
 extern "C" void
-SBR_DeleteVoxel(sbr_svo* Tree, sbrv3 VoxelP)
+DeleteVoxel(svo* Tree, vec3 VoxelP)
 {
     // Scale the voxel position by the tree bias
-    sbrv3 DeleteP = VoxelP * (1U << Tree->Bias.Scale);
+    vec3 DeleteP = VoxelP * (1U << Tree->Bias.Scale);
 
     // Always go down to leaf scale (cheat at mem. mgmt!)
     u32 MaxScale = GetTreeMaxScaleBiased(Tree);
     u32 MinScale = GetTreeMinScaleBiased(Tree);
 
-    sbrv3 ParentCentre = sbrv3(MaxScale >> 1U);
+    vec3 ParentCentre = vec3(MaxScale >> 1U);
     svo_oct CurrentOct = GetOctantForPosition(DeleteP, ParentCentre);
 
     node_ref ParentNodeRef = GetTreeRootNodeRef(Tree);
@@ -1189,7 +1199,7 @@ SBR_DeleteVoxel(sbr_svo* Tree, sbrv3 VoxelP)
 }
 
 extern "C" void
-SBR_DeleteScene(sbr_svo* Tree)
+DeleteScene(svo* Tree)
 {
     if (nullptr != Tree)
     {
@@ -1207,13 +1217,20 @@ SBR_DeleteScene(sbr_svo* Tree)
 }
 
 extern "C" unsigned int
-GetSvoUsedBlockCount(const sbr_svo* const Svo)
+GetSvoUsedBlockCount(const svo* const Svo)
 {
     return Svo->UsedBlockCount;
 }
 
 extern "C" unsigned int
-GetSvoDepth(const sbr_svo* const Svo)
+GetSvoDepth(const svo* const Svo)
 {
     return Svo->MaxDepth;
+}
+
+
+extern "C" void*
+CopyRawBlockData(const svo_block* const Blk, usize CopySize, void* const BlkDataOut)
+{
+    // TODO(Liam): More efficiency here?
 }
