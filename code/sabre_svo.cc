@@ -8,9 +8,10 @@
 #include "sabre.h"
 #include "sabre_math.h"
 #include "sabre_svo.h"
+#include "vecmath.h"
 
-static constexpr u16 CHILD_PTR_MSK   = 0x7FFFU;
-static constexpr u32 FAR_PTR_BIT_MSK = 0x8000U;
+static constexpr u16 CHILD_PTR_MSK = 0x7FFFU;
+static constexpr u32 FAR_BIT_MSK   = 0x8000U;
 
 enum svo_oct
 {
@@ -53,9 +54,7 @@ CountSetBits(u32 Msk)
 static inline node_ref
 HighestVisibleNode(vec3 ViewP, vec3 ViewDim)
 {
-    vec3x8 ViewP8 = Cloned3x8(ViewP);
-
-
+    vec3x8 ViewP8 = Broadcast3x8(ViewP);
 }
 
 static inline packed_snorm3
@@ -132,7 +131,7 @@ FindLowestSetBit(u32 Msk)
 static inline bool
 HasFarChildren(svo_node* Node)
 {
-    return (Node->ChildPtr & FAR_PTR_BIT_MSK) != 0;
+    return (Node->ChildPtr & FAR_BIT_MSK) != 0;
 }
 
 static inline far_ptr*
@@ -353,7 +352,7 @@ LinkParentAndChildNodes(node_ref ParentRef, node_ref ChildRef)
 
         // Set the child ptr value to the far bit with the remaining 15 bits
         // set as the index into the far ptrs storage block.
-        ParentRef.Node->ChildPtr = FAR_PTR_BIT_MSK | u16(ParentRef.Blk->NextFarPtrSlot - 1);
+        ParentRef.Node->ChildPtr = FAR_BIT_MSK | u16(ParentRef.Blk->NextFarPtrSlot - 1);
     }
 }
 
@@ -639,7 +638,7 @@ ReAllocateNode(node_ref NodeRef, svo* const Tree)
             PushFarPtr(*FarPtr, NewBlk);
 
             // Set the node's far pointer index to the new far pointer.
-            NewNode->ChildPtr = FAR_PTR_BIT_MSK | u16(NewBlk->NextFarPtrSlot - 1);
+            NewNode->ChildPtr = FAR_BIT_MSK | u16(NewBlk->NextFarPtrSlot - 1);
         }
         else
         {
@@ -649,7 +648,7 @@ ReAllocateNode(node_ref NodeRef, svo* const Tree)
 
             NewFarPtr->BlkIndex = NodeRef.Blk->Index;
             NewFarPtr->NodeOffset = OldChildPtr;
-            NewNode->ChildPtr = FAR_PTR_BIT_MSK | u16(NewBlk->NextFarPtrSlot - 1);
+            NewNode->ChildPtr = FAR_BIT_MSK | u16(NewBlk->NextFarPtrSlot - 1);
         }
     }
 

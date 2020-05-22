@@ -8,8 +8,8 @@
 #include "sabre_render.h"
 #include "sabre_data.h"
 
-static constexpr uint WORK_SIZE_X = 512;
-static constexpr uint WORK_SIZE_Y = 512;
+static constexpr uint WORK_SIZE_X = 512U;
+static constexpr uint WORK_SIZE_Y = 512U;
 
 typedef uint64_t morton_key;
 extern morton_key EncodeMorton3(uvec3 V);
@@ -99,6 +99,80 @@ UploadCanvasVertices(void)
     Result.VBO = VBO;
 
     return Result;
+}
+
+static svo_buffers
+UploadSvoBlockData(const svo* const Svo)
+{
+    svo_buffers Buffers = { };
+    usize NodeBlkSize = (SBR_NODES_PER_BLK * sizeof(svo_node));
+    usize FarPtrBlkSize = (SBR_FAR_PTRS_PER_BLK * sizeof(far_ptr));
+    usize BlkSize = NodeBlkSize + FarPtrBlkSize;
+
+    // The minimum SSBO size guaranteed by the implementation is 128MiB. To be
+    // safe (and to avoid gratuitous memory hogging) we allocate 16MiB for the
+    // view buffer.
+    usize MaxSSBOSize = 16777216ULL;
+    usize MaxViewableBlkCount = (MaxSSBOSize / BlkSize);
+    usize ViewableBlkCount = Min(MaxViewableBlkCount, Svo->UsedBlockCount);
+    usize NodeBufferSize = NodeBlkSize * ViewableBlkCount;
+    usize FarPtrBufferSize = FarPtrBlkSize * ViewableBlkCount;
+
+    // 0: Svo nodes buffer
+    // 1: svo far ptr buffer
+    gl_uint BlkBuffers[2] = { 0, 0 };
+    glGenBuffers(2, BlkBuffers);
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, BlkBuffers[1]);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, FarPtrBufferSize, nullptr, GL_DYNAMIC_COPY);
+    far_ptr* GPUFarPtrBuffer = (far_ptr*)glMapBuffer(GL_SHADER_STORAGE_BUFFER,
+                                                     GL_WRITE_ONLY);
+
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, BlkBuffers[0]);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, NodeBufferSize, nullptr, GL_DYNAMIC_COPY);
+    svo_node* GPUNodeBuffer = (svo_node*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+
+    if (BlkBuffers[0] && BlkBuffers[1])
+    {
+        svo_block* CurrentBlk = Svo->RootBlock;
+        usize NextSvoDataOffset = 0;
+        usize NextFarPtrDataOffset = 0;
+
+        for (usize BlkIndex = 0; BlkIndex < ViewableBlkCount; ++BlkIndex)
+        {
+            memcpy(GPUNodeBuffer + NextSvoDataOffset, CurrentBlk->Entries, CurrentBlk->NextFreeSlot * sizeof(svo_node));
+            NextSvoDataOffset += CurrentBlk->NextFreeSlot;
+
+            memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SBR_FAR_PTRS_PER_BLK * sizeof(far_ptr)); 
+            NextFarPtrDataOffset += SBR_FAR_PTRS_PER_BLK;
+
+            if (CurrentBlk->Next)
+            {
+                CurrentBlk = CurrentBlk->Next;
+            }
+            else
+            {
+                break;
+            }
+        }
+    }
+
+    // Unmap both buffers
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, BlkBuffers[1]);
+    glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, BlkBuffers[0]);
+    glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+    
+    // Associate buffers with shader slots
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, BlkBuffers[0]);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, BlkBuffers[1]);
+
+    Buffers.SvoBuffer = BlkBuffers[0]; 
+    Buffers.FarPtrBuffer = BlkBuffers[1];
+
+    return Buffers;
 }
 
 static gl_uint
@@ -523,7 +597,7 @@ CreateRenderData(const svo* const Tree, const view_data* const ViewData)
         return nullptr;
     }
 
-    svo_buffers SvoBuffers = UploadOctreeBlockData(Tree);
+    svo_buffers SvoBuffers = UploadSvoBlockData(Tree);
     if (0 == SvoBuffers.SvoBuffer || 0 == SvoBuffers.FarPtrBuffer)
     {
         DeleteRenderData(RenderData);
@@ -639,46 +713,4 @@ DEBUGOutputRenderShaderAssembly(const render_data* const RenderData, FILE* OutFi
 }
 
 
-extern "C" render_data*
-CreateRenderData2(const svo* const Svo)
-{
-    usize NodeBlkSize = (SBR_NODES_PER_BLK * sizeof(svo_node));
-    usize FarPtrBlkSize = (SBR_FAR_PTRS_PER_BLK * sizeof(far_ptr));
-    usize BlkSize = NodeBlkSize + FarPtrBlkSize;
 
-    // The minimum SSBO size guaranteed by the implementation is 128MiB. To be
-    // safe (and to avoid gratuitous memory hogging) we allocate 16MiB for the
-    // view buffer.
-    usize MaxSSBOSize = 16777216ULL;
-    usize MaxViewableBlkCount = (MaxSSBOSize / BlkSize);
-    usize ViewableBlkCount = Min(MaxViewableBlkCount, Svo->UsedBlockCount);
-    usize NodeBufferSize = NodeBlkSize * ViewableBlkCount;
-    usize FarPtrBufferSize = FarPtrBlkSize * ViewableBlkCount;
-
-    // 0: Svo nodes buffer
-    // 1: svo far ptr buffer
-    gl_uint BlkBuffers[2] = { 0, 0 };
-    glGenBuffers(2, BlkBuffers);
-
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, BlkBuffers[1]);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, FarPtrBufferSize, nullptr, GL_DYNAMIC_COPY);
-    far_ptr* GPUFarPtrBuffer = (far_ptr*)glMapBuffer(GL_SHADER_STORAGE_BUFFER,
-                                                     GL_WRITE_ONLY);
-
-
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, BlkBuffers[0]);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, NodeBufferSize, nullptr, GL_DYNAMIC_COPY);
-    svo_node* GPUNodeBuffer = (svo_node*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
-
-    if (BlkBuffers[0] && BlkBuffers[1])
-    {
-        svo_block* CurrentBlk = Svo->RootBlock;
-
-        for (usize BlkIndex = 0; BlkIndex < ViewableBlkCount; ++BlkIndex)
-        {
-            CurrentBlk = CurrentBlk->Next;
-        }
-    }
-
-    return nullptr;
-}
