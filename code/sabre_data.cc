@@ -446,3 +446,13 @@ void main()
 }
 )GLSL";
 
+extern const char* const HasherComputeKernel = R"GLSL(
+#version 450 core
+
+layout (local_size_x = 8, local_size_y = 8) in;
+
+// Layout: r=packed voxel key g=
+layout (rg32ui, binding = 0) uniform image2D HashedDataUniform;
+
+)GLSL";
+

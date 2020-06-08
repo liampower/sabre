@@ -73,6 +73,31 @@ static const f32 GlobalCanvasVerts[12] = {
     -1.0f, -1.0f,
 };
 
+
+static gl_uint
+CreateLeafDataHashTable(const packed_snorm3* const Data, usize Count)
+{
+    usize BucketCount = (Count / 409) + 1;
+    gl_uint HashTexture;
+    glGenTextures(1, &HashTexture);
+    glBindTexture(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, OutputTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D,
+                 0,
+                 ,
+                 512,
+                 BucketCount,
+                 0,
+                 GL_RGBA,
+                 GL_FLOAT,
+                 nullptr);
+
+}
+
 static svo_buffers
 UploadCanvasVertices(void)
 {
