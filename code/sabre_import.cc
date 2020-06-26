@@ -558,6 +558,8 @@ GetMeshMaxDimension(const cgltf_primitive* const Prim)
     return Max(Max(MaxX, MaxY), MaxZ);
 }
 
+
+
 static inline f32
 GetMeshMinDimension(const cgltf_primitive* const Prim)
 {
@@ -580,6 +582,52 @@ GetMeshMinDimension(const cgltf_primitive* const Prim)
     return Min(Min(MinX, MinY), MinZ);
 }
 
+#if 0
+extern "C" svo*
+SvoFromTriangleMesh(u32 MaxDepth, u32 ScaleExp, const tri_buffer* const Tris)
+{
+    std::vector<tri3*> OctTriangles[8];
+
+    svo_bias Bias = ComputeScaleBias(MaxDepth, ScaleExp);
+    f32 InvBias = Bias.InvScale;
+    u32 RootScale = 1U << (ScaleExp) << Bias.Scale;
+    u32 CurrentScale = RootScale >> 1;
+
+    vec3 ParentCentre = vec3(CurrentScale);
+
+    // Partition triangles into octant queues
+    for (usize TriIndex = 0; TriIndex < Tris->Count; ++TriIndex)
+    {
+        const tri3* T = &Tris->Triangles[TriIndex].T;
+        alignas(16) m128 TriVerts[3];
+        TriVerts[0] = _mm_set_ps(0.0f, T->V0.Z, T->V0.Y, T->V0.X);
+        TriVerts[1] = _mm_set_ps(0.0f, T->V1.Z, T->V1.Y, T->V1.X);
+        TriVerts[2] = _mm_set_ps(0.0f, T->V2.Z, T->V2.Y, T->V2.X);
+
+        for (u32 Oct = 0; Oct < 8; ++Oct)
+        {
+            vec3 Centre = GetOctantCentre(Oct, CurrentScale, ParentCentre);
+
+            // TODO Can put the invbias into a m128 and just use a mulps here
+            m128 CentreM = _mm_set_ps(0.0f, 
+                                      Centre.Z*InvBias,
+                                      Centre.Y*InvBias,
+                                      Centre.X*InvBias);
+
+            if (TriangleAABBIntersection(CentreM, RadiusM, TriVerts))
+            {
+                OctTriangles[Oct].push_back(T);
+                // Mark this octant as 
+            }
+        }
+    }
+
+    while (CurrentScale > MinScale)
+    {
+
+    }
+}
+#endif
 
 extern "C" svo*
 ImportGLBFile(uint32_t MaxDepth, const char* const GLTFPath)

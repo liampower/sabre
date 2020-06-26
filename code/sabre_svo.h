@@ -50,6 +50,14 @@ struct far_ptr
     u32 NodeOffset;
 };
 
+struct attrib_data
+{
+    // TODO(Liam): One-to-many for K-V here? Might need
+    // more data arrays for normals, colours, etc.
+    u32 Key;
+    u32 Data;
+};
+
 enum svo_blk_flags
 {
     SVO_BLK_LEAKY = 0x000001
@@ -70,7 +78,7 @@ union alignas(4) svo_node
 
 struct svo_bias
 {
-    float    InvScale;
+    f32 InvScale;
     u32 Scale;
 };
 
@@ -119,7 +127,8 @@ struct svo
     svo_block* RootBlock;
 
 
-    std::vector<std::pair<uvec3, packed_snorm3>> Normals;
+    //std::vector<std::pair<uvec3, packed_snorm3>> Normals;
+    std::vector<attrib_data> Normals;
 
     // TODO Use unorms
     std::vector<std::pair<uvec3, packed_snorm3>> Colours;
@@ -173,6 +182,8 @@ GetSvoDepth(const svo* const Svo);
 extern "C" void*
 CopyRawBlockData(const svo_block* const Blk, usize CopySize, void* const BlkDataOut);
 
+extern "C" svo*
+CreateEmptySvo(u32 MaxDepth, u32 ScaleExponent);
 
 static inline void
 DEBUGPrintVec3(vec3 V)

@@ -211,12 +211,12 @@ SetOctantOccupied(svo_oct SubOctant, voxel_type Type, svo_node* OutEntry)
 
 
 extern "C" svo_bias
-ComputeScaleBias(uint32_t MaxDepth, uint32_t ScaleExponent)
+ComputeScaleBias(u32 MaxDepth, u32 ScaleExponent)
 {
     if (MaxDepth > ScaleExponent)
     {
-        uint32_t Bias = (MaxDepth - ScaleExponent);
-        float InvBias = 1.0f / ((float)(1U << Bias));
+        u32 Bias = (MaxDepth - ScaleExponent);
+        f32 InvBias = 1.0f / ((f32)(1U << Bias));
 
         return svo_bias{ InvBias, Bias };
     }
@@ -517,7 +517,9 @@ BuildSubOctreeRecursive(svo_node* Parent,
                 vec3 VoxelNormal = NormalSampler->SamplerFn(OctCentre, Tree, NormalSampler->UserData);
                 vec3 VoxelColour = ColourSampler->SamplerFn(OctCentre, Tree, ColourSampler->UserData);
                 
-                Tree->Normals.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelNormal)));
+                //Tree->Normals.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelNormal)));
+
+                Tree->Normals.push_back(attrib_data{ EncodeMorton3_32(uvec3(OctCentre)), PackVec3ToSnorm3(VoxelNormal) });
                 Tree->Colours.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelColour)));
             }
         }
@@ -541,11 +543,11 @@ BuildSubOctreeRecursive(svo_node* Parent,
 }
 
 extern "C" svo*
-CreateScene(uint32_t ScaleExponent,
-                uint32_t MaxDepth,
-                shape_sampler* ShapeSampler,
-                data_sampler* NormalSampler,
-                data_sampler* ColourSampler)
+CreateScene(u32 ScaleExponent,
+            u32 MaxDepth,
+            shape_sampler* ShapeSampler,
+            data_sampler* NormalSampler,
+            data_sampler* ColourSampler)
 
 {
     svo* Tree = (svo*)calloc(1, sizeof(svo));
@@ -573,6 +575,8 @@ CreateScene(uint32_t ScaleExponent,
         u32 RootScale = (1U << ScaleExponent);
         
         Tree->Bias = ComputeScaleBias(MaxDepth, ScaleExponent);
+        Tree->Normals = std::vector<attrib_data>();
+        Tree->Normals.reserve(128);
 
         // Scale up by the bias
         RootScale <<= Tree->Bias.Scale;
@@ -1225,6 +1229,11 @@ extern "C" unsigned int
 GetSvoDepth(const svo* const Svo)
 {
     return Svo->MaxDepth;
+}
+
+extern "C" svo*
+CreateEmptySvo(u32 MaxDepth, u32 ScaleExponent)
+{
 }
 
 

@@ -11,7 +11,7 @@
 static constexpr uint WORK_SIZE_X = 512U;
 static constexpr uint WORK_SIZE_Y = 512U;
 
-typedef uint64_t morton_key;
+typedef u64 morton_key;
 extern morton_key EncodeMorton3(uvec3 V);
 
 struct uvec3_hash
@@ -34,6 +34,12 @@ enum cs_bindings
     BIND_NORMALS_TEX = 1
 };
 
+enum htable_cs_bindings
+{
+    HTableOutputBufferBinding = 0,
+    HTableInputBufferBinding = 1,
+};
+
 // Holds the contextual data required to render a SVO voxel
 // scene with OpenGL.
 struct render_data
@@ -52,6 +58,10 @@ struct render_data
 
     gl_uint MapTexture;
     gl_uint ColourTexture;
+
+    gl_uint HTableBuilderShader; // Compute shader to construct the leaf hashtable
+    gl_uint HTableInputBuffer;
+    gl_uint HTableOutputBuffer;
 };
 
 
@@ -75,27 +85,43 @@ static const f32 GlobalCanvasVerts[12] = {
 
 
 static gl_uint
-CreateLeafDataHashTable(const packed_snorm3* const Data, usize Count)
+CreateLeafDataHashTable(render_data* RenderData, const attrib_data* const Data, usize Count)
 {
-    usize BucketCount = (Count / 409) + 1;
-    gl_uint HashTexture;
-    glGenTextures(1, &HashTexture);
-    glBindTexture(GL_TEXTURE_2D);
-    glBindTexture(GL_TEXTURE_2D, OutputTexture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexImage2D(GL_TEXTURE_2D,
-                 0,
-                 ,
-                 512,
-                 BucketCount,
-                 0,
-                 GL_RGBA,
-                 GL_FLOAT,
-                 nullptr);
+    const usize MaxHTableBufferSize = 8*1024*1024;
+    gl_uint DataBuffers[2] = { 0 };
 
+    glGenBuffers(2, DataBuffers);
+
+    { // Upload the input leaf data key-value pairs into the leaf buffer
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, DataBuffers[0]);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, Count*sizeof(packed_snorm3), nullptr, GL_DYNAMIC_COPY);
+        packed_snorm3* GPUDataBuffer = (packed_snorm3*)glMapBuffer(GL_SHADER_STORAGE_BUFFER,
+                                                         GL_WRITE_ONLY);
+    
+        memcpy(GPUDataBuffer, Data, Count*sizeof(packed_snorm3));
+        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+    }
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, DataBuffers[1]);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, MaxHTableBufferSize*sizeof(gl_uint), nullptr, GL_DYNAMIC_COPY);
+    gl_uint* GPUHTableBuffer = (gl_uint*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+    memset(GPUHTableBuffer, 0xFFFFFFFF, MaxHTableBufferSize*sizeof(gl_uint));
+    glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+
+
+    glUseProgram(RenderData->HTableBuilderShader);
+    glUniform1ui(glGetUniformLocation(RenderData->HTableBuilderShader, "TableSizeUniform"), MaxHTableBufferSize);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, HTableInputBufferBinding, DataBuffers[0]);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, HTableOutputBufferBinding, DataBuffers[1]);
+
+    // Kick the table builder kernel
+    glDispatchCompute(50, 1, 1);
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+    RenderData->HTableInputBuffer = DataBuffers[0];
+    RenderData->HTableOutputBuffer = DataBuffers[1];
+
+    return 0;
 }
 
 static svo_buffers
@@ -586,11 +612,23 @@ CreateRenderData(const svo* const Tree, const view_data* const ViewData)
     RenderData->CanvasShader = CompileShader(MainVertexCode, MainFragmentCode);
     if (0 == RenderData->RenderShader)
     {
-        fprintf(stderr, "Failed to compile compute shader\n");
+        fprintf(stderr, "Failed to compile canvas shader\n");
 
         DeleteRenderData(RenderData);
         return nullptr;
     }
+
+    RenderData->HTableBuilderShader = CompileComputeShader(HasherComputeKernel);
+    if (0 == RenderData->HTableBuilderShader)
+    {
+        fprintf(stderr, "Failed to compile hashtable builder compute shader\n");
+        DeleteRenderData(RenderData);
+
+        return nullptr;
+    }
+
+    CreateLeafDataHashTable(RenderData, Tree->Normals.data(), Tree->Normals.size());
+
 
     RenderData->RenderImage = CreateRenderImage(ViewData->ScreenWidth, ViewData->ScreenHeight);
     SetUniformData(Tree, RenderData);
@@ -608,13 +646,14 @@ CreateRenderData(const svo* const Tree, const view_data* const ViewData)
     RenderData->CanvasVBO = CanvasBuffers.VBO;
 
     RenderData->ColourTexture = UploadLeafDataSparse(Tree->Colours, 0);
-    RenderData->MapTexture = UploadLeafDataSparse(Tree->Normals, 1);
+    //RenderData->MapTexture = UploadLeafDataSparse(Tree->Normals, 1);
 
-    if (0 == RenderData->MapTexture)
+
+    /*if (0 == RenderData->MapTexture)
     {
         DeleteRenderData(RenderData);
         return nullptr;
-    }
+    }*/
 
     if (0 == RenderData->ColourTexture)
     {
@@ -631,6 +670,7 @@ CreateRenderData(const svo* const Tree, const view_data* const ViewData)
 
     RenderData->SvoBuffer = SvoBuffers.SvoBuffer;
     RenderData->FarPtrBuffer = SvoBuffers.FarPtrBuffer;
+
 
     RenderData->ViewMatUniformLocation = glGetUniformLocation(RenderData->RenderShader, "ViewMatrixUniform");
     RenderData->ViewPosUniformLocation = glGetUniformLocation(RenderData->RenderShader, "ViewPosUniform");

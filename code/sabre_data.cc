@@ -40,7 +40,7 @@ extern const char* const RaycasterComputeKernel = R"GLSL(
 #define SVO_NODE_CHILD_PTR_MASK 0x7FFF0000U
 #define SVO_FAR_PTR_BIT_MASK    0x80000000U
 
-#define MAX_STEPS 200
+#define MAX_STEPS 128
 #define SCREEN_DIM 512
 
 #define ASSERT(Expr) if (! (Expr)) { return vec3(1); }
@@ -428,18 +428,6 @@ void main()
 
     ray R = { RayP, RayD, 1.0 / RayD };
 
-    /*vec3 Min = vec3(0);
-    vec3 Max = vec3(64);
-    ray_intersection Q = ComputeRayBoxIntersection(R, Min, Max);
-    vec3 OutCr;
-    if (Q.tMin <= Q.tMax && Q.tMax > 0)
-    {
-        OutCr = vec3(1);
-    }
-    else
-    {
-        OutCr = vec3(1, 0, 0);
-    }*/
     vec3 OutCr = Raycast(R);
 
     imageStore(OutputImgUniform, ivec2(PixelCoords), vec4(OutCr, 1.0));
@@ -449,10 +437,71 @@ void main()
 extern const char* const HasherComputeKernel = R"GLSL(
 #version 450 core
 
-layout (local_size_x = 8, local_size_y = 8) in;
+layout (local_size_x = 1) in;
 
-// Layout: r=packed voxel key g=
-layout (rg32ui, binding = 0) uniform image2D HashedDataUniform;
+#define EMPTY_KEY 0xFFFFFFFF
+#define MAX_STEPS 25
+
+
+struct entry
+{
+    uint Key;
+    uint Value;
+};
+
+layout (std430, binding = 0) buffer htable_out
+{
+    entry Entries[];
+} HTableOutBuffer;
+
+layout (std430, binding = 1) readonly restrict buffer data_in
+{
+    entry Entries[];
+} DataInputBuffer;
+
+uniform uint TableSizeUniform;
+
+
+uvec4 ComputeHashes(uint Key)
+{
+    // Hash constants; just random integers
+    const uvec4 C0 = uvec4(0xD706DD, 0x4D166E, 0x4C49414D, 0x4C49414D);
+    const uvec4 C1 = uvec4(0x4C49414D, 0x57524C44, 0xCAFEBABE, 0xDEADBEEF);
+    const uint P = 334214459;
+
+    return (((C0 * Key) + C1) % P) % TableSizeUniform;
+}
+
+void main()
+{
+    uint ThreadID = gl_GlobalInvocationID.x;
+
+    entry InputPair = DataInputBuffer.Entries[ThreadID];
+
+    uint Slot0 = ComputeHashes(InputPair.Key).x;
+
+    HTableOutBuffer.Entries[ThreadID] = InputPair;
+    //return;
+
+    /*int Step;
+    for (Step = 0; Step < MAX_STEPS; ++Step)
+    {
+        InputPair.Key = atomicExchange(HTableOutBuffer.Entries[Slot0].Key, InputPair.Key); 
+        //InputPair.Value = atomicExchange(HTableOutBuffer.Entries[Slot0].Value, InputPair.Value); 
+        if (EMPTY_KEY == InputPair.Key) return;
+
+        uvec4 Hashes = ComputeHashes(InputPair.Key);
+
+        if (Slot0 == Hashes.x) Slot0 = Hashes.y;
+        else if (Slot0 == Hashes.y) Slot0 = Hashes.z;
+        else if (Slot0 == Hashes.z) Slot0 = Hashes.w;
+        else Slot0 = Hashes.x;
+    }
+    if (MAX_STEPS == Step)
+    {
+        HTableOutBuffer.Entries[ThreadID].Key = 111;
+    }*/
+}
 
 )GLSL";
 

@@ -54,11 +54,6 @@ SetSelectedBits3x4(vec3x4 V, unsigned int BitValues, unsigned int SelectMsk)
 }
 
 
-
-
-
-
-
 #ifdef __cplusplus
 }
 #endif

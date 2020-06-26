@@ -14,6 +14,7 @@ struct view_data
     float* CamPos;
 };
 
+
 extern "C" render_data*
 CreateRenderData(const svo* const Tree, const view_data* const ViewData);
 

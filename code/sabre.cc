@@ -251,6 +251,7 @@ main(int ArgCount, const char** const Args)
 
     svo* WorldSvo = nullptr;
 
+    // FIXME: BROKEN!! Last two members left uninitialised!
     // Initialise the render data
     view_data ViewData = { };
     ViewData.ScreenWidth = 512;
@@ -314,48 +315,21 @@ main(int ArgCount, const char** const Args)
             if (ImGui::Button("Load rabbit scene"))
             {
                 WorldSvo = ImportGLBFile(Lod, "data/Showcase/sib2.glb");
-                if (nullptr == WorldSvo)
-                {
-                    fprintf(stderr, "Failed to initialise render data\n");
-                    MessageBox(nullptr, "Failed to initialise render data\n", "Error", MB_ICONWARNING);
-
-                    DeleteScene(WorldSvo);
-                    glfwTerminate();
-                    return EXIT_FAILURE;
-                }
                 ShowMenu = false;
-                RenderData = CreateRenderData(WorldSvo, &ViewData);
-                glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-                if (nullptr == RenderData)
-                {
-                    fprintf(stderr, "Failed to initialise render data\n");
-                    MessageBox(nullptr, "Failed to initialise render data\n", "Error", MB_ICONWARNING);
-
-                    DeleteScene(WorldSvo);
-                    glfwTerminate();
-                    return EXIT_FAILURE;
-                }
             }
             else if (ImGui::Button("Load Serapis scene"))
             {
                 WorldSvo = ImportGLBFile(Lod, "data/Showcase/serapis.glb");
                 ShowMenu = false;
-                RenderData = CreateRenderData(WorldSvo, &ViewData);
-                glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-                if (nullptr == RenderData)
-                {
-                    fprintf(stderr, "Failed to initialise render data\n");
-                    MessageBox(nullptr, "Failed to initialise render data\n", "Error", MB_ICONWARNING);
-
-                    DeleteScene(WorldSvo);
-                    glfwTerminate();
-                    return EXIT_FAILURE;
-                }
             }
             else if (ImGui::Button("Load generated sphere scene"))
             {
                 WorldSvo = CreateCubeSphereTestScene(Lod);
                 ShowMenu = false;
+            }
+
+            if (false == ShowMenu)
+            {
                 RenderData = CreateRenderData(WorldSvo, &ViewData);
                 glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
                 if (nullptr == RenderData)
@@ -368,108 +342,123 @@ main(int ArgCount, const char** const Args)
                     return EXIT_FAILURE;
                 }
             }
+
             ImGui::End();
         }
-
-        if (WorldSvo)
+        else
         {
-            if (ImGui::BeginMainMenuBar())
+            if (nullptr == WorldSvo)
             {
-                ImGui::Text("%fms CPU  %d BLKS  %d LVLS", 1000.0*DeltaTime, GetSvoUsedBlockCount(WorldSvo), GetSvoDepth(WorldSvo));
-                ImGui::EndMainMenuBar();
+                fprintf(stderr, "Failed to initialise SVO data\n");
+                MessageBox(nullptr, "Failed to initialise SVO data\n", "Error", MB_ICONWARNING);
+
+                DeleteScene(WorldSvo);
+                glfwTerminate();
+                return EXIT_FAILURE;
             }
 
-            if (glfwGetKey(Window, GLFW_KEY_Q))
+            if (WorldSvo)
             {
-                glfwSetWindowShouldClose(Window, GLFW_TRUE);
-            }
-
-            if (glfwGetKey(Window, GLFW_KEY_W))
-            {
-                Cam.Position += Cam.Velocity * Cam.Forward;
-            }
-
-            if (glfwGetKey(Window, GLFW_KEY_S))
-            {
-                Cam.Position -= Cam.Velocity * Cam.Forward;
-            }
-
-            if (glfwGetKey(Window, GLFW_KEY_A))
-            {
-                Cam.Position -= Cam.Velocity * Cam.Right;
-            }
-
-            if (glfwGetKey(Window, GLFW_KEY_D))
-            {
-                Cam.Position += Cam.Velocity * Cam.Right;
-            }
-
-            if (glfwGetKey(Window, GLFW_KEY_SPACE))
-            {
-                Cam.Position += Cam.Velocity * Cam.Up;
-            }
-
-            if (glfwGetKey(Window, GLFW_KEY_LEFT_SHIFT))
-            {
-                Cam.Position -= Cam.Velocity * Cam.Up;
-            }
-
-            if (glfwGetKey(Window, GLFW_KEY_Y))
-            {
-                printf("Right: "); DEBUGPrintVec3(Cam.Right); printf("\n");
-                printf("Up: "); DEBUGPrintVec3(Cam.Up); printf("\n");
-                printf("Forward: "); DEBUGPrintVec3(Cam.Forward); printf("\n");
-                printf("Position: "); DEBUGPrintVec3(Cam.Position); printf("\n");
-            }
-
-            { // NOTE: Mouse look
-                Cam.Right = Normalize(Cross(Cam.Forward, WorldYAxis));
-                Cam.Up = Normalize(Cross(Cam.Right, Cam.Forward));
-
-                f64 MouseX, MouseY;
-                glfwGetCursorPos(Window, &MouseX, &MouseY);
-
-                f64 CurrentTime = glfwGetTime();
-                if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_RIGHT) && ((CurrentTime - LastMouseRTime)) >= 1)
+                if (ImGui::BeginMainMenuBar())
                 {
-                    InsertVoxelAtMousePoint(MouseX, MouseY, Cam, WorldSvo);
-                    UpdateRenderData(WorldSvo, RenderData);
-                    LastMouseRTime = CurrentTime;
-                }
-                
-                if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_LEFT) && ((CurrentTime - LastMouseLTime)) >= 1)
-                {
-                    DeleteVoxelAtMousePoint(MouseX, MouseY, Cam, WorldSvo);
-                    UpdateRenderData(WorldSvo, RenderData);
-                    LastMouseLTime = CurrentTime;
+                    ImGui::Text("%fms CPU  %d BLKS  %d LVLS", 1000.0*DeltaTime, GetSvoUsedBlockCount(WorldSvo), GetSvoDepth(WorldSvo));
+                    ImGui::EndMainMenuBar();
                 }
 
-                const f32 DX = (f32)(MouseX - LastMouseX);
-                const f32 DY = (f32)(MouseY - LastMouseY);
+                if (glfwGetKey(Window, GLFW_KEY_Q))
+                {
+                    glfwSetWindowShouldClose(Window, GLFW_TRUE);
+                }
 
-                LastMouseX = MouseX;
-                LastMouseY = MouseY;
+                if (glfwGetKey(Window, GLFW_KEY_W))
+                {
+                    Cam.Position += Cam.Velocity * Cam.Forward;
+                }
 
-                Yaw = Rads(DX) * -0.05f;
-                Pitch = Rads(DY) * -0.05f;
+                if (glfwGetKey(Window, GLFW_KEY_S))
+                {
+                    Cam.Position -= Cam.Velocity * Cam.Forward;
+                }
 
-                quat YawRotation = RotationQuaternion(Yaw, WorldYAxis);
-                quat PitchRotation = RotationQuaternion(Pitch, Cam.Right);
+                if (glfwGetKey(Window, GLFW_KEY_A))
+                {
+                    Cam.Position -= Cam.Velocity * Cam.Right;
+                }
 
-                Cam.Forward = Normalize(Rotate((YawRotation * PitchRotation), Cam.Forward));
+                if (glfwGetKey(Window, GLFW_KEY_D))
+                {
+                    Cam.Position += Cam.Velocity * Cam.Right;
+                }
+
+                if (glfwGetKey(Window, GLFW_KEY_SPACE))
+                {
+                    Cam.Position += Cam.Velocity * Cam.Up;
+                }
+
+                if (glfwGetKey(Window, GLFW_KEY_LEFT_SHIFT))
+                {
+                    Cam.Position -= Cam.Velocity * Cam.Up;
+                }
+
+                if (glfwGetKey(Window, GLFW_KEY_Y))
+                {
+                    printf("Right: "); DEBUGPrintVec3(Cam.Right); printf("\n");
+                    printf("Up: "); DEBUGPrintVec3(Cam.Up); printf("\n");
+                    printf("Forward: "); DEBUGPrintVec3(Cam.Forward); printf("\n");
+                    printf("Position: "); DEBUGPrintVec3(Cam.Position); printf("\n");
+                }
+
+                { // NOTE: Mouse look
+                    Cam.Right = Normalize(Cross(Cam.Forward, WorldYAxis));
+                    Cam.Up = Normalize(Cross(Cam.Right, Cam.Forward));
+
+                    f64 MouseX, MouseY;
+                    glfwGetCursorPos(Window, &MouseX, &MouseY);
+
+                    f64 CurrentTime = glfwGetTime();
+                    if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_RIGHT) && ((CurrentTime - LastMouseRTime)) >= 1)
+                    {
+                        InsertVoxelAtMousePoint(MouseX, MouseY, Cam, WorldSvo);
+                        UpdateRenderData(WorldSvo, RenderData);
+                        LastMouseRTime = CurrentTime;
+                    }
+                    
+                    if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_LEFT) && ((CurrentTime - LastMouseLTime)) >= 1)
+                    {
+                        DeleteVoxelAtMousePoint(MouseX, MouseY, Cam, WorldSvo);
+                        UpdateRenderData(WorldSvo, RenderData);
+                        LastMouseLTime = CurrentTime;
+                    }
+
+                    const f32 DX = (f32)(MouseX - LastMouseX);
+                    const f32 DY = (f32)(MouseY - LastMouseY);
+
+                    LastMouseX = MouseX;
+                    LastMouseY = MouseY;
+
+                    Yaw = Rads(DX) * -0.05f;
+                    Pitch = Rads(DY) * -0.05f;
+
+                    quat YawRotation = RotationQuaternion(Yaw, WorldYAxis);
+                    quat PitchRotation = RotationQuaternion(Pitch, Cam.Right);
+
+                    Cam.Forward = Normalize(Rotate((YawRotation * PitchRotation), Cam.Forward));
+                }
+
+                f32 CameraMatrix[3][3] = {
+                    { Cam.Right.X, Cam.Right.Y, Cam.Right.Z },
+                    { Cam.Up.X, Cam.Up.Y, Cam.Up.Z },
+                    { -Cam.Forward.X, -Cam.Forward.Y, -Cam.Forward.Z },
+                };
+
+                f32 F[3] = { Cam.Position.X, Cam.Position.Y, Cam.Position.Z };
+                ViewData.CamTransform = (float*)CameraMatrix;
+                ViewData.CamPos = F;
+
+                DrawScene(RenderData, &ViewData);
             }
 
-            f32 CameraMatrix[3][3] = {
-                { Cam.Right.X, Cam.Right.Y, Cam.Right.Z },
-                { Cam.Up.X, Cam.Up.Y, Cam.Up.Z },
-                { -Cam.Forward.X, -Cam.Forward.Y, -Cam.Forward.Z },
-            };
 
-            f32 F[3] = { Cam.Position.X, Cam.Position.Y, Cam.Position.Z };
-            ViewData.CamTransform = (float*)CameraMatrix;
-            ViewData.CamPos = F;
-
-            DrawScene(RenderData, &ViewData);
         }
 
         ImGui::Render();

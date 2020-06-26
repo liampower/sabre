@@ -25,6 +25,9 @@
   #define aligned(N) __attribute__((aligned(N)))
 #endif
 
+
+
+
 static inline float
 Clamp(float X, float Lo, float Hi)
 {
@@ -1191,6 +1194,24 @@ Rotate(quat Rotation, vec3 V)
 }
 
 // }}}
+
+static inline u32
+Part1By2_32(u32 X)
+{
+    X &= 0X000003ff;                  // X = ---- ---- ---- ---- ---- --98 7654 3210
+    X = (X ^ (X << 16U)) & 0Xff0000ff; // X = ---- --98 ---- ---- ---- ---- 7654 3210
+    X = (X ^ (X <<  8U)) & 0X0300f00f; // X = ---- --98 ---- ---- 7654 ---- ---- 3210
+    X = (X ^ (X <<  4U)) & 0X030c30c3; // X = ---- --98 ---- 76-- --54 ---- 32-- --10
+    X = (X ^ (X <<  2U)) & 0X09249249; // X = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
+
+    return X;
+}
+
+static inline u32
+EncodeMorton3_32(uvec3 V)
+{
+    return (Part1By2_32(V.Z) << 2U) + (Part1By2_32(V.Y) << 1U) + Part1By2_32(V.X);
+}
 
 #endif
 
