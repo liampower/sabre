@@ -42,6 +42,7 @@ extern const char* const RaycasterComputeKernel = R"GLSL(
 
 #define MAX_STEPS 128
 #define SCREEN_DIM 512
+#define EMPTY_KEY 0xFFFFFFFF
 
 #define ASSERT(Expr) if (! (Expr)) { return vec3(1); }
 
@@ -75,6 +76,12 @@ struct far_ptr
     uint NodeOffset;
 };
 
+struct hmap_entry
+{
+    uint Key;
+    uint Value;
+};
+
 layout (local_size_x = 8, local_size_y = 8) in;
 
 layout (rgba32f, binding = 0) uniform image2D OutputImgUniform;
@@ -86,6 +93,7 @@ uniform uint EntriesPerBlockUniform;
 uniform uint FarPtrsPerBlockUniform;
 
 uniform uint BiasUniform;
+uniform uint TableSizeUniform;
 uniform float InvBiasUniform;
 
 uniform vec3 ViewPosUniform;
@@ -101,6 +109,11 @@ layout (std430, binding = 3) readonly buffer svo_input
 {
     uint Nodes[];
 } SvoInputBuffer;
+
+layout(std430, binding=5) readonly buffer leaf_input
+{
+    hmap_entry Entries[];
+} LeafInputBuffer;
 
 layout (std430, binding = 4) readonly buffer svo_far_ptr_index
 {
@@ -245,6 +258,59 @@ struct st_frame
 // * No h.w. instruction for `sign` - deceptively slow, especially with conversions
 // * Vector min/max map directly to asm instructions
 
+
+uint Part1By2_32(uint X)
+{
+    X &= 0X000003ff;                  // X = ---- ---- ---- ---- ---- --98 7654 3210
+    X = (X ^ (X << 16U)) & 0Xff0000ff; // X = ---- --98 ---- ---- ---- ---- 7654 3210
+    X = (X ^ (X <<  8U)) & 0X0300f00f; // X = ---- --98 ---- ---- 7654 ---- ---- 3210
+    X = (X ^ (X <<  4U)) & 0X030c30c3; // X = ---- --98 ---- 76-- --54 ---- 32-- --10
+    X = (X ^ (X <<  2U)) & 0X09249249; // X = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
+
+    return X;
+}
+
+uint ComputeMortonKey3(uvec3 V)
+{
+    return (Part1By2_32(V.z) << 2) + (Part1By2_32(V.y) << 1) + Part1By2_32(V.x);
+}
+
+
+uvec4 ComputeHashes(uint Key)
+{
+    // Hash constants; just random integers
+    const uvec4 C0 = uvec4(0xD706DD, 0x4D166E, 0x4C49414D, 0x4C49414D);
+    const uvec4 C1 = uvec4(0x4C49414D, 0x57524C44, 0xCAFEBABE, 0xDEADBEEF);
+    const uint P = 334214459;
+
+    return (((C0 * Key) + C1) % P) % TableSizeUniform;
+}
+
+
+vec3 LookupLeafVoxelData(uvec3 Pos)
+{
+    uint Key = ComputeMortonKey3(Pos);
+    uvec4 Hashes = ComputeHashes(Key);
+
+    uint V = LeafInputBuffer.Entries[Hashes.x].Value;
+    vec4 A = unpackSnorm4x8(V);
+    if (Key == 2429576) return vec3(0, 1, 0);
+    if (Key == 6696388) return vec3(0, 1, 1);
+    //if (V.x < 0.6 && V.x < 0.7) return vec3(0, 0, 1);
+    if (all(equal(vec4(0), A))) return vec3(1);
+    else return vec3(1, 0, 0);
+
+#if 0
+    if (LeafInputBuffer.Entries[Hashes.x].Key != EMPTY_KEY) return unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.x].Value).wzy;
+    if (LeafInputBuffer.Entries[Hashes.y].Key != EMPTY_KEY) return unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.y].Value).xyz;
+    if (LeafInputBuffer.Entries[Hashes.z].Key != EMPTY_KEY) return unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.z].Value).xyz;
+    if (LeafInputBuffer.Entries[Hashes.w].Key != EMPTY_KEY) return unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.w].Value).xyz;
+#endif
+
+    return vec3(1);
+
+}
+
 vec3 Raycast(in ray R)
 {
     // Scale up by the tree bias.
@@ -325,12 +391,14 @@ vec3 Raycast(in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
-                        vec3 N = texelFetch(MapDataUniform, ivec3(NodeCentre.xyz), 0).xyz;
-                        vec3 C = texelFetch(ColourDataUniform, ivec3(NodeCentre.xyz), 0).bgr;
+                        //vec3 N = texelFetch(MapDataUniform, ivec3(NodeCentre.xyz), 0).xyz;
+                        //vec3 C = texelFetch(ColourDataUniform, ivec3(NodeCentre.xyz), 0).bgr;
                         
-                        vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(32, 0, 0));
+                        //vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(32, 0, 0));
 
-                        return vec3(dot(Ldir, N)) * C;
+                        //return vec3(dot(Ldir, N)) * C;
+                        //return vec3(1, 0, 0);
+                        return LookupLeafVoxelData(uvec3(NodeCentre));
 
                     }
                     else
@@ -480,14 +548,14 @@ void main()
 
     uint Slot0 = ComputeHashes(InputPair.Key).x;
 
-    HTableOutBuffer.Entries[ThreadID] = InputPair;
+    //HTableOutBuffer.Entries[ThreadID] = InputPair;
     //return;
 
-    /*int Step;
+    int Step;
     for (Step = 0; Step < MAX_STEPS; ++Step)
     {
         InputPair.Key = atomicExchange(HTableOutBuffer.Entries[Slot0].Key, InputPair.Key); 
-        //InputPair.Value = atomicExchange(HTableOutBuffer.Entries[Slot0].Value, InputPair.Value); 
+        InputPair.Value = atomicExchange(HTableOutBuffer.Entries[Slot0].Value, InputPair.Value); 
         if (EMPTY_KEY == InputPair.Key) return;
 
         uvec4 Hashes = ComputeHashes(InputPair.Key);
@@ -497,7 +565,7 @@ void main()
         else if (Slot0 == Hashes.z) Slot0 = Hashes.w;
         else Slot0 = Hashes.x;
     }
-    if (MAX_STEPS == Step)
+    /*if (MAX_STEPS == Step)
     {
         HTableOutBuffer.Entries[ThreadID].Key = 111;
     }*/

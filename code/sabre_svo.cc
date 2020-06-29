@@ -66,7 +66,7 @@ PackVec3ToSnorm3(vec3 V)
     u8 Sy = (u8)Round(Clamp(V.Y, -1.0f, 1.0f) * Exp);
     u8 Sz = (u8)Round(Clamp(V.Z, -1.0f, 1.0f) * Exp);
 
-    packed_snorm3 Out = ((u8)Sz) | ((u8)Sy << 0x08U) | ((u8)Sx << 16U);
+    packed_snorm3 Out = ((u8)Sx) | ((u8)Sy << 0x08U) | ((u8)Sz << 16U);
 
     return Out;
 }

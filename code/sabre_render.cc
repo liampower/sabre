@@ -87,7 +87,7 @@ static const f32 GlobalCanvasVerts[12] = {
 static gl_uint
 CreateLeafDataHashTable(render_data* RenderData, const attrib_data* const Data, usize Count)
 {
-    const usize MaxHTableBufferSize = 8*1024*1024;
+    const usize MaxHTableBufferSize = 1024;//8*1024*1024;
     gl_uint DataBuffers[2] = { 0 };
 
     glGenBuffers(2, DataBuffers);
@@ -332,6 +332,7 @@ SetUniformData(const svo* const Tree, render_data* const RenderData)
     glUniform1f(glGetUniformLocation(RenderData->RenderShader, "InvBiasUniform"), Tree->Bias.InvScale);
     glUniform1i(glGetUniformLocation(RenderData->RenderShader, "MapDataUniform"), 1);
     glUniform1i(glGetUniformLocation(RenderData->RenderShader, "ColourDataUniform"), 0);
+    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "TableSizeUniform"), 1024);
 
     printf("Inv Bias: %f\n", (f64)Tree->Bias.InvScale);
     printf("Bias Scale: %u\n", 1U << Tree->Bias.Scale);
