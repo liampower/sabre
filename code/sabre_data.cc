@@ -279,36 +279,42 @@ uint ComputeMortonKey3(uvec3 V)
 uvec4 ComputeHashes(uint Key)
 {
     // Hash constants; just random integers
-    const uvec4 C0 = uvec4(0xD706DD, 0x4D166E, 0x4C49414D, 0x4C49414D);
-    const uvec4 C1 = uvec4(0x4C49414D, 0x57524C44, 0xCAFEBABE, 0xDEADBEEF);
+    const uvec4 C0 = uvec4(3749099615, 4208530976, 3117210442, 2719242218);
+    const uvec4 C1 = uvec4(2147483647, 3501430569, 1291568700, 848507473);
     const uint P = 334214459;
 
-    return (((C0 * Key) + C1) % P) % TableSizeUniform;
+    return (((C0 * Key) + C1) % P) % (TableSizeUniform - 1);
 }
-
 
 vec3 LookupLeafVoxelData(uvec3 Pos)
 {
     uint Key = ComputeMortonKey3(Pos);
     uvec4 Hashes = ComputeHashes(Key);
 
-    uint V = LeafInputBuffer.Entries[Hashes.x].Value;
-    vec4 A = unpackSnorm4x8(V);
-    if (Key == 2429576) return vec3(0, 1, 0);
-    if (Key == 6696388) return vec3(0, 1, 1);
-    //if (V.x < 0.6 && V.x < 0.7) return vec3(0, 0, 1);
-    if (all(equal(vec4(0), A))) return vec3(1);
-    else return vec3(1, 0, 0);
+    /*if (any(greaterThanEqual(Hashes, uvec4(TableSizeUniform)))) return vec3(1);
+    if (LeafInputBuffer.Entries[Hashes.x].Value == 0)
+    {
+        return vec3(0, 1, 1);
+    }
+    if (LeafInputBuffer.Entries[Hashes.y].Value == 0)
+    {
+        return vec3(0, 1, 1);
+    }
+    if (LeafInputBuffer.Entries[Hashes.z].Value == 0)
+    {
+        return vec3(0, 1, 1);
+    }
+    if (LeafInputBuffer.Entries[Hashes.w].Value == 0)
+    {
+        return vec3(0, 1, 1);
+    }*/
 
-#if 0
-    if (LeafInputBuffer.Entries[Hashes.x].Key != EMPTY_KEY) return unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.x].Value).wzy;
+    if (LeafInputBuffer.Entries[Hashes.x].Key != EMPTY_KEY) return unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.x].Value).xyz;
     if (LeafInputBuffer.Entries[Hashes.y].Key != EMPTY_KEY) return unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.y].Value).xyz;
     if (LeafInputBuffer.Entries[Hashes.z].Key != EMPTY_KEY) return unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.z].Value).xyz;
     if (LeafInputBuffer.Entries[Hashes.w].Key != EMPTY_KEY) return unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.w].Value).xyz;
-#endif
 
-    return vec3(1);
-
+    return vec3(1, 0, 0);
 }
 
 vec3 Raycast(in ray R)
@@ -394,11 +400,13 @@ vec3 Raycast(in ray R)
                         //vec3 N = texelFetch(MapDataUniform, ivec3(NodeCentre.xyz), 0).xyz;
                         //vec3 C = texelFetch(ColourDataUniform, ivec3(NodeCentre.xyz), 0).bgr;
                         
-                        //vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(32, 0, 0));
+                        vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(32, 0, 0));
 
                         //return vec3(dot(Ldir, N)) * C;
                         //return vec3(1, 0, 0);
-                        return LookupLeafVoxelData(uvec3(NodeCentre));
+                        vec3 N =  LookupLeafVoxelData(uvec3(NodeCentre));
+                        return N;
+                        //return vec3(dot(Ldir, N));
 
                     }
                     else
@@ -505,10 +513,10 @@ void main()
 extern const char* const HasherComputeKernel = R"GLSL(
 #version 450 core
 
-layout (local_size_x = 1) in;
+layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
 #define EMPTY_KEY 0xFFFFFFFF
-#define MAX_STEPS 25
+#define MAX_STEPS 10
 
 
 struct entry
@@ -517,7 +525,7 @@ struct entry
     uint Value;
 };
 
-layout (std430, binding = 0) buffer htable_out
+layout (std430, binding = 0) coherent restrict buffer htable_out
 {
     entry Entries[];
 } HTableOutBuffer;
@@ -533,17 +541,16 @@ uniform uint TableSizeUniform;
 uvec4 ComputeHashes(uint Key)
 {
     // Hash constants; just random integers
-    const uvec4 C0 = uvec4(0xD706DD, 0x4D166E, 0x4C49414D, 0x4C49414D);
-    const uvec4 C1 = uvec4(0x4C49414D, 0x57524C44, 0xCAFEBABE, 0xDEADBEEF);
+    const uvec4 C0 = uvec4(3749099615, 4208530976, 3117210442, 2719242218);
+    const uvec4 C1 = uvec4(2147483647, 3501430569, 1291568700, 848507473);
     const uint P = 334214459;
 
-    return (((C0 * Key) + C1) % P) % TableSizeUniform;
+    return (((C0 * Key) + C1) % P) % (TableSizeUniform - 1);
 }
 
 void main()
 {
     uint ThreadID = gl_GlobalInvocationID.x;
-
     entry InputPair = DataInputBuffer.Entries[ThreadID];
 
     uint Slot0 = ComputeHashes(InputPair.Key).x;
@@ -555,20 +562,26 @@ void main()
     for (Step = 0; Step < MAX_STEPS; ++Step)
     {
         InputPair.Key = atomicExchange(HTableOutBuffer.Entries[Slot0].Key, InputPair.Key); 
+        memoryBarrier();
         InputPair.Value = atomicExchange(HTableOutBuffer.Entries[Slot0].Value, InputPair.Value); 
-        if (EMPTY_KEY == InputPair.Key) return;
+        memoryBarrier();
+        if (EMPTY_KEY != InputPair.Key)
+        {
+            uvec4 Hashes = ComputeHashes(InputPair.Key);
 
-        uvec4 Hashes = ComputeHashes(InputPair.Key);
-
-        if (Slot0 == Hashes.x) Slot0 = Hashes.y;
-        else if (Slot0 == Hashes.y) Slot0 = Hashes.z;
-        else if (Slot0 == Hashes.z) Slot0 = Hashes.w;
-        else Slot0 = Hashes.x;
+            if (Slot0 == Hashes.x) Slot0 = Hashes.y;
+            else if (Slot0 == Hashes.y) Slot0 = Hashes.z;
+            else if (Slot0 == Hashes.z) Slot0 = Hashes.w;
+            else Slot0 = Hashes.x;
+        }
+        else
+        {
+            break;
+        }
     }
-    /*if (MAX_STEPS == Step)
-    {
-        HTableOutBuffer.Entries[ThreadID].Key = 111;
-    }*/
+
+    // Failed to find slot for key
+    atomicAdd(HTableOutBuffer.Entries[TableSizeUniform - 1].Key, 1);
 }
 
 )GLSL";

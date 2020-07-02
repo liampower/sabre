@@ -3,6 +3,7 @@
 
 // For trig functions
 #include <math.h>
+#include <intrin.h>
 
 #define Pi32  3.14159265f
 
@@ -105,6 +106,34 @@ struct vec3
         X = Copy.X;
         Y = Copy.Y;
         Z = Copy.Z;
+    }
+};
+
+struct uvec4
+{
+    u32 X;
+    u32 Y;
+    u32 Z;
+    u32 W;
+
+    inline uvec4() {}
+
+    inline explicit
+    uvec4(u32 InX, u32 InY, u32 InZ, u32 InW)
+    {
+        X = InX;
+        Y = InY;
+        Z = InZ;
+        W = InW;
+    }
+
+    inline explicit
+    uvec4(u32 Uniform)
+    {
+        X = Uniform;
+        Y = Uniform;
+        Z = Uniform;
+        W = Uniform;
     }
 };
 
@@ -327,6 +356,20 @@ Clamp(uvec3 Val, u32 Min, u32 Max)
     if (Out.Z < Min) Out.Z = Min;
 
     return Out;
+}
+
+template<typename t>
+static inline t
+Maximum(t A, t B)
+{
+    return (A > B) ? A : B;
+}
+
+template<typename t>
+static inline t
+Minimum(t A, t B)
+{
+    return (A < B) ? A : B;
 }
 
 static inline float
@@ -556,7 +599,6 @@ Sign(float V)
     else       return 0.0f;
 }
 
-
 static inline ivec3
 operator&(ivec3 L, ivec3 R)
 {
@@ -568,9 +610,9 @@ Sign(ivec3 V)
 {
     vec3 Out;
 
-    Out.X = Sign(V.X);
-    Out.Y = Sign(V.Y);
-    Out.Z = Sign(V.Z);
+    Out.X = Sign((float)V.X);
+    Out.Y = Sign((float)V.Y);
+    Out.Z = Sign((float)V.Z);
 
     return Out;
 }
@@ -691,29 +733,6 @@ operator*(vec3 Vec, float Scalar)
     return Result;
 }
 
-inline vec3
-operator*(vec3 V, int Scalar)
-{
-    vec3 Result;
-
-    Result.X = Scalar * V.X;
-    Result.Y = Scalar * V.Y;
-    Result.Z = Scalar * V.Z;
-
-    return Result;
-}
-
-inline vec3
-operator*(vec3 V, unsigned int Scalar)
-{
-    vec3 Result;
-
-    Result.X = Scalar * V.X;
-    Result.Y = Scalar * V.Y;
-    Result.Z = Scalar * V.Z;
-
-    return Result;
-}
 
 inline vec3
 operator*=(vec3& L, float R)
@@ -873,21 +892,8 @@ TranslationMatrix(const vec3 Translation)
 }
 
 static inline m4x4 vcall
-TranslationMatrix(const uvec3 Translation)
+TranslationMatrix(float X, float Y, float Z)
 {
-    m4x4 T = IdentityMatrix();
-    
-    T.M[0][3] = Translation.X;
-    T.M[1][3] = Translation.Y;
-    T.M[2][3] = Translation.Z;
-
-    return T;
-}
-
-static inline m4x4 vcall
-TranslationMatrix(u32 X, u32 Y, u32 Z)
-{
-
     m4x4 T = IdentityMatrix();
     
     T.M[0][3] = X;
@@ -1195,6 +1201,115 @@ Rotate(quat Rotation, vec3 V)
 
 // }}}
 
+// {{{ Integer (4) vectors
+
+inline uvec4 
+operator+(uvec4 Left, uvec4 Right)
+{
+    uvec4 Result;
+
+    Result.X = Left.X + Right.X;
+    Result.Y = Left.Y + Right.Y;
+    Result.Z = Left.Z + Right.Z;
+    Result.W = Left.W + Right.W;
+
+    return Result;
+}
+
+inline uvec4 
+operator%(uvec4 Left, u32 Scalar)
+{
+    uvec4 Result;
+
+    Result.X = Left.X % Scalar;
+    Result.Y = Left.Y % Scalar;
+    Result.Z = Left.Z % Scalar;
+    Result.W = Left.W % Scalar;
+
+    return Result;
+}
+
+
+inline uvec4
+operator^(uvec4 L, uvec4 R)
+{
+    uvec4 Result;
+
+    Result.X = L.X ^ R.X;
+    Result.Y = L.Y ^ R.Y;
+    Result.Z = L.Z ^ R.Z;
+    Result.W = L.W ^ R.W;
+
+    return Result;
+}
+
+inline uvec4
+operator&(uvec4 L, uvec4 R)
+{
+    uvec4 Result;
+
+    Result.X = L.X & R.X;
+    Result.Y = L.Y & R.Y;
+    Result.Z = L.Z & R.Z;
+    Result.W = L.W & R.W;
+
+    return Result;
+}
+
+inline uvec4
+operator>>(uvec4 L, uvec4 R)
+{
+    uvec4 Result;
+
+    Result.X = L.X >> R.X;
+    Result.Y = L.Y >> R.Y;
+    Result.Z = L.Z >> R.Z;
+    Result.W = L.W >> R.W;
+
+    return Result;
+}
+
+inline uvec4
+operator&(uvec4 L, uint Scalar)
+{
+    uvec4 Result;
+
+    Result.X = L.X & Scalar;
+    Result.Y = L.Y & Scalar;
+    Result.Z = L.Z & Scalar;
+    Result.W = L.W & Scalar;
+
+    return Result;
+}
+
+inline uvec4
+operator<<(uvec4 L, uvec4 R)
+{
+    uvec4 Result;
+
+    Result.X = L.X << R.X;
+    Result.Y = L.Y << R.Y;
+    Result.Z = L.Z << R.Z;
+    Result.W = L.W << R.W;
+
+    return Result;
+}
+
+inline uvec4 
+operator*(uvec4 L, u32 R)
+{
+    uvec4 Result;
+
+    Result.X = L.X * R;
+    Result.Y = L.Y * R;
+    Result.Z = L.Z * R;
+    Result.W = L.W * R;
+
+    return Result;
+}
+
+
+// }}}
 static inline u32
 Part1By2_32(u32 X)
 {
@@ -1212,6 +1327,38 @@ EncodeMorton3_32(uvec3 V)
 {
     return (Part1By2_32(V.Z) << 2U) + (Part1By2_32(V.Y) << 1U) + Part1By2_32(V.X);
 }
+
+
+static inline u32
+SafeIntToU32(int X)
+{
+    return (u32)(Maximum(X, 0));
+}
+
+typedef u64 morton_key;
+// Morton encoding by Fabien 'ryg' Giesen
+// Giesen 2009, "Decoding Morton Codes"
+// https://fgiesen.wordpress.com/2009/12/13/decoding-morton-codes/
+// Accessed Mar. 2020
+
+static inline u64
+Part1By2(u64 X)
+{
+    X &= 0X000003ffULL;                     // X = ---- ---- ---- ---- ---- --98 7654 3210
+    X = (X ^ (X << 16ULL)) & 0Xff0000ffULL; // X = ---- --98 ---- ---- ---- ---- 7654 3210
+    X = (X ^ (X <<  8ULL)) & 0X0300f00fULL; // X = ---- --98 ---- ---- 7654 ---- ---- 3210
+    X = (X ^ (X <<  4ULL)) & 0X030c30c3ULL; // X = ---- --98 ---- 76-- --54 ---- 32-- --10
+    X = (X ^ (X <<  2ULL)) & 0X09249249ULL; // X = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
+    return X;
+}
+
+
+static inline morton_key
+EncodeMorton3(uvec3 V)
+{
+    return (Part1By2((u64)V.Z) << 2ULL) + (Part1By2((u64)V.Y) << 1ULL) + Part1By2((u64)V.X);
+}
+
 
 #endif
 

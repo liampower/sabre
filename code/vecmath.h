@@ -47,12 +47,6 @@ Broadcast3x8(vec3 V)
     return Out;
 }
 
-static inline vec3x4
-SetSelectedBits3x4(vec3x4 V, unsigned int BitValues, unsigned int SelectMsk)
-{
-    
-}
-
 
 #ifdef __cplusplus
 }

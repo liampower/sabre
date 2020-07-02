@@ -30,7 +30,7 @@ static constexpr const char* const DisplayTitle = "Sabre";
 
 // NOTE(Liam): Forces use of nVidia GPU on hybrid graphics systems.
 extern "C" {
-    _declspec(dllexport) int NvOptimusEnablement = 0x00000001;
+    __declspec(dllexport) unsigned int NvOptimusEnablement = 0x00000001;
 }
 
 struct camera
@@ -80,8 +80,8 @@ OutputGraphicsDeviceInfo(void)
 static bool
 CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const, const void* const UserData)
 {
-    const vec3 S = ((sphere*)UserData)->Centre;//vec3(16);
-    const f32 R = ((sphere*)UserData)->Radius;//8;
+    const vec3 S = ((const sphere*const)UserData)->Centre;//vec3(16);
+    const f32 R = ((const sphere* const)UserData)->Radius;//8;
 
     f32 DistanceSqToCube = R * R;
 
@@ -103,7 +103,7 @@ static inline vec3
 SphereNormal(vec3 C, const svo* const, const void* const UserData)
 {
     const vec3 S = vec3(16);
-    const vec3 SphereCentre = ((sphere*)UserData)->Centre;
+    const vec3 SphereCentre = ((const sphere* const)UserData)->Centre;
 
     return Normalize(C - S);
 }
@@ -116,7 +116,7 @@ SphereColour(vec3 C, const svo* const, const void* const)
 
 
 static inline svo*
-CreateCubeSphereTestScene(int Lod)
+CreateCubeSphereTestScene(u32 Lod)
 {
     sphere Sphere = { vec3{16.0f, 16.0f, 16.0f}, 8.0f };
 
@@ -125,10 +125,10 @@ CreateCubeSphereTestScene(int Lod)
     data_sampler ColourSampler = data_sampler{ &Sphere, &SphereColour };
 
     svo* WorldSvo = CreateScene(DEMO_SCALE_EXPONENT,
-                                    Lod,
-                                    &ShapeSampler,
-                                    &NormalSampler,
-                                    &ColourSampler);
+                                Lod,
+                                &ShapeSampler,
+                                &NormalSampler,
+                                &ColourSampler);
 
     return WorldSvo;
 }
@@ -314,17 +314,17 @@ main(int ArgCount, const char** const Args)
 
             if (ImGui::Button("Load rabbit scene"))
             {
-                WorldSvo = ImportGLBFile(Lod, "data/Showcase/sib2.glb");
+                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/sib2.glb");
                 ShowMenu = false;
             }
             else if (ImGui::Button("Load Serapis scene"))
             {
-                WorldSvo = ImportGLBFile(Lod, "data/Showcase/serapis.glb");
+                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/serapis.glb");
                 ShowMenu = false;
             }
             else if (ImGui::Button("Load generated sphere scene"))
             {
-                WorldSvo = CreateCubeSphereTestScene(Lod);
+                WorldSvo = CreateCubeSphereTestScene(SafeIntToU32(Lod));
                 ShowMenu = false;
             }
 
@@ -361,7 +361,7 @@ main(int ArgCount, const char** const Args)
             {
                 if (ImGui::BeginMainMenuBar())
                 {
-                    ImGui::Text("%fms CPU  %d BLKS  %d LVLS", 1000.0*DeltaTime, GetSvoUsedBlockCount(WorldSvo), GetSvoDepth(WorldSvo));
+                    ImGui::Text("%fms CPU  %d BLKS  %d LVLS  %llu DATA", 1000.0*DeltaTime, GetSvoUsedBlockCount(WorldSvo), GetSvoDepth(WorldSvo), WorldSvo->Normals.size());
                     ImGui::EndMainMenuBar();
                 }
 

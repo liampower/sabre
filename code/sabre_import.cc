@@ -19,8 +19,209 @@
 #include <smmintrin.h>
 
 
+
+
+
+
+extern "C" {
+#define X 0
+
+#define Y 1
+
+#define Z 2
+
+
+
+#define CROSS(dest,v1,v2) \
+          dest[0]=v1[1]*v2[2]-v1[2]*v2[1]; \
+          dest[1]=v1[2]*v2[0]-v1[0]*v2[2]; \
+          dest[2]=v1[0]*v2[1]-v1[1]*v2[0]; 
+
+#define DOT(v1,v2) (v1[0]*v2[0]+v1[1]*v2[1]+v1[2]*v2[2])
+
+#define SUB(dest,v1,v2) \
+          dest[0]=v1[0]-v2[0]; \
+          dest[1]=v1[1]-v2[1]; \
+          dest[2]=v1[2]-v2[2]; 
+
+#define FINDMINMAX(x0,x1,x2,min,max) \
+  min = max = x0;   \
+  if(x1<min) min=x1;\
+  if(x1>max) max=x1;\
+  if(x2<min) min=x2;\
+  if(x2>max) max=x2;
+
+int planeBoxOverlap(float normal[3], float vert[3], float maxbox[3])	// -NJMP-
+{
+  int q;
+  float vmin[3],vmax[3],v;
+  for(q=X;q<=Z;q++)
+  {
+    v=vert[q];					// -NJMP-
+    if(normal[q]>0.0f)
+    {
+      vmin[q]=-maxbox[q] - v;	// -NJMP-
+      vmax[q]= maxbox[q] - v;	// -NJMP-
+    }
+    else
+    {
+      vmin[q]= maxbox[q] - v;	// -NJMP-
+      vmax[q]=-maxbox[q] - v;	// -NJMP-
+    }
+  }
+  if(DOT(normal,vmin)>0.0f) return 0;	// -NJMP-
+  if(DOT(normal,vmax)>=0.0f) return 1;	// -NJMP-
+  
+  return 0;
+}
+
+/*======================== X-tests ========================*/
+
+#define AXISTEST_X01(a, b, fa, fb)			   \
+	p0 = a*v0[Y] - b*v0[Z];			       	   \
+	p2 = a*v2[Y] - b*v2[Z];			       	   \
+        if(p0<p2) {min=p0; max=p2;} else {min=p2; max=p0;} \
+	rad = fa * boxhalfsize[Y] + fb * boxhalfsize[Z];   \
+	if(min>rad || max<-rad) return 0;
+
+#define AXISTEST_X2(a, b, fa, fb)			   \
+	p0 = a*v0[Y] - b*v0[Z];			           \
+	p1 = a*v1[Y] - b*v1[Z];			       	   \
+        if(p0<p1) {min=p0; max=p1;} else {min=p1; max=p0;} \
+	rad = fa * boxhalfsize[Y] + fb * boxhalfsize[Z];   \
+	if(min>rad || max<-rad) return 0;
+
+/*======================== Y-tests ========================*/
+
+#define AXISTEST_Y02(a, b, fa, fb)			   \
+	p0 = -a*v0[X] + b*v0[Z];		      	   \
+	p2 = -a*v2[X] + b*v2[Z];	       	       	   \
+        if(p0<p2) {min=p0; max=p2;} else {min=p2; max=p0;} \
+	rad = fa * boxhalfsize[X] + fb * boxhalfsize[Z];   \
+	if(min>rad || max<-rad) return 0;
+
+#define AXISTEST_Y1(a, b, fa, fb)			   \
+	p0 = -a*v0[X] + b*v0[Z];		      	   \
+	p1 = -a*v1[X] + b*v1[Z];	     	       	   \
+        if(p0<p1) {min=p0; max=p1;} else {min=p1; max=p0;} \
+	rad = fa * boxhalfsize[X] + fb * boxhalfsize[Z];   \
+	if(min>rad || max<-rad) return 0;
+
+/*======================== Z-tests ========================*/
+
+#define AXISTEST_Z12(a, b, fa, fb)			   \
+	p1 = a*v1[X] - b*v1[Y];			           \
+	p2 = a*v2[X] - b*v2[Y];			       	   \
+        if(p2<p1) {min=p2; max=p1;} else {min=p1; max=p2;} \
+	rad = fa * boxhalfsize[X] + fb * boxhalfsize[Y];   \
+	if(min>rad || max<-rad) return 0;
+
+#define AXISTEST_Z0(a, b, fa, fb)			   \
+	p0 = a*v0[X] - b*v0[Y];				   \
+	p1 = a*v1[X] - b*v1[Y];			           \
+        if(p0<p1) {min=p0; max=p1;} else {min=p1; max=p0;} \
+	rad = fa * boxhalfsize[X] + fb * boxhalfsize[Y];   \
+	if(min>rad || max<-rad) return 0;
+
+int triBoxOverlap(float boxcenter[3],float boxhalfsize[3],float triverts[3][3])
+{
+  /*    use separating axis theorem to test overlap between triangle and box */
+  /*    need to test for overlap in these directions: */
+  /*    1) the {x,y,z}-directions (actually, since we use the AABB of the triangle */
+  /*       we do not even need to test these) */
+  /*    2) normal of the triangle */
+  /*    3) crossproduct(edge from tri, {x,y,z}-directin) */
+  /*       this gives 3x3=9 more tests */
+   float v0[3],v1[3],v2[3];
+//   float axis[3];
+   float min,max,p0,p1,p2,rad,fex,fey,fez;		// -NJMP- "d" local variable removed
+   float normal[3],e0[3],e1[3],e2[3];
+
+   /* This is the fastest branch on Sun */
+   /* move everything so that the boxcenter is in (0,0,0) */
+   SUB(v0,triverts[0],boxcenter)
+   SUB(v1,triverts[1],boxcenter)
+   SUB(v2,triverts[2],boxcenter)
+
+   /* compute triangle edges */
+   SUB(e0,v1,v0)      /* tri edge 0 */
+   SUB(e1,v2,v1)      /* tri edge 1 */
+   SUB(e2,v0,v2)      /* tri edge 2 */
+
+   /* Bullet 3:  */
+   /*  test the 9 tests first (this was faster) */
+   fex = fabsf(e0[X]);
+   fey = fabsf(e0[Y]);
+   fez = fabsf(e0[Z]);
+   AXISTEST_X01(e0[Z], e0[Y], fez, fey)
+   AXISTEST_Y02(e0[Z], e0[X], fez, fex)
+   AXISTEST_Z12(e0[Y], e0[X], fey, fex)
+
+   fex = fabsf(e1[X]);
+   fey = fabsf(e1[Y]);
+   fez = fabsf(e1[Z]);
+   AXISTEST_X01(e1[Z], e1[Y], fez, fey)
+   AXISTEST_Y02(e1[Z], e1[X], fez, fex)
+   AXISTEST_Z0(e1[Y], e1[X], fey, fex)
+
+   fex = fabsf(e2[X]);
+   fey = fabsf(e2[Y]);
+   fez = fabsf(e2[Z]);
+   AXISTEST_X2(e2[Z], e2[Y], fez, fey)
+   AXISTEST_Y1(e2[Z], e2[X], fez, fex)
+   AXISTEST_Z12(e2[Y], e2[X], fey, fex)
+
+   /* Bullet 1: */
+   /*  first test overlap in the {x,y,z}-directions */
+   /*  find min, max of the triangle each direction, and test for overlap in */
+   /*  that direction -- this is equivalent to testing a minimal AABB around */
+   /*  the triangle against the AABB */
+
+   /* test in X-direction */
+   FINDMINMAX(v0[X],v1[X],v2[X],min,max)
+   if(min>boxhalfsize[X] || max<-boxhalfsize[X]) return 0;
+
+   /* test in Y-direction */
+   FINDMINMAX(v0[Y],v1[Y],v2[Y],min,max)
+   if(min>boxhalfsize[Y] || max<-boxhalfsize[Y]) return 0;
+
+   /* test in Z-direction */
+   FINDMINMAX(v0[Z],v1[Z],v2[Z],min,max)
+   if(min>boxhalfsize[Z] || max<-boxhalfsize[Z]) return 0;
+
+   /* Bullet 2: */
+   /*  test if the box intersects the plane of the triangle */
+   /*  compute plane equation of triangle: normal*x+d=0 */
+   CROSS(normal,e0,e1)
+   // -NJMP- (line removed here)
+   if(!planeBoxOverlap(normal,v0,boxhalfsize)) return 0;	// -NJMP-
+
+   return 1;   /* box and triangle overlaps */
+}
+
+#undef X
+#undef Y
+#undef Z
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 typedef __m128 m128;
-typedef uint64_t morton_key;
 
 struct tri3
 {
@@ -28,29 +229,6 @@ struct tri3
     vec3 V1;
     vec3 V2;
 };
-
-// Morton encoding by Fabien 'ryg' Giesen
-// Giesen 2009, "Decoding Morton Codes"
-// https://fgiesen.wordpress.com/2009/12/13/decoding-morton-codes/
-// Accessed Mar. 2020
-static inline uint64_t
-Part1By2(uint64_t X)
-{
-    X &= 0X000003ffULL;                  // X = ---- ---- ---- ---- ---- --98 7654 3210
-    X = (X ^ (X << 16ULL)) & 0Xff0000ffULL; // X = ---- --98 ---- ---- ---- ---- 7654 3210
-    X = (X ^ (X <<  8ULL)) & 0X0300f00fULL; // X = ---- --98 ---- ---- 7654 ---- ---- 3210
-    X = (X ^ (X <<  4ULL)) & 0X030c30c3ULL; // X = ---- --98 ---- 76-- --54 ---- 32-- --10
-    X = (X ^ (X <<  2ULL)) & 0X09249249ULL; // X = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
-    return X;
-}
-
-
-extern morton_key
-EncodeMorton3(uvec3 V)
-{
-    uint64_t M = (Part1By2((uint64_t)V.Z) << 2ULL) + (Part1By2((uint64_t)V.Y) << 1ULL) + Part1By2((uint64_t)V.X);
-    return M;
-}
 
 
 static inline vec3
@@ -62,14 +240,24 @@ ComputeTriangleNormal(tri3* Triangle)
     return Normalize(Cross(E0, E1));
 }
 
+static uint64_t
+SOHash(uint64_t x) {
+    x = (x ^ (x >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+    x = (x ^ (x >> 27)) * UINT64_C(0x94d049bb133111eb);
+    x = x ^ (x >> 31);
+    return x;
+}
 
 struct u64_hash
 {
 public:
     size_t operator()(const u64& Element) const{
-        return (size_t) Element;
+        return (size_t) SOHash(Element);
     }
 };
+
+
+using morton_map = std::unordered_map<morton_key, vec3, u64_hash>;
 
 struct tri_data
 {
@@ -307,7 +495,8 @@ NormalSampler(vec3 C, const svo* const, const void* const UserData)
 {
     morton_key MortonCode = EncodeMorton3(uvec3(C));
 
-    std::unordered_map<morton_key, vec3>* const* Index = (std::unordered_map<morton_key, vec3>* const*)UserData;
+    //std::unordered_map<morton_key, vec3>* const* Index = (std::unordered_map<morton_key, vec3>* const*)UserData;
+    morton_map* const* Index = (morton_map* const*)UserData;
     return (*Index)->at(MortonCode);
 }
 
@@ -337,6 +526,7 @@ LoadMeshTriangles(cgltf_mesh* Mesh)
             {
                 cgltf_size IndexCount = Prim->indices->count;
                 u32* IndexBuffer = (u32*) malloc(IndexCount * sizeof(u32));
+                assert(IndexBuffer);
 
                 // Copy the indices into the index buffer.
                 for (cgltf_size Elem = 0; Elem < Prim->indices->count; ++Elem)
@@ -356,25 +546,28 @@ LoadMeshTriangles(cgltf_mesh* Mesh)
 
                         assert(cgltf_num_components(Accessor->type) == 3);
                         pos_attrib* PosBuffer = (pos_attrib*) malloc(sizeof(pos_attrib) * PosCount);
+                        assert(PosBuffer);
 
                         cgltf_accessor_unpack_floats(Accessor, (f32*)PosBuffer, PosCount*3);
 
-                        usize TriCount = IndexCount - 3;
+                        usize TriCount = IndexCount / 3;
 
                         
                         if (nullptr == TriBuffer)
                         {
-                            TriBuffer = (tri_buffer*) malloc(sizeof(tri_buffer) + (sizeof(tri_data) * TriCount));
+                            TriBuffer = (tri_buffer*) calloc(1, sizeof(tri_buffer) + (sizeof(tri_data) * TriCount));
+                            assert(TriBuffer);
                         }
                         else
                         {
                             TriBuffer = (tri_buffer*) realloc(TriBuffer, sizeof(tri_buffer) + (sizeof(tri_data) * (TriBuffer->TriangleCount + TriCount)));
+                            assert(TriBuffer);
                         }
 
                         TriBuffer->TriangleCount += TriCount;
 
 
-                        for (cgltf_size TriIndex = 0; TriIndex < TriCount; TriIndex += 3)
+                        for (cgltf_size TriIndex = 0; TriIndex < (TriCount*3); TriIndex+=3)
                         {
                             tri3 T;
 
@@ -436,8 +629,8 @@ BuildTriangleIndex(u32 MaxDepth,
                    u32 ScaleExponent,
                    tri_buffer* Tris,
                    std::set<morton_key>& IndexOut,
-                   std::unordered_map<morton_key, vec3>& NormalsMap,
-                   std::unordered_map<morton_key, vec3>& ColourMap)
+                   morton_map& NormalsMap,
+                   morton_map& ColourMap)
 {
     struct st_ctx
     {
@@ -454,7 +647,7 @@ BuildTriangleIndex(u32 MaxDepth,
     if (MaxDepth > ScaleExponent)
     {
         Bias = (MaxDepth - ScaleExponent);
-        InvBias = 1.0f / (1 << Bias);
+        InvBias = 1.0f / (float)((1 << Bias));
     }
 
     u32 RootScale = 1U << (ScaleExponent) << Bias;
@@ -488,22 +681,34 @@ BuildTriangleIndex(u32 MaxDepth,
             Stack.pop_front();
 
             vec3 Radius = vec3(CurrentCtx.Scale >> 1) * InvBias;
-            m128 RadiusM = _mm_set_ps(0.0f, Radius.Z, Radius.Y, Radius.X);
+            alignas(16) m128 RadiusM = _mm_set_ps(0.0f, Radius.Z, Radius.Y, Radius.X);
 
             for (u32 Oct = 0; Oct < 8; ++Oct)
             {
                 // TODO(Liam): Make GetOctantCentre *only* return uvecs, then can differentiate
                 // at the type level between scaled and unscaled vectors.
                 vec3 Centre = GetOctantCentre(Oct, CurrentCtx.Scale, CurrentCtx.ParentCentre);
-                m128 CentreM = _mm_set_ps(0.0f, Centre.Z*InvBias, Centre.Y*InvBias, Centre.X*InvBias);
+                alignas(16) m128 CentreM = _mm_set_ps(0.0f, Centre.Z*InvBias, Centre.Y*InvBias, Centre.X*InvBias);
 
-                if (TriangleAABBIntersection(CentreM, RadiusM, TriVerts))
+
+                float C[3] = { Centre.X*InvBias, Centre.Y*InvBias, Centre.Z*InvBias };
+                float R[3] = { Radius.X, Radius.Y, Radius.Z };
+                float Tx[3][3] = {
+                    { T.V0.X, T.V0.Y, T.V0.Z },
+                    { T.V1.X, T.V1.Y, T.V1.Z },
+                    { T.V2.X, T.V2.Y, T.V2.Z },
+                };
+                if (triBoxOverlap(C, R, Tx))
                 {
                     morton_key ChildVoxelCode = EncodeMorton3(uvec3(Centre)); 
-                    if (CurrentCtx.Depth + 1 >= MaxDepth)
+                    if ((CurrentCtx.Depth + 1) >= MaxDepth)
                     {
                         NormalsMap.insert(std::make_pair(ChildVoxelCode, Tris->Triangles[TriIndex].Normal));
-                        ColourMap.insert(std::make_pair(ChildVoxelCode, Tris->Triangles[TriIndex].Normal));
+                        //ColourMap.insert(std::make_pair(ChildVoxelCode, Tris->Triangles[TriIndex].Normal));
+                    }
+                    if (Centre.X == 29.0f && Centre.Y == 21.0f && Centre.Z == 29.0f)
+                    {
+                        printf("a\n");
                     }
 
                     IndexOut.insert(ChildVoxelCode);
@@ -528,7 +733,7 @@ static bool
 IntersectorFunction(vec3 vMin, vec3 vMax, const svo* const Tree, const void* const UserData)
 {
     vec3 Halfsize = (vMax - vMin) * 0.5f;
-    uvec3 Centre = uvec3((vMin + Halfsize) * (1 << Tree->Bias.Scale));
+    uvec3 Centre = uvec3((vMin + Halfsize) * float(1 << Tree->Bias.Scale));
     
     const std::set<morton_key>* const* OccupancyIndex = (const std::set<morton_key>* const*)UserData;
 
@@ -660,8 +865,8 @@ ImportGLBFile(uint32_t MaxDepth, const char* const GLTFPath)
         assert(ScaleExponent > 0);
 
         std::set<morton_key> OccupancyIndex{};
-        std::unordered_map<morton_key, vec3> NormalIndex{};
-        std::unordered_map<morton_key, vec3> ColourIndex{};
+        morton_map NormalIndex{};
+        morton_map ColourIndex{};
 
         NormalIndex.reserve(TriangleData->TriangleCount);
         ColourIndex.reserve(TriangleData->TriangleCount);
@@ -673,8 +878,8 @@ ImportGLBFile(uint32_t MaxDepth, const char* const GLTFPath)
                            ColourIndex);
 
 
-        const std::unordered_map<morton_key, vec3>* const NormalsPtr = &NormalIndex;
-        const std::unordered_map<morton_key, vec3>* const ColoursPtr = &ColourIndex;
+        const morton_map* const NormalsPtr = &NormalIndex;
+        const morton_map* const ColoursPtr = &ColourIndex;
         const std::set<morton_key>* const OccupancyIndexPtr = &OccupancyIndex;
 
         shape_sampler ShapeS = shape_sampler{ &OccupancyIndexPtr, IntersectorFunction };

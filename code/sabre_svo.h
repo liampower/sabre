@@ -139,10 +139,10 @@ typedef vec3 (*normal_fn)(vec3, const svo* const, const void* const);
 typedef vec3 (*colour_fn)(vec3, const svo* const, const void* const);
 
 
-extern "C" vec3
+extern vec3
 GetNearestFreeSlot(vec3 Pos, vec3 Dir, const svo* const Tree);
 
-extern "C" vec3
+extern vec3
 GetNearestLeafSlot(vec3 Pos, vec3 Dir, const svo* const Tree);
 
 extern "C" void

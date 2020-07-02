@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <map>
 #include <unordered_map>
+#include <vector>
 
 #include "sabre.h"
 #include "sabre_svo.h"
@@ -10,6 +11,10 @@
 
 static constexpr uint WORK_SIZE_X = 512U;
 static constexpr uint WORK_SIZE_Y = 512U;
+
+static constexpr usize HTABLE_SLOT_COUNT = 1024*128U;
+
+static void Test(const std::vector<attrib_data>&);
 
 typedef u64 morton_key;
 extern morton_key EncodeMorton3(uvec3 V);
@@ -87,35 +92,38 @@ static const f32 GlobalCanvasVerts[12] = {
 static gl_uint
 CreateLeafDataHashTable(render_data* RenderData, const attrib_data* const Data, usize Count)
 {
-    const usize MaxHTableBufferSize = 1024;//8*1024*1024;
     gl_uint DataBuffers[2] = { 0 };
+    const usize HTableDataSize = (HTABLE_SLOT_COUNT * sizeof(attrib_data));
 
     glGenBuffers(2, DataBuffers);
 
     { // Upload the input leaf data key-value pairs into the leaf buffer
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, DataBuffers[0]);
-        glBufferData(GL_SHADER_STORAGE_BUFFER, Count*sizeof(packed_snorm3), nullptr, GL_DYNAMIC_COPY);
-        packed_snorm3* GPUDataBuffer = (packed_snorm3*)glMapBuffer(GL_SHADER_STORAGE_BUFFER,
+        glBufferData(GL_SHADER_STORAGE_BUFFER, Count*sizeof(attrib_data), nullptr, GL_DYNAMIC_COPY);
+        attrib_data* GPUDataBuffer = (attrib_data*)glMapBuffer(GL_SHADER_STORAGE_BUFFER,
                                                          GL_WRITE_ONLY);
     
-        memcpy(GPUDataBuffer, Data, Count*sizeof(packed_snorm3));
+        memcpy(GPUDataBuffer, Data, Count*sizeof(attrib_data));
         glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
     }
 
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, DataBuffers[1]);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, MaxHTableBufferSize*sizeof(gl_uint), nullptr, GL_DYNAMIC_COPY);
-    gl_uint* GPUHTableBuffer = (gl_uint*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
-    memset(GPUHTableBuffer, 0xFFFFFFFF, MaxHTableBufferSize*sizeof(gl_uint));
-    glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+    {
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, DataBuffers[1]);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, HTableDataSize, nullptr, GL_DYNAMIC_COPY);
+        attrib_data* GPUHTableBuffer = (attrib_data*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+        memset(GPUHTableBuffer, 0xFF, HTableDataSize);
+        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+    }
 
 
     glUseProgram(RenderData->HTableBuilderShader);
-    glUniform1ui(glGetUniformLocation(RenderData->HTableBuilderShader, "TableSizeUniform"), MaxHTableBufferSize);
+    glUniform1ui(glGetUniformLocation(RenderData->HTableBuilderShader, "TableSizeUniform"), HTABLE_SLOT_COUNT);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, HTableInputBufferBinding, DataBuffers[0]);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, HTableOutputBufferBinding, DataBuffers[1]);
 
     // Kick the table builder kernel
-    glDispatchCompute(50, 1, 1);
+    printf("BEGINNING HASH BUILD...\n");
+    glDispatchCompute(32, 1, 1);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
     RenderData->HTableInputBuffer = DataBuffers[0];
@@ -165,7 +173,7 @@ UploadSvoBlockData(const svo* const Svo)
     // view buffer.
     usize MaxSSBOSize = 16777216ULL;
     usize MaxViewableBlkCount = (MaxSSBOSize / BlkSize);
-    usize ViewableBlkCount = Min(MaxViewableBlkCount, Svo->UsedBlockCount);
+    usize ViewableBlkCount = Minimum(MaxViewableBlkCount, (usize)Svo->UsedBlockCount);
     usize NodeBufferSize = NodeBlkSize * ViewableBlkCount;
     usize FarPtrBufferSize = FarPtrBlkSize * ViewableBlkCount;
 
@@ -332,7 +340,7 @@ SetUniformData(const svo* const Tree, render_data* const RenderData)
     glUniform1f(glGetUniformLocation(RenderData->RenderShader, "InvBiasUniform"), Tree->Bias.InvScale);
     glUniform1i(glGetUniformLocation(RenderData->RenderShader, "MapDataUniform"), 1);
     glUniform1i(glGetUniformLocation(RenderData->RenderShader, "ColourDataUniform"), 0);
-    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "TableSizeUniform"), 1024);
+    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "TableSizeUniform"), HTABLE_SLOT_COUNT);
 
     printf("Inv Bias: %f\n", (f64)Tree->Bias.InvScale);
     printf("Bias Scale: %u\n", 1U << Tree->Bias.Scale);
@@ -369,7 +377,7 @@ struct tex_page
 };
 
 static std::unordered_map<uvec3, tex_page, uvec3_hash>
-PartitionLeafDataToBuckets(const std::vector<std::pair<uvec3, u32>>& LeafData, usize PageSizeX, usize PageSizeY, usize PageSizeZ)
+PartitionLeafDataToBuckets(const std::vector<std::pair<uvec3, u32>>& LeafData, u32 PageSizeX, u32 PageSizeY, u32 PageSizeZ)
 {
     std::unordered_map<uvec3, tex_page, uvec3_hash> Pages;
     const uvec3 PageSize = uvec3(PageSizeX, PageSizeY, PageSizeZ);
@@ -405,7 +413,7 @@ PartitionLeafDataToBuckets(const std::vector<std::pair<uvec3, u32>>& LeafData, u
     return Pages;
 }
 
-
+#if 0
 static gl_uint
 UploadLeafDataSparse(std::vector<std::pair<uvec3, packed_snorm3>> Data, int AttachmentIndex)
 {
@@ -425,7 +433,7 @@ UploadLeafDataSparse(std::vector<std::pair<uvec3, packed_snorm3>> Data, int Atta
         assert(PageSizeX > 0 && PageSizeY > 0 && PageSizeZ > 0);
         fprintf(stderr, "Page size: %d %d %d\n", PageSizeX, PageSizeY, PageSizeZ);
 
-        std::unordered_map<uvec3, tex_page, uvec3_hash> Pages = PartitionLeafDataToBuckets(Data, PageSizeX, PageSizeY, PageSizeZ);
+        std::unordered_map<uvec3, tex_page, uvec3_hash> Pages = PartitionLeafDataToBuckets(Data, (u32)PageSizeX, (u32)PageSizeY, (u32)PageSizeZ);
 
         glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -495,6 +503,7 @@ UploadLeafDataSparse(std::vector<std::pair<uvec3, packed_snorm3>> Data, int Atta
 
     return MapTexture;
 }
+#endif
 
 static svo_buffers
 UploadOctreeBlockData(const svo* const Svo)
@@ -628,6 +637,7 @@ CreateRenderData(const svo* const Tree, const view_data* const ViewData)
         return nullptr;
     }
 
+    //Test(Tree->Normals);
     CreateLeafDataHashTable(RenderData, Tree->Normals.data(), Tree->Normals.size());
 
 
@@ -646,7 +656,7 @@ CreateRenderData(const svo* const Tree, const view_data* const ViewData)
     RenderData->CanvasVAO = CanvasBuffers.VAO;
     RenderData->CanvasVBO = CanvasBuffers.VBO;
 
-    RenderData->ColourTexture = UploadLeafDataSparse(Tree->Colours, 0);
+    //RenderData->ColourTexture = UploadLeafDataSparse(Tree->Colours, 0);
     //RenderData->MapTexture = UploadLeafDataSparse(Tree->Normals, 1);
 
 
@@ -656,11 +666,11 @@ CreateRenderData(const svo* const Tree, const view_data* const ViewData)
         return nullptr;
     }*/
 
-    if (0 == RenderData->ColourTexture)
+    /*if (0 == RenderData->ColourTexture)
     {
         DeleteRenderData(RenderData);
         return nullptr;
-    }
+    }*/
 
     svo_buffers SvoBuffers = UploadSvoBlockData(Tree);
     if (0 == SvoBuffers.SvoBuffer || 0 == SvoBuffers.FarPtrBuffer)
@@ -676,7 +686,9 @@ CreateRenderData(const svo* const Tree, const view_data* const ViewData)
     RenderData->ViewMatUniformLocation = glGetUniformLocation(RenderData->RenderShader, "ViewMatrixUniform");
     RenderData->ViewPosUniformLocation = glGetUniformLocation(RenderData->RenderShader, "ViewPosUniform");
 
+
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, RenderData->SvoBuffer);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, RenderData->HTableOutputBuffer);
     glActiveTexture(GL_TEXTURE0);
 
     return RenderData;
@@ -779,4 +791,17 @@ DEBUGOutputRenderShaderAssembly(const render_data* const RenderData, FILE* OutFi
 }
 
 
+/*static void
+Test(const std::vector<attrib_data>& Data)
+{
+    std::vector<uvec4> Hashes{};
 
+    for (auto It = Data.begin(); It != Data.end(); ++It)
+    {
+        uvec4 H = ComputeHashes2(It->Key);
+        Hashes.push_back(H);
+
+        printf("%d,%d,%d,%d,%d\n", It->Key, H.X, H.Y, H.Z, H.W);
+    }
+
+}*/

@@ -24,6 +24,9 @@ typedef double   f64;
 
 #define packed_data __attribute__((packed))
 
+extern "C" {
+    __declspec(dllexport) extern unsigned int NvOptimusEnablement;
+}
 
 #endif
 

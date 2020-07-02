@@ -51,22 +51,19 @@ CountSetBits(u32 Msk)
 }
 
 
-static inline node_ref
-HighestVisibleNode(vec3 ViewP, vec3 ViewDim)
-{
-    vec3x8 ViewP8 = Broadcast3x8(ViewP);
-}
-
 static inline packed_snorm3
 PackVec3ToSnorm3(vec3 V)
 {
     f32 Exp = 127.0f;
 
-    u8 Sx = (u8)Round(Clamp(V.X, -1.0f, 1.0f) * Exp);
-    u8 Sy = (u8)Round(Clamp(V.Y, -1.0f, 1.0f) * Exp);
-    u8 Sz = (u8)Round(Clamp(V.Z, -1.0f, 1.0f) * Exp);
+    i8 Sx = (i8)Round(Clamp(V.X, -1.0f, 1.0f) * Exp);
+    i8 Sy = (i8)Round(Clamp(V.Y, -1.0f, 1.0f) * Exp);
+    i8 Sz = (i8)Round(Clamp(V.Z, -1.0f, 1.0f) * Exp);
 
-    packed_snorm3 Out = ((u8)Sx) | ((u8)Sy << 0x08U) | ((u8)Sz << 16U);
+    packed_snorm3 Out = 0x00000000U;//((u8)Sx) | ((u8)Sy << 0x08U) | ((u8)Sz << 16U);
+    Out |= (u32)((u8)(Sz) << 16U);
+    Out |= (u32)((u8)(Sy) <<  8U);
+    Out |= (u32)((u8)(Sx));
 
     return Out;
 }
@@ -487,7 +484,7 @@ BuildSubOctreeRecursive(svo_node* Parent,
         {
             // Check if the NEXT depth is less than the tree max
             // depth.
-            if (Depth + 1 < Tree->MaxDepth)
+            if ((Depth + 1) < Tree->MaxDepth)
             {
                 // Need to subdivide
                 SetOctantOccupied((svo_oct)Oct, VOXEL_PARENT, Parent);
@@ -519,8 +516,8 @@ BuildSubOctreeRecursive(svo_node* Parent,
                 
                 //Tree->Normals.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelNormal)));
 
-                Tree->Normals.push_back(attrib_data{ EncodeMorton3_32(uvec3(OctCentre)), PackVec3ToSnorm3(VoxelNormal) });
-                Tree->Colours.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelColour)));
+                Tree->Normals.push_back(attrib_data{ EncodeMorton3_32(uvec3(OctCentre)), PackVec3ToSnorm3(vec3(0, 0, 1)) });
+                //Tree->Colours.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelColour)));
             }
         }
     }
@@ -602,6 +599,7 @@ CreateScene(u32 ScaleExponent,
                                 NormalSampler,
                                 ColourSampler);
 
+        printf("Completed tree\n");
         return Tree;
     }
     else
@@ -754,7 +752,7 @@ InsertVoxel(svo* Tree, vec3 P)
     u32 RootScale = GetTreeMaxScaleBiased(Tree);
 
     // Inserted voxel position, scaled by the tree bias.
-    vec3 InsertP = P * (1U << Tree->Bias.Scale);
+    vec3 InsertP = P * (float)((1U << Tree->Bias.Scale));
 
     //RootScale = 1U << (Tree->ScaleExponent) << Tree->Bias;
     const vec3 TreeMax = vec3(RootScale);
@@ -902,11 +900,10 @@ GetNextOctant(float tMax, vec3 tMaxV, svo_oct CurrentOct)
     return svo_oct(CurrentOct ^ XorMsk);
 }
 
-extern "C" vec3
+extern vec3
 GetNearestFreeSlot(vec3 RayOrigin, vec3 RayDir, const svo* const Tree)
 {
     u32 MaxScale = GetTreeMaxScaleBiased(Tree);
-    u32 LeafScale = GetTreeMinScaleBiased(Tree) << 1u;
 
     vec3 RaySgn = Sign(RayDir);
     st_frame Stack[64 + 1];
@@ -1016,11 +1013,10 @@ GetNearestFreeSlot(vec3 RayOrigin, vec3 RayDir, const svo* const Tree)
     return vec3(FLT_MAX);
 }
 
-extern "C" vec3
+extern vec3
 GetNearestLeafSlot(vec3 RayOrigin, vec3 RayDir, const svo* const Tree)
 {
     u32 MaxScale = GetTreeMaxScaleBiased(Tree);
-    u32 LeafScale = GetTreeMinScaleBiased(Tree) << 1u;
 
     vec3 RaySgn = Sign(RayDir);
     st_frame Stack[64 + 1];
@@ -1131,7 +1127,7 @@ extern "C" void
 DeleteVoxel(svo* Tree, vec3 VoxelP)
 {
     // Scale the voxel position by the tree bias
-    vec3 DeleteP = VoxelP * (1U << Tree->Bias.Scale);
+    vec3 DeleteP = VoxelP * (float)((1U << Tree->Bias.Scale));
 
     // Always go down to leaf scale (cheat at mem. mgmt!)
     u32 MaxScale = GetTreeMaxScaleBiased(Tree);
@@ -1231,14 +1227,3 @@ GetSvoDepth(const svo* const Svo)
     return Svo->MaxDepth;
 }
 
-extern "C" svo*
-CreateEmptySvo(u32 MaxDepth, u32 ScaleExponent)
-{
-}
-
-
-extern "C" void*
-CopyRawBlockData(const svo_block* const Blk, usize CopySize, void* const BlkDataOut)
-{
-    // TODO(Liam): More efficiency here?
-}
