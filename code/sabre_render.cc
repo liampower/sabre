@@ -8,11 +8,12 @@
 #include "sabre_svo.h"
 #include "sabre_render.h"
 #include "sabre_data.h"
+#include "sabre_math.h"
 
 static constexpr uint WORK_SIZE_X = 512U;
 static constexpr uint WORK_SIZE_Y = 512U;
 
-static constexpr usize HTABLE_SLOT_COUNT = 1024U*512U;
+static constexpr usize HTABLE_SLOT_COUNT = 1024U*1024U;
 
 static void
 Test(const std::vector<attrib_data>& Data);
@@ -49,9 +50,6 @@ struct render_data
 
     gl_int ViewMatUniformLocation; // Location of view matrix uniform
     gl_int ViewPosUniformLocation; // Location of view position uniform
-
-    gl_uint MapTexture;
-    gl_uint ColourTexture;
 
     gl_uint HTableBuilderShader; // Compute shader to construct the leaf hashtable
     gl_uint HTableInputBuffer;
@@ -91,7 +89,6 @@ CreateLeafDataHashTable(render_data* RenderData, const attrib_data* const Data, 
         glBufferData(GL_SHADER_STORAGE_BUFFER, Count*sizeof(attrib_data), nullptr, GL_DYNAMIC_COPY);
         attrib_data* GPUDataBuffer = (attrib_data*)glMapBuffer(GL_SHADER_STORAGE_BUFFER,
                                                          GL_WRITE_ONLY);
-    
         memcpy(GPUDataBuffer, Data, Count*sizeof(attrib_data));
         glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
     }
@@ -101,7 +98,6 @@ CreateLeafDataHashTable(render_data* RenderData, const attrib_data* const Data, 
         glBufferData(GL_SHADER_STORAGE_BUFFER, HTableDataSize, nullptr, GL_DYNAMIC_COPY);
         attrib_data* GPUHTableBuffer = (attrib_data*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
         memset(GPUHTableBuffer, 0xFF, HTableDataSize);
-        GPUHTableBuffer[HTABLE_SLOT_COUNT - 1].Key = 0;
         glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
     }
 
@@ -113,7 +109,8 @@ CreateLeafDataHashTable(render_data* RenderData, const attrib_data* const Data, 
 
     // Kick the table builder kernel
     printf("BEGINNING HASH BUILD...\n");
-    glDispatchCompute(Count, 1, 1);
+    usize WorkGroupCount = Minimum(65536ULL, Count);
+    glDispatchCompute(WorkGroupCount, 1, 1);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
     RenderData->HTableInputBuffer = DataBuffers[0];
@@ -121,6 +118,7 @@ CreateLeafDataHashTable(render_data* RenderData, const attrib_data* const Data, 
 
     return 0;
 }
+
 
 static svo_buffers
 UploadCanvasVertices(void)
@@ -149,6 +147,7 @@ UploadCanvasVertices(void)
 
     return Result;
 }
+
 
 static svo_buffers
 UploadSvoBlockData(const svo* const Svo)
@@ -224,6 +223,7 @@ UploadSvoBlockData(const svo* const Svo)
     return Buffers;
 }
 
+
 static gl_uint
 CompileComputeShader(const char* const ComputeShaderCode)
 {
@@ -260,6 +260,7 @@ CompileComputeShader(const char* const ComputeShaderCode)
 
     return ProgramID;
 }
+
 
 static gl_uint
 CompileShader(const char* VertSrc, const char* FragSrc)
@@ -315,6 +316,7 @@ CompileShader(const char* VertSrc, const char* FragSrc)
     return Program;
 }
 
+
 static inline void
 SetUniformData(const svo* const Tree, render_data* const RenderData)
 {
@@ -337,6 +339,7 @@ SetUniformData(const svo* const Tree, render_data* const RenderData)
     printf("Bias: %u\n", Tree->Bias.Scale);
 }
 
+
 static inline gl_uint
 CreateRenderImage(int ImgWidth, int ImgHeight)
 {
@@ -355,145 +358,6 @@ CreateRenderImage(int ImgWidth, int ImgHeight)
     return OutputTexture;
 }
 
-
-struct tex_page
-{
-    packed_snorm3* Data;
-
-    /*tex_page(usize PageSizeX, usize PageSizeY, usize PageSizeZ)
-    {
-        Data = (packed_snorm3*) malloc(PageSizeX*PageSizeY*PageSizeZ);
-    }*/
-};
-
-/*static std::unordered_map<uvec3, tex_page, uvec3_hash>
-PartitionLeafDataToBuckets(const std::vector<std::pair<uvec3, u32>>& LeafData, u32 PageSizeX, u32 PageSizeY, u32 PageSizeZ)
-{
-    std::unordered_map<uvec3, tex_page, uvec3_hash> Pages;
-    const uvec3 PageSize = uvec3(PageSizeX, PageSizeY, PageSizeZ);
-
-    for (auto It = LeafData.begin(); It != LeafData.end(); ++It)
-    {
-        auto Element = *It;
-
-        // Subtexture coords
-        uvec3 Bucket = Element.first / PageSize;
-        uvec3 PageCoords = Element.first % PageSize;
-        usize DataIndex = (PageSizeX*PageSizeY*PageCoords.Z) + (PageSizeX*PageCoords.Y) + PageCoords.X;
-        assert(DataIndex < (PageSizeX*PageSizeY*PageSizeZ));
-
-        // Key already exists
-        if (Pages.find(Bucket) != Pages.end())
-        {
-            tex_page* Page = &Pages.find(Bucket)->second;
-
-            Page->Data[DataIndex] = Element.second;
-        }
-        else
-        {
-            tex_page Page = {};
-
-            // I really hate this, but can't risk distribution page sizes being different
-            Page.Data = (packed_snorm3*) malloc(PageSizeX*PageSizeY*PageSizeZ*sizeof(packed_snorm3));
-            Page.Data[DataIndex] = Element.second;
-            Pages.insert(std::make_pair(Bucket, Page));
-        }
-    }
-
-    return Pages;
-}*/
-
-#if 0
-static gl_uint
-UploadLeafDataSparse(std::vector<std::pair<uvec3, packed_snorm3>> Data, int AttachmentIndex)
-{
-    gl_uint MapTexture;
-    glCreateTextures(GL_TEXTURE_3D, 1, &MapTexture);
-
-    if (MapTexture)
-    {
-        glActiveTexture(GL_TEXTURE0 + AttachmentIndex);
-        glBindTexture(GL_TEXTURE_3D, MapTexture);
-
-        // Read the page sizes
-        gl_int PageSizeX, PageSizeY, PageSizeZ;
-		glGetInternalformativ(GL_TEXTURE_3D, GL_RGBA8_SNORM, GL_VIRTUAL_PAGE_SIZE_X_ARB, 1, &PageSizeX);
-		glGetInternalformativ(GL_TEXTURE_3D, GL_RGBA8_SNORM, GL_VIRTUAL_PAGE_SIZE_Y_ARB, 1, &PageSizeY);
-		glGetInternalformativ(GL_TEXTURE_3D, GL_RGBA8_SNORM, GL_VIRTUAL_PAGE_SIZE_Z_ARB, 1, &PageSizeZ);
-        assert(PageSizeX > 0 && PageSizeY > 0 && PageSizeZ > 0);
-        fprintf(stderr, "Page size: %d %d %d\n", PageSizeX, PageSizeY, PageSizeZ);
-
-        std::unordered_map<uvec3, tex_page, uvec3_hash> Pages = PartitionLeafDataToBuckets(Data, (u32)PageSizeX, (u32)PageSizeY, (u32)PageSizeZ);
-
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
-        // Enable sparse texture storage
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_SPARSE_ARB, GL_TRUE);
-
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
-        glTexStorage3D(GL_TEXTURE_3D, 1, GL_RGBA8_SNORM, 2048, 2048, 2048);
-
-        gl_int MaxTextureSize;
-        glGetIntegerv(GL_MAX_SPARSE_3D_TEXTURE_SIZE_ARB, &MaxTextureSize);
-
-        size_t MaxPageCount = ((size_t)MaxTextureSize*(size_t)MaxTextureSize*(size_t)MaxTextureSize);
-        MaxPageCount /= ((size_t)PageSizeX*(size_t)PageSizeY*(size_t)PageSizeZ);
-
-        printf("Max Pages: %zu\n", MaxPageCount);
-
-        size_t PageCount = 0;
-        MaxPageCount = 1024;
-        for (auto It = Pages.begin(); It != Pages.end(); ++It)
-        {
-            // Too many pages; avoid exhausting the GPU memory
-            if (PageCount == MaxPageCount) break;
-
-            auto Element = *It;
-            gl_int PageX = (gl_int)Element.first.X*PageSizeX;
-            gl_int PageY = (gl_int)Element.first.Y*PageSizeY;
-            gl_int PageZ = (gl_int)Element.first.Z*PageSizeZ;
-
-            // Mark the page containing this point as backed by physical
-            // memory.
-            glTexPageCommitmentARB(GL_TEXTURE_3D,
-                                   0,
-                                   PageX,
-                                   PageY,
-                                   PageZ,
-                                   PageSizeX,
-                                   PageSizeY,
-                                   PageSizeZ,
-                                   GL_TRUE);
-
-            // Upload the leaf data into the subtexture page
-            glTexSubImage3D(GL_TEXTURE_3D,
-                            0,
-                            PageX,
-                            PageY,
-                            PageZ,
-                            PageSizeX,
-                            PageSizeY,
-                            PageSizeZ,
-                            GL_RGBA,
-                            GL_BYTE,
-                            Element.second.Data);
-
-           free(Element.second.Data);
-           ++PageCount;
-        }
-        
-        printf("Used cell count %zu\n", PageCount);
-
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    }
-
-    return MapTexture;
-}
-#endif
 
 static svo_buffers
 UploadOctreeBlockData(const svo* const Svo)
@@ -627,7 +491,7 @@ CreateRenderData(const svo* const Tree, const view_data* const ViewData)
         return nullptr;
     }
 
-    Test(Tree->Normals);
+    //Test(Tree->Normals);
     CreateLeafDataHashTable(RenderData, Tree->Normals.data(), Tree->Normals.size());
 
 
@@ -645,22 +509,6 @@ CreateRenderData(const svo* const Tree, const view_data* const ViewData)
 
     RenderData->CanvasVAO = CanvasBuffers.VAO;
     RenderData->CanvasVBO = CanvasBuffers.VBO;
-
-    //RenderData->ColourTexture = UploadLeafDataSparse(Tree->Colours, 0);
-    //RenderData->MapTexture = UploadLeafDataSparse(Tree->Normals, 1);
-
-
-    /*if (0 == RenderData->MapTexture)
-    {
-        DeleteRenderData(RenderData);
-        return nullptr;
-    }*/
-
-    /*if (0 == RenderData->ColourTexture)
-    {
-        DeleteRenderData(RenderData);
-        return nullptr;
-    }*/
 
     svo_buffers SvoBuffers = UploadSvoBlockData(Tree);
     if (0 == SvoBuffers.SvoBuffer || 0 == SvoBuffers.FarPtrBuffer)
@@ -684,6 +532,7 @@ CreateRenderData(const svo* const Tree, const view_data* const ViewData)
     return RenderData;
 }
 
+
 extern "C" void
 DeleteRenderData(render_data* RenderData)
 {
@@ -702,9 +551,6 @@ DeleteRenderData(render_data* RenderData)
         glDeleteVertexArrays(1, &RenderData->CanvasVAO);
 
         glBindTexture(GL_TEXTURE_3D, 0);
-
-        glDeleteTextures(1, &RenderData->MapTexture);
-        glDeleteTextures(1, &RenderData->ColourTexture);
 
         free(RenderData);
     }
@@ -782,6 +628,7 @@ DEBUGOutputRenderShaderAssembly(const render_data* const RenderData, FILE* OutFi
 
 
 
+#if 0
 static inline uvec4
 ComputeHashes2(u32 Key)
 {
@@ -840,3 +687,4 @@ Test(const std::vector<attrib_data>& Data)
     }
 
 }
+#endif

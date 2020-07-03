@@ -105,17 +105,17 @@ uniform sampler3D ColourDataUniform;
 const uvec3 OCT_BITS = uvec3(1, 2, 4);
 const vec3 OCT_BITS_F32 = vec3(1.0, 2.0, 4.0);
 
-layout (std430, binding = 3) readonly buffer svo_input
+layout (std430, binding = 3) readonly restrict buffer svo_input
 {
     uint Nodes[];
 } SvoInputBuffer;
 
-layout(std430, binding=5) readonly buffer leaf_input
+layout(std430, binding=5) readonly restrict buffer leaf_input
 {
     hmap_entry Entries[];
 } LeafInputBuffer;
 
-layout (std430, binding = 4) readonly buffer svo_far_ptr_index
+layout (std430, binding = 4) readonly restrict buffer svo_far_ptr_index
 {
     far_ptr FarPtrs[];
 } SvoFarPtrBuffer;
@@ -290,24 +290,6 @@ vec3 LookupLeafVoxelData(uvec3 Pos)
 {
     uint Key = ComputeMortonKey3(Pos);
     uvec4 Hashes = ComputeHashes(Key);
-
-    /*if (any(greaterThanEqual(Hashes, uvec4(TableSizeUniform)))) return vec3(1);
-    if (LeafInputBuffer.Entries[Hashes.x].Value == 0)
-    {
-        return vec3(0, 1, 1);
-    }
-    if (LeafInputBuffer.Entries[Hashes.y].Value == 0)
-    {
-        return vec3(0, 1, 1);
-    }
-    if (LeafInputBuffer.Entries[Hashes.z].Value == 0)
-    {
-        return vec3(0, 1, 1);
-    }
-    if (LeafInputBuffer.Entries[Hashes.w].Value == 0)
-    {
-        return vec3(0, 1, 1);
-    }*/
 
     if (LeafInputBuffer.Entries[Hashes.x].Key != EMPTY_KEY) return unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.x].Value).xyz;
     if (LeafInputBuffer.Entries[Hashes.y].Key != EMPTY_KEY) return unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.y].Value).xyz;
@@ -554,9 +536,6 @@ void main()
     entry InputPair = DataInputBuffer.Entries[ThreadID];
 
     uint Slot0 = ComputeHashes(InputPair.Key).x;
-
-    //HTableOutBuffer.Entries[ThreadID] = InputPair;
-    //return;
 
     int Step;
     for (Step = 0; Step < MAX_STEPS; ++Step)

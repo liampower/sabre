@@ -785,7 +785,6 @@ InsertVoxel(svo* Tree, vec3 P)
         {
             if (IsOctantLeaf(ParentRef.Node, CurrentOct))
             {
-                printf("LL\n");
                 return;
             }
             else

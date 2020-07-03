@@ -1,8 +1,9 @@
 Compiler = clang
 DisabledWarnings = -Wno-unused-parameter -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-gnu-anonymous-struct -Wno-old-style-cast -Wno-unused-function
 NonErrorWarnings = -Wno-error=unused-variable -Wno-error=missing-prototypes
-Optimisation = -fsanitize=undefined,integer -g -gcodeview
-CompilerFlags = -isystem include -Wall -Wextra -pedantic -Weverything -Wpadded -Werror $NonErrorWarnings -std=c++14 -mavx2 $Optimisation -fno-omit-frame-pointer -fno-exceptions -fno-rtti -fdeclspec -ffast-math $DisabledWarnings
+Optimisation = -O3
+#Optimisation = -fsanitize=undefined,integer -g -gcodeview
+CompilerFlags = -isystem include -Wall -Wextra -pedantic -Weverything -Wpadded -Werror $NonErrorWarnings -std=c++14 -mavx $Optimisation -fno-omit-frame-pointer -fno-exceptions -fno-rtti -fdeclspec -ffast-math $DisabledWarnings
 Linker = link -nologo
 Libs = imgui.lib glad.lib glfw3.lib opengl32.lib kernel32.lib user32.lib gdi32.lib shell32.lib
 LinkerFlags = -incremental:no -debug -entry:mainCRTStartup -libpath:libs -machine:x64 -nodefaultlib:libcmt $Libs -natvis:misc/svo.natvis
