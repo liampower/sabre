@@ -262,10 +262,10 @@ struct st_frame
 uint Part1By2_32(uint X)
 {
     X &= 0X000003ff;                  // X = ---- ---- ---- ---- ---- --98 7654 3210
-    X = (X ^ (X << 16U)) & 0Xff0000ff; // X = ---- --98 ---- ---- ---- ---- 7654 3210
-    X = (X ^ (X <<  8U)) & 0X0300f00f; // X = ---- --98 ---- ---- 7654 ---- ---- 3210
-    X = (X ^ (X <<  4U)) & 0X030c30c3; // X = ---- --98 ---- 76-- --54 ---- 32-- --10
-    X = (X ^ (X <<  2U)) & 0X09249249; // X = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
+    X = (X ^ (X << 16)) & 0Xff0000ff; // X = ---- --98 ---- ---- ---- ---- 7654 3210
+    X = (X ^ (X <<  8)) & 0X0300f00f; // X = ---- --98 ---- ---- 7654 ---- ---- 3210
+    X = (X ^ (X <<  4)) & 0X030c30c3; // X = ---- --98 ---- 76-- --54 ---- 32-- --10
+    X = (X ^ (X <<  2)) & 0X09249249; // X = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
 
     return X;
 }
@@ -516,7 +516,7 @@ extern const char* const HasherComputeKernel = R"GLSL(
 layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
 #define EMPTY_KEY 0xFFFFFFFF
-#define MAX_STEPS 10
+#define MAX_STEPS 400
 
 
 struct entry
@@ -562,9 +562,7 @@ void main()
     for (Step = 0; Step < MAX_STEPS; ++Step)
     {
         InputPair.Key = atomicExchange(HTableOutBuffer.Entries[Slot0].Key, InputPair.Key); 
-        memoryBarrier();
         InputPair.Value = atomicExchange(HTableOutBuffer.Entries[Slot0].Value, InputPair.Value); 
-        memoryBarrier();
         if (EMPTY_KEY != InputPair.Key)
         {
             uvec4 Hashes = ComputeHashes(InputPair.Key);
@@ -581,7 +579,10 @@ void main()
     }
 
     // Failed to find slot for key
-    atomicAdd(HTableOutBuffer.Entries[TableSizeUniform - 1].Key, 1);
+    if (Step == MAX_STEPS)
+    {
+        atomicAdd(HTableOutBuffer.Entries[TableSizeUniform - 1].Key, 1);
+    }
 }
 
 )GLSL";

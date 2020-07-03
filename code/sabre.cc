@@ -221,6 +221,7 @@ main(int ArgCount, const char** const Args)
         return EXIT_FAILURE;
     }
 
+#if 0
     if (GLFW_FALSE == glfwExtensionSupported("GL_ARB_sparse_texture"))
     {
         fprintf(stderr, "Failed to initialise application\n");
@@ -228,6 +229,7 @@ main(int ArgCount, const char** const Args)
         glfwTerminate();
         return EXIT_FAILURE;
     }
+#endif
 
     OutputGraphicsDeviceInfo();
 

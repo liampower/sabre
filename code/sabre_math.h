@@ -1309,6 +1309,28 @@ operator*(uvec4 L, u32 R)
 }
 
 
+static inline uvec4&
+operator^=(uvec4& L, const uvec4& R)
+{
+    L.X = L.X ^ R.X;
+    L.Y = L.Y ^ R.Y;
+    L.Z = L.Z ^ R.Z;
+    L.W = L.W ^ R.W;
+
+    return L;
+}
+
+static inline uvec4&
+operator*=(uvec4& L, const uvec4& R)
+{
+    L.X = L.X * R.X;
+    L.Y = L.Y * R.Y;
+    L.Z = L.Z * R.Z;
+    L.W = L.W * R.W;
+
+    return L;
+}
+
 // }}}
 static inline u32
 Part1By2_32(u32 X)

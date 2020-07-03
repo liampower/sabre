@@ -516,7 +516,7 @@ BuildSubOctreeRecursive(svo_node* Parent,
                 
                 //Tree->Normals.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelNormal)));
 
-                Tree->Normals.push_back(attrib_data{ EncodeMorton3_32(uvec3(OctCentre)), PackVec3ToSnorm3(vec3(0, 0, 1)) });
+                Tree->Normals.push_back(attrib_data{ EncodeMorton3_32(uvec3(OctCentre)), PackVec3ToSnorm3(VoxelNormal) });
                 //Tree->Colours.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelColour)));
             }
         }

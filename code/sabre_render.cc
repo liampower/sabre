@@ -12,21 +12,10 @@
 static constexpr uint WORK_SIZE_X = 512U;
 static constexpr uint WORK_SIZE_Y = 512U;
 
-static constexpr usize HTABLE_SLOT_COUNT = 1024*128U;
+static constexpr usize HTABLE_SLOT_COUNT = 1024U*512U;
 
-static void Test(const std::vector<attrib_data>&);
-
-typedef u64 morton_key;
-extern morton_key EncodeMorton3(uvec3 V);
-
-struct uvec3_hash
-{
-public:
-    size_t operator()(const uvec3& Element) const{
-        return EncodeMorton3(Element);
-    }
-};
-
+static void
+Test(const std::vector<attrib_data>& Data);
 
 typedef GLuint gl_uint;
 typedef GLint  gl_int;
@@ -112,6 +101,7 @@ CreateLeafDataHashTable(render_data* RenderData, const attrib_data* const Data, 
         glBufferData(GL_SHADER_STORAGE_BUFFER, HTableDataSize, nullptr, GL_DYNAMIC_COPY);
         attrib_data* GPUHTableBuffer = (attrib_data*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
         memset(GPUHTableBuffer, 0xFF, HTableDataSize);
+        GPUHTableBuffer[HTABLE_SLOT_COUNT - 1].Key = 0;
         glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
     }
 
@@ -123,7 +113,7 @@ CreateLeafDataHashTable(render_data* RenderData, const attrib_data* const Data, 
 
     // Kick the table builder kernel
     printf("BEGINNING HASH BUILD...\n");
-    glDispatchCompute(32, 1, 1);
+    glDispatchCompute(Count, 1, 1);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
     RenderData->HTableInputBuffer = DataBuffers[0];
@@ -376,7 +366,7 @@ struct tex_page
     }*/
 };
 
-static std::unordered_map<uvec3, tex_page, uvec3_hash>
+/*static std::unordered_map<uvec3, tex_page, uvec3_hash>
 PartitionLeafDataToBuckets(const std::vector<std::pair<uvec3, u32>>& LeafData, u32 PageSizeX, u32 PageSizeY, u32 PageSizeZ)
 {
     std::unordered_map<uvec3, tex_page, uvec3_hash> Pages;
@@ -411,7 +401,7 @@ PartitionLeafDataToBuckets(const std::vector<std::pair<uvec3, u32>>& LeafData, u
     }
 
     return Pages;
-}
+}*/
 
 #if 0
 static gl_uint
@@ -637,7 +627,7 @@ CreateRenderData(const svo* const Tree, const view_data* const ViewData)
         return nullptr;
     }
 
-    //Test(Tree->Normals);
+    Test(Tree->Normals);
     CreateLeafDataHashTable(RenderData, Tree->Normals.data(), Tree->Normals.size());
 
 
@@ -791,17 +781,62 @@ DEBUGOutputRenderShaderAssembly(const render_data* const RenderData, FILE* OutFi
 }
 
 
-/*static void
+
+static inline uvec4
+ComputeHashes2(u32 Key)
+{
+    const uvec4 C0 = uvec4(UINT32_C(0x7feb352d), UINT32_C(0xa136aaad), UINT32_C(0x24f4d2cd), UINT32_C(0xe2d0d4cb));
+    const uvec4 S0 = uvec4(16, 18, 17, 16);
+    const uvec4 C1 = uvec4(UINT32_C(0x846ca68b), UINT32_C(0x9f6d62d7), UINT32_C(0x1ba3b969), UINT32_C(0x3c6ad939));
+    const uvec4 S1 = uvec4(15, 16, 15, 15);
+    const uvec4 S2 = uvec4(16, 17, 16, 15);
+
+    uvec4 K = uvec4(Key);
+
+    K ^= K >> S0;
+    K *= C0;
+    K ^= K >> S1;
+    K *= C1;
+    K ^= K >> S2;
+
+    return K % 2047U;
+}
+
+static inline uvec4
+ComputeHashes3(u32 Key)
+{
+    const uvec4 S0 = uvec4(17, 16, 16, 18);
+    const uvec4 C0 = uvec4(0xed5ad4bb, 0xaeccedab, 0x236f7153, 0x4260bb47);
+    const uvec4 S1 = uvec4(11, 14, 12, 13);
+    const uvec4 C1 = uvec4(0xac4c1b51, 0xac613e37, 0x33cd8663, 0x27e8e1ed); 
+    const uvec4 S2 = uvec4(15, 16, 15, 15);
+    const uvec4 C2 = uvec4(0x31848bab, 0x19c89935, 0x3e06b66b, 0x9d48a33b);  
+    const uvec4 S3 = uvec4(14, 17, 16, 15);
+    uvec4 K = uvec4(Key);
+
+    K ^= K >> S0;
+    K *= C0;
+    K ^= K >> S1;
+    K *= C1;
+    K ^= K >> S2;
+    K *= C2;
+    K ^= K >> S3;
+
+    return K % 65536U;
+}
+
+
+static void
 Test(const std::vector<attrib_data>& Data)
 {
     std::vector<uvec4> Hashes{};
 
     for (auto It = Data.begin(); It != Data.end(); ++It)
     {
-        uvec4 H = ComputeHashes2(It->Key);
+        uvec4 H = ComputeHashes3(It->Key);
         Hashes.push_back(H);
 
         printf("%d,%d,%d,%d,%d\n", It->Key, H.X, H.Y, H.Z, H.W);
     }
 
-}*/
+}
