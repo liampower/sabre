@@ -16,7 +16,7 @@ static constexpr uint WORK_SIZE_Y = 512U;
 // The actual memory used for the hashmap buffer is
 // HTABLE_SLOT_COUNT * sizeof(htable_entry). This is usually
 // 8 bytes. 
-static constexpr usize HTABLE_SLOT_COUNT = 1024U*1024U;
+static constexpr usize HTABLE_SLOT_COUNT = 1024U*1024U*8U;
 
 static void
 Test(const std::vector<attrib_data>& Data);
@@ -112,8 +112,9 @@ CreateLeafDataHashTable(render_data* RenderData, const attrib_data* const Data, 
 
     // Kick the table builder kernel
     printf("BEGINNING HASH BUILD...\n");
-    usize WorkGroupCount = Minimum(65536ULL, Count);
+    usize WorkGroupCount = Minimum(65535ULL, Count);
     glDispatchCompute(WorkGroupCount, 1, 1);
+
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
     RenderData->HTableInputBuffer = DataBuffers[0];

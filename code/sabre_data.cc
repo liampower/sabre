@@ -348,7 +348,6 @@ vec3 Raycast(in ray R)
                                        ParentCentre,
                                        BlkIndex);
 
-        //return Oct2Cr(CurrentOct);
         // Begin stepping along the ray
         for (Step = 0; Step < MAX_STEPS; ++Step)
         {
@@ -362,12 +361,7 @@ vec3 Raycast(in ray R)
             vec3 NodeMin = (NodeCentre - Rad) * InvBiasUniform;
             vec3 NodeMax = (NodeCentre + Rad) * InvBiasUniform;
 
-            //if (Rad == vec3(8)) return vec3(1);
             RaySpan = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
-            //if (NodeMin == vec3(0)) return vec3(0, 1, 0);
-            //if (NodeMin == vec3(16, 0, 0)) return vec3(0, 1, 0);
-            
-            //if (RaySpan.tMax < 0) return vec3(1, 0, 1);
 
             if (RaySpan.tMin <= RaySpan.tMax && RaySpan.tMax > 0)
             {
@@ -379,16 +373,10 @@ vec3 Raycast(in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
-                        //vec3 N = texelFetch(MapDataUniform, ivec3(NodeCentre.xyz), 0).xyz;
-                        //vec3 C = texelFetch(ColourDataUniform, ivec3(NodeCentre.xyz), 0).bgr;
-                        
                         vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(32, 0, 0));
 
-                        //return vec3(dot(Ldir, N)) * C;
-                        //return vec3(1, 0, 0);
                         vec3 N =  LookupLeafVoxelData(uvec3(NodeCentre));
-                        return N;
-                        //return vec3(dot(Ldir, N));
+                        return vec3(dot(Ldir, N));
 
                     }
                     else
@@ -474,7 +462,7 @@ void main()
     // in each dimension.
     vec2 PixelCoords = ivec2(gl_GlobalInvocationID.xy);
     vec3 K = vec3(256, 256, 512);
-    vec3 ScreenOrigin = ViewPosUniform - K;//vec3(ViewPosUniform.x + 256, ViewPosUniform.y + 256, ViewPosUniform.z - 512);
+    vec3 ScreenOrigin = ViewPosUniform - K;
 
 	vec3 ScreenCoord = ScreenOrigin + vec3(PixelCoords, 0);
     ScreenCoord.x *= 1280.0/720.0;
