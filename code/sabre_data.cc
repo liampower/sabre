@@ -259,7 +259,7 @@ struct st_frame
 // * Vector min/max map directly to asm instructions
 
 
-uint Part1By2_32(uint X)
+uvec3 Part1By2_32v(uvec3 X)
 {
     X &= 0X000003ff;                  // X = ---- ---- ---- ---- ---- --98 7654 3210
     X = (X ^ (X << 16)) & 0Xff0000ff; // X = ---- --98 ---- ---- ---- ---- 7654 3210
@@ -272,7 +272,8 @@ uint Part1By2_32(uint X)
 
 uint ComputeMortonKey3(uvec3 V)
 {
-    return (Part1By2_32(V.z) << 2) + (Part1By2_32(V.y) << 1) + Part1By2_32(V.x);
+    uvec3 K = Part1By2_32v(V) << uvec3(0, 1, 2);
+    return K.z + K.y + K.x;
 }
 
 
@@ -324,7 +325,7 @@ vec3 Raycast(in ray R)
     {
         // Ray enters octree --- begin processing
 
-        vec3 RayP = (RaySpan.tMin >= 0) ? R.Origin + (RaySpan.tMin * R.Dir) : R.Origin;
+        vec3 RayP = (RaySpan.tMin >= 0.0) ? R.Origin + (RaySpan.tMin * R.Dir) : R.Origin;
         vec3 ParentCentre = vec3(Scale >> 1);
 
         // Current octant the ray is in (confirmed good)
@@ -376,7 +377,8 @@ vec3 Raycast(in ray R)
                         vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(32, 0, 0));
 
                         vec3 N =  LookupLeafVoxelData(uvec3(NodeCentre));
-                        return vec3(dot(Ldir, N));
+                        return N;
+                        //return vec3(dot(Ldir, N));
 
                     }
                     else
@@ -488,7 +490,6 @@ layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 #define EMPTY_KEY 0xFFFFFFFF
 #define MAX_STEPS 400
 
-
 struct entry
 {
     uint Key;
@@ -505,7 +506,8 @@ layout (std430, binding = 1) readonly restrict buffer data_in
     entry Entries[];
 } DataInputBuffer;
 
-uniform uint TableSizeUniform;
+layout (location = 2) uniform uint TableSizeUniform;
+layout (location = 3) uniform uint OffsetUniform;
 
 
 uvec4 ComputeHashes(uint Key)
@@ -521,7 +523,7 @@ uvec4 ComputeHashes(uint Key)
 void main()
 {
     uint ThreadID = gl_GlobalInvocationID.x;
-    entry InputPair = DataInputBuffer.Entries[ThreadID];
+    entry InputPair = DataInputBuffer.Entries[OffsetUniform + ThreadID];
 
     uint Slot0 = ComputeHashes(InputPair.Key).x;
 
