@@ -1374,11 +1374,29 @@ Part1By2(u64 X)
     return X;
 }
 
+static inline u64
+Part1By2_64(u64 X)
+{
+    // Select low 21 bits
+    // Since we're interleaving the bits of three coordinates,
+    // we can only fit 3*21 = 63 bits in a 64-bit number.
+    X &= 0x1FFFFF;
+
+    X = (X ^ (X << 32ULL)) & 0x001F00000000FFFF;
+    X = (X ^ (X << 16ULL)) & 0x001F0000FF0000FF;
+    X = (X ^ (X <<  8ULL)) & 0x100F00F00F00F00F;
+    X = (X ^ (X <<  4ULL)) & 0x10C30C30C30C30C3;
+    X = (X ^ (X <<  2ULL)) & 0x1249249249249249;
+
+    return X;
+
+}
+
 
 static inline morton_key
 EncodeMorton3(uvec3 V)
 {
-    return (Part1By2((u64)V.Z) << 2ULL) + (Part1By2((u64)V.Y) << 1ULL) + Part1By2((u64)V.X);
+    return (Part1By2_64((u64)V.Z) << 2ULL) + (Part1By2_64((u64)V.Y) << 1ULL) + Part1By2_64((u64)V.X);
 }
 
 
