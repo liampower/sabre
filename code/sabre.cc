@@ -221,16 +221,6 @@ main(int ArgCount, const char** const Args)
         return EXIT_FAILURE;
     }
 
-#if 0
-    if (GLFW_FALSE == glfwExtensionSupported("GL_ARB_sparse_texture"))
-    {
-        fprintf(stderr, "Failed to initialise application\n");
-        MessageBox(nullptr, "The application cannot start because your system does not support OpenGL sparse textures (ensure you are running this application with up-to-date graphics drivers)", "Error", MB_ICONWARNING);
-        glfwTerminate();
-        return EXIT_FAILURE;
-    }
-#endif
-
     OutputGraphicsDeviceInfo();
 
     IMGUI_CHECKVERSION();
@@ -310,21 +300,41 @@ main(int ArgCount, const char** const Args)
                 ImGui::End();
             }
 
-            ImGui::SliderInt("Level of Detail", &Lod, 0, 11);
+            ImGui::SliderInt("Level of Detail", &Lod, 0, 12);
             ImGui::TextUnformatted("Higher levels will take longer to generate");
             ImGui::Separator();
 
-            if (ImGui::Button("Load rabbit scene"))
+            if (ImGui::Button("Load Sibenik"))
             {
                 WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/sib2.glb");
                 ShowMenu = false;
             }
-            else if (ImGui::Button("Load Serapis scene"))
+            else if (ImGui::Button("Load Dragon"))
+            {
+                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/dragon.glb");
+                ShowMenu = false;
+            }
+            else if (ImGui::Button("Load Bunny"))
+            {
+                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/bunny.glb");
+                ShowMenu = false;
+            }
+            else if (ImGui::Button("Load Buddha"))
+            {
+                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/buddha.glb");
+                ShowMenu = false;
+            }
+            else if (ImGui::Button("Load Serapis"))
             {
                 WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/serapis.glb");
                 ShowMenu = false;
             }
-            else if (ImGui::Button("Load generated sphere scene"))
+            else if (ImGui::Button("Load Indonesian"))
+            {
+                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/indonesian.glb");
+                ShowMenu = false;
+            }
+            else if (ImGui::Button("Load Sphere"))
             {
                 WorldSvo = CreateCubeSphereTestScene(SafeIntToU32(Lod));
                 ShowMenu = false;
