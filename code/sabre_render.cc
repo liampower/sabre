@@ -22,6 +22,7 @@ typedef GLuint gl_uint;
 typedef GLint  gl_int;
 typedef GLsizei gl_sizei;
 typedef GLenum gl_enum;
+typedef GLuint64 gl_u64;
 
 enum cs_bindings
 {
@@ -39,6 +40,13 @@ enum htable_uniforms
 {
     HTableUniformTableSize = 2,
     HTableUniformOffset = 3,
+};
+
+
+struct gl_timer
+{
+    uint    Front;
+    gl_uint Q[2];
 };
 
 // Holds the contextual data required to render a SVO voxel
@@ -60,6 +68,8 @@ struct render_data
     gl_uint HTableBuilderShader; // Compute shader to construct the leaf hashtable
     gl_uint HTableInputBuffer;
     gl_uint HTableOutputBuffer;
+
+    gl_timer Timer;
 };
 
 
@@ -68,6 +78,8 @@ struct svo_buffers
     union { gl_uint SvoBuffer, VAO; };
     union { gl_uint FarPtrBuffer, VBO; };
 };
+
+
 
 // Vertices of a full-screen quad which we 
 // render to using a compute shader.
@@ -81,6 +93,48 @@ static const f32 GlobalCanvasVerts[12] = {
     -1.0f, -1.0f,
 };
 
+
+static inline gl_timer
+CreateGPUTimer(void)
+{
+    gl_timer Timer = {};
+
+    glGenQueries(2, Timer.Q);
+    glQueryCounter(Timer.Q[Timer.Front], GL_TIME_ELAPSED);
+
+    return Timer;
+}
+
+static inline void
+DeleteGPUTimer(gl_timer* Timer)
+{
+    glDeleteQueries(2, Timer->Q);
+}
+
+static inline gl_u64
+GetGPUTimeElapsed(gl_timer* Timer)
+{
+    gl_u64 Time = 0;
+    glGetQueryObjectui64v(Timer->Q[Timer->Front], GL_QUERY_RESULT, &Time);
+
+    // Swap active query (0 -> 1, 1 -> 0)
+    Timer->Front ^= 1;
+
+    return Time;
+}
+
+
+static inline void
+BeginTimerQuery(const gl_timer* Timer)
+{
+    glBeginQuery(GL_TIME_ELAPSED, Timer->Q[Timer->Front]);
+}
+
+static inline void
+EndTimerQuery(const gl_timer* const Timer)
+{
+    glEndQuery(GL_TIME_ELAPSED);
+}
 
 static gl_uint
 CreateLeafDataHashTable(render_data* RenderData, const attrib_data* const Data, usize Count)
@@ -443,9 +497,10 @@ UploadOctreeBlockData(const svo* const Svo)
 }
 
 
-extern "C" void
+extern "C" u64
 DrawScene(const render_data* const RenderData, const view_data* const ViewData)
 {
+    BeginTimerQuery(&RenderData->Timer);
     glUseProgram(RenderData->RenderShader);
     glUniformMatrix3fv(RenderData->ViewMatUniformLocation, 1, GL_TRUE, ViewData->CamTransform);
     glUniform3fv(RenderData->ViewPosUniformLocation, 1, ViewData->CamPos);
@@ -461,11 +516,14 @@ DrawScene(const render_data* const RenderData, const view_data* const ViewData)
 
     glBindBuffer(GL_ARRAY_BUFFER, RenderData->CanvasVBO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
+    EndTimerQuery(&RenderData->Timer);
+
+    return (u64)GetGPUTimeElapsed(const_cast<gl_timer*>(&RenderData->Timer));
 }
 
 
 extern "C" render_data*
-CreateRenderData(const svo* const Tree, const view_data* const ViewData)
+CreateRenderData(const svo* const Svo, const view_data* const ViewData)
 {
     render_data* RenderData = (render_data*) calloc(1, sizeof(render_data));
     if (nullptr == RenderData)
@@ -501,12 +559,12 @@ CreateRenderData(const svo* const Tree, const view_data* const ViewData)
         return nullptr;
     }
 
-    //Test(Tree->Normals);
-    CreateLeafDataHashTable(RenderData, Tree->Normals.data(), Tree->Normals.size());
+    //Test(Svo->Normals);
+    CreateLeafDataHashTable(RenderData, Svo->Normals.data(), Svo->Normals.size());
 
 
     RenderData->RenderImage = CreateRenderImage(ViewData->ScreenWidth, ViewData->ScreenHeight);
-    SetUniformData(Tree, RenderData);
+    SetUniformData(Svo, RenderData);
 
     svo_buffers CanvasBuffers = UploadCanvasVertices();
     if (0 == CanvasBuffers.VAO || 0 == CanvasBuffers.VBO)
@@ -520,7 +578,7 @@ CreateRenderData(const svo* const Tree, const view_data* const ViewData)
     RenderData->CanvasVAO = CanvasBuffers.VAO;
     RenderData->CanvasVBO = CanvasBuffers.VBO;
 
-    svo_buffers SvoBuffers = UploadSvoBlockData(Tree);
+    svo_buffers SvoBuffers = UploadSvoBlockData(Svo);
     if (0 == SvoBuffers.SvoBuffer || 0 == SvoBuffers.FarPtrBuffer)
     {
         DeleteRenderData(RenderData);
@@ -543,6 +601,9 @@ CreateRenderData(const svo* const Tree, const view_data* const ViewData)
     fopen_s(&OutFile, "data/cs.nvasm", "wb");
     DEBUGOutputRenderShaderAssembly(RenderData, OutFile);
     fclose(OutFile);
+
+    RenderData->Timer = CreateGPUTimer();
+
     return RenderData;
 }
 
@@ -565,6 +626,8 @@ DeleteRenderData(render_data* RenderData)
         glDeleteVertexArrays(1, &RenderData->CanvasVAO);
 
         glBindTexture(GL_TEXTURE_3D, 0);
+
+        DeleteGPUTimer(&RenderData->Timer);
 
         free(RenderData);
     }

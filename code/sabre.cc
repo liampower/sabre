@@ -21,7 +21,7 @@
 #include "sabre_data.h"
 #include "sabre_render.h"
 
-static constexpr u32 DEMO_MAX_TREE_DEPTH = 10;
+static constexpr u32 DEMO_MAX_TREE_DEPTH = 12;
 static constexpr u32 DEMO_SCALE_EXPONENT = 5;
 
 static constexpr u32 DisplayWidth = 1280;
@@ -131,13 +131,6 @@ CreateCubeSphereTestScene(u32 Lod)
                                 &ColourSampler);
 
     return WorldSvo;
-}
-
-
-static inline svo*
-CreateImportedMeshTestScene(const char* const GLBFileName)
-{
-    return ImportGLBFile(DEMO_MAX_TREE_DEPTH, GLBFileName);
 }
 
 
@@ -276,6 +269,7 @@ main(int ArgCount, const char** const Args)
 
     bool ShowMenu = true;
     int Lod = 0;
+    u64 GPUTime = 0;
     while (GLFW_FALSE == glfwWindowShouldClose(Window))
     {
         FrameStartTime = glfwGetTime();
@@ -300,7 +294,7 @@ main(int ArgCount, const char** const Args)
                 ImGui::End();
             }
 
-            ImGui::SliderInt("Level of Detail", &Lod, 0, 12);
+            ImGui::SliderInt("Level of Detail", &Lod, 0, DEMO_MAX_TREE_DEPTH);
             ImGui::TextUnformatted("Higher levels will take longer to generate");
             ImGui::Separator();
 
@@ -373,7 +367,12 @@ main(int ArgCount, const char** const Args)
             {
                 if (ImGui::BeginMainMenuBar())
                 {
-                    ImGui::Text("%fms CPU  %d BLKS  %d LVLS  %llu DATA", 1000.0*DeltaTime, GetSvoUsedBlockCount(WorldSvo), GetSvoDepth(WorldSvo), WorldSvo->Normals.size());
+                    ImGui::Text("%fms CPU  %fms GPU  %d BLKS  %d LVLS  %llu DATA", 
+                                 1000.0*DeltaTime,
+                                 f64(GPUTime) / 1000000.0,
+                                 GetSvoUsedBlockCount(WorldSvo),
+                                 GetSvoDepth(WorldSvo),
+                                 WorldSvo->Normals.size());
                     ImGui::EndMainMenuBar();
                 }
 
@@ -467,7 +466,7 @@ main(int ArgCount, const char** const Args)
                 ViewData.CamTransform = (float*)CameraMatrix;
                 ViewData.CamPos = F;
 
-                DrawScene(RenderData, &ViewData);
+                GPUTime = DrawScene(RenderData, &ViewData);
             }
 
 

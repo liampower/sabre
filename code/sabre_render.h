@@ -16,14 +16,14 @@ struct view_data
 
 
 extern "C" render_data*
-CreateRenderData(const svo* const Tree, const view_data* const ViewData);
+CreateRenderData(const svo* const Svo, const view_data* const ViewData);
 
 
 extern "C" void
-UpdateRenderData(const svo* const Tree, render_data* RenderData);
+UpdateRenderData(const svo* const Svo, render_data* RenderDataOut);
 
 
-extern "C" void
+extern "C" u64
 DrawScene(const render_data* const RenderData,
           const view_data* const ViewData);
 
