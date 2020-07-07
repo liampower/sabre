@@ -16,7 +16,7 @@ static constexpr uint WORK_SIZE_Y = 512U;
 // The actual memory used for the hashmap buffer is
 // HTABLE_SLOT_COUNT * sizeof(htable_entry). This is usually
 // 8 bytes. 
-static constexpr usize HTABLE_SLOT_COUNT = 1024U*1024U*8U;
+static constexpr usize HTABLE_SLOT_COUNT = 1024U*1024U*128U;
 
 typedef GLuint gl_uint;
 typedef GLint  gl_int;
@@ -165,6 +165,7 @@ CreateLeafDataHashTable(render_data* RenderData, const attrib_data* const Data, 
 
     printf("BEGINNING HASH BUILD...\n");
 
+    Count = Minimum(Count, HTABLE_SLOT_COUNT);
     usize Remaining = Count;
     while (Remaining > 0)
     {

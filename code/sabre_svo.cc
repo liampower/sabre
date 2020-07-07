@@ -38,6 +38,10 @@ struct node_ref
     svo_node*  Node;
 };
 
+struct frustum3
+{
+    vec3 Planes[6];
+};
 
 
 static inline u32
@@ -1225,4 +1229,38 @@ GetSvoDepth(const svo* const Svo)
 {
     return Svo->MaxDepth;
 }
+
+static inline bool
+BoxFrustumIntersection(const frustum3* const F, vec3 Min, vec3 Max)
+{
+    for( int Plane = 0; Plane < 6; Plane++ )
+    {
+        int Out = 0;
+        Out += ((Dot( F->Planes[Plane], vec3(Min.X, Min.Y, Min.Z) ) < 0.0f)?1:0);
+        Out += ((Dot( F->Planes[Plane], vec3(Max.X, Min.Y, Min.Z) ) < 0.0f)?1:0);
+        Out += ((Dot( F->Planes[Plane], vec3(Min.X, Max.Y, Min.Z) ) < 0.0f)?1:0);
+        Out += ((Dot( F->Planes[Plane], vec3(Max.X, Max.Y, Min.Z) ) < 0.0f)?1:0);
+        Out += ((Dot( F->Planes[Plane], vec3(Min.X, Min.Y, Max.Z) ) < 0.0f)?1:0);
+        Out += ((Dot( F->Planes[Plane], vec3(Max.X, Min.Y, Max.Z) ) < 0.0f)?1:0);
+        Out += ((Dot( F->Planes[Plane], vec3(Min.X, Max.Y, Max.Z) ) < 0.0f)?1:0);
+        Out += ((Dot( F->Planes[Plane], vec3(Max.X, Max.Y, Max.Z) ) < 0.0f)?1:0);
+        if( Out==8 ) return false;
+    }
+
+    return true;
+}
+
+static inline void
+ComputeFrustumFromEyeAndDir(vec3 Eye, vec3 Dir, const frustum3* const FOut)
+{
+
+}
+
+extern "C" void
+GetHighestVisibleAncestor(const svo* const Svo, vec3 EyePos, vec3 EyeDir)
+{
+    frustum3 ViewFrustum;
+    ComputeFrustumFromEyeAndDir(EyePos, EyeDir, &ViewFrustum);
+}
+
 

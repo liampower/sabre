@@ -99,8 +99,6 @@ uniform float InvBiasUniform;
 uniform vec3 ViewPosUniform;
 uniform mat3 ViewMatrixUniform;
 
-uniform sampler3D MapDataUniform;
-uniform sampler3D ColourDataUniform;
 
 const uvec3 OCT_BITS = uvec3(1, 2, 4);
 const vec3 OCT_BITS_F32 = vec3(1.0, 2.0, 4.0);
@@ -316,7 +314,6 @@ vec3 Raycast(in ray R)
     // Intersection of the ray with the root cube (i.e. entire tree)
     ray_intersection RaySpan = ComputeRayBoxIntersection(R, RootMin, RootMax);
 
-    int Step;
     uint CurrentOct;
     uint CurrentDepth;
 
@@ -350,7 +347,7 @@ vec3 Raycast(in ray R)
                                        BlkIndex);
 
         // Begin stepping along the ray
-        for (Step = 0; Step < MAX_STEPS; ++Step)
+        for (int Step = 0; Step < MAX_STEPS; ++Step)
         {
             // Radius of the current octant's cube (half the current scale);
             vec3 Rad = vec3(Scale >> 1);
@@ -374,11 +371,10 @@ vec3 Raycast(in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
-                        vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(32, 0, 0));
+                        vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(ViewPosUniform));
 
                         vec3 N =  LookupLeafVoxelData(uvec3(NodeCentre));
-                        return N;
-                        //return vec3(dot(Ldir, N));
+                        return max(vec3(dot(Ldir, N)), vec3(0.25))*vec3(0.721, 0.521, 0.47);
 
                     }
                     else
@@ -403,7 +399,7 @@ vec3 Raycast(in ray R)
 
                 // Octant not occupied, need to handle advance/pop
                 uint NextOct = GetNextOctant(RaySpan.tMax, RaySpan.tMaxV, CurrentOct);
-                RayP = R.Origin + (RaySpan.tMax + 0.0078125) * R.Dir;
+                RayP = R.Origin + (RaySpan.tMax + 0.001765625) * R.Dir;
 
                 if (IsAdvanceValid(NextOct, CurrentOct, RaySgn))
                 {
@@ -426,7 +422,7 @@ vec3 Raycast(in ray R)
 
                     uint NextDepth = ((ScaleExponentUniform + BiasUniform) - M);
 
-                    if (NextDepth <= MAX_STEPS && NextDepth < CurrentDepth)
+                    if (NextDepth < CurrentDepth)
                     {
                         CurrentDepth = NextDepth;
                         Scale = Stack[CurrentDepth].Scale;
@@ -438,23 +434,23 @@ vec3 Raycast(in ray R)
                     }
                     else
                     {
-                        break;
+                        return vec3(1, 0, 1);
                     }
                 }
             }
             else
             {
-                break;
+                return vec3(1, 1, 0);
             }
         }
     }
-    else
+    /*else
     {
         // Ray doesn't hit octree --- output background colour
         return vec3(0.08);
-    }
+    }*/
 
-    return vec3(0.08);
+    return vec3(1, 0, 0);
 }
 
 
@@ -488,7 +484,7 @@ extern const char* const HasherComputeKernel = R"GLSL(
 layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
 #define EMPTY_KEY 0xFFFFFFFF
-#define MAX_STEPS 400
+#define MAX_STEPS 25
 
 struct entry
 {
