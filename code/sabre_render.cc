@@ -543,7 +543,7 @@ CreateRenderData(const svo* const Svo, const view_data* const ViewData)
     }
 
     RenderData->CanvasShader = CompileShader(MainVertexCode, MainFragmentCode);
-    if (0 == RenderData->RenderShader)
+    if (0 == RenderData->CanvasShader)
     {
         fprintf(stderr, "Failed to compile canvas shader\n");
 
