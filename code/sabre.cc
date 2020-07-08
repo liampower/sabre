@@ -372,7 +372,7 @@ main(int ArgCount, const char** const Args)
                                  f64(GPUTime) / 1000000.0,
                                  GetSvoUsedBlockCount(WorldSvo),
                                  GetSvoDepth(WorldSvo),
-                                 WorldSvo->Normals.size());
+                                 WorldSvo->AttribData.size());
                     ImGui::EndMainMenuBar();
                 }
 

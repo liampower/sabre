@@ -79,7 +79,8 @@ struct far_ptr
 struct hmap_entry
 {
     uint Key;
-    uint Value;
+    uint PackedNormal;
+    uint PackedColour;
 };
 
 layout (local_size_x = 8, local_size_y = 8) in;
@@ -285,17 +286,31 @@ uvec4 ComputeHashes(uint Key)
     return (((C0 * Key) + C1) % P) % (TableSizeUniform - 1);
 }
 
-vec3 LookupLeafVoxelData(uvec3 Pos)
+void LookupLeafVoxelData(uvec3 Pos, out vec3 NormalOut, out vec3 ColourOut)
 {
     uint Key = ComputeMortonKey3(Pos);
     uvec4 Hashes = ComputeHashes(Key);
 
-    if (LeafInputBuffer.Entries[Hashes.x].Key != EMPTY_KEY) return unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.x].Value).xyz;
-    if (LeafInputBuffer.Entries[Hashes.y].Key != EMPTY_KEY) return unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.y].Value).xyz;
-    if (LeafInputBuffer.Entries[Hashes.z].Key != EMPTY_KEY) return unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.z].Value).xyz;
-    if (LeafInputBuffer.Entries[Hashes.w].Key != EMPTY_KEY) return unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.w].Value).xyz;
-
-    return vec3(1, 0, 0);
+    if (LeafInputBuffer.Entries[Hashes.x].Key != EMPTY_KEY)
+    {
+        NormalOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.x].PackedNormal).xyz;
+        ColourOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.x].PackedColour).xyz;
+    }
+    else if (LeafInputBuffer.Entries[Hashes.y].Key != EMPTY_KEY)
+    {
+        NormalOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.y].PackedNormal).xyz;
+        ColourOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.y].PackedColour).xyz;
+    }
+    else if (LeafInputBuffer.Entries[Hashes.z].Key != EMPTY_KEY)
+    {
+        NormalOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.z].PackedNormal).xyz;
+        ColourOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.z].PackedColour).xyz;
+    }
+    else if (LeafInputBuffer.Entries[Hashes.w].Key != EMPTY_KEY)
+    {
+        NormalOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.w].PackedNormal).xyz;
+        ColourOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.w].PackedColour).xyz;
+    }
 }
 
 vec3 Raycast(in ray R)
@@ -373,8 +388,10 @@ vec3 Raycast(in ray R)
                     {
                         vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(ViewPosUniform));
 
-                        vec3 N =  LookupLeafVoxelData(uvec3(NodeCentre));
-                        return max(vec3(dot(Ldir, N)), vec3(0.25))*vec3(0.721, 0.521, 0.47);
+                        vec3 N, C;
+                        LookupLeafVoxelData(uvec3(NodeCentre), N, C);
+
+                        return max(vec3(dot(Ldir, N)), vec3(0.25))*C;
 
                     }
                     else
@@ -489,7 +506,8 @@ layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 struct entry
 {
     uint Key;
-    uint Value;
+    uint PackedNormal;
+    uint PackedColour;
 };
 
 layout (std430, binding = 0) coherent restrict buffer htable_out
@@ -527,7 +545,8 @@ void main()
     for (Step = 0; Step < MAX_STEPS; ++Step)
     {
         InputPair.Key = atomicExchange(HTableOutBuffer.Entries[Slot0].Key, InputPair.Key); 
-        InputPair.Value = atomicExchange(HTableOutBuffer.Entries[Slot0].Value, InputPair.Value); 
+        InputPair.PackedNormal = atomicExchange(HTableOutBuffer.Entries[Slot0].PackedNormal, InputPair.PackedNormal); 
+        InputPair.PackedColour = atomicExchange(HTableOutBuffer.Entries[Slot0].PackedColour, InputPair.PackedColour); 
         if (EMPTY_KEY != InputPair.Key)
         {
             uvec4 Hashes = ComputeHashes(InputPair.Key);

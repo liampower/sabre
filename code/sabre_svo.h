@@ -55,7 +55,8 @@ struct attrib_data
     // TODO(Liam): One-to-many for K-V here? Might need
     // more data arrays for normals, colours, etc.
     u32 Key;
-    u32 Data;
+    packed_snorm3 PackedNormal;
+    packed_snorm3 PackedColour;
 };
 
 enum svo_blk_flags
@@ -127,11 +128,7 @@ struct svo
     svo_block* RootBlock;
 
 
-    //std::vector<std::pair<uvec3, packed_snorm3>> Normals;
-    std::vector<attrib_data> Normals;
-
-    // TODO Use unorms
-    std::vector<std::pair<uvec3, packed_snorm3>> Colours;
+    std::vector<attrib_data> AttribData;
 };
 
 typedef sbr_surface (*intersector_fn)(vec3, vec3, const svo* const, const void* const);

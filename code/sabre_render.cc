@@ -560,8 +560,7 @@ CreateRenderData(const svo* const Svo, const view_data* const ViewData)
         return nullptr;
     }
 
-    //Test(Svo->Normals);
-    CreateLeafDataHashTable(RenderData, Svo->Normals.data(), Svo->Normals.size());
+    CreateLeafDataHashTable(RenderData, Svo->AttribData.data(), Svo->AttribData.size());
 
 
     RenderData->RenderImage = CreateRenderImage(ViewData->ScreenWidth, ViewData->ScreenHeight);

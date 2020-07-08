@@ -515,13 +515,10 @@ BuildSubOctreeRecursive(svo_node* Parent,
             {
                 SetOctantOccupied((svo_oct)Oct, VOXEL_LEAF, Parent);
 
-                vec3 VoxelNormal = NormalSampler->SamplerFn(OctCentre, Tree, NormalSampler->UserData);
-                vec3 VoxelColour = ColourSampler->SamplerFn(OctCentre, Tree, ColourSampler->UserData);
+                vec3 Normal = NormalSampler->SamplerFn(OctCentre, Tree, NormalSampler->UserData);
+                vec3 Colour = ColourSampler->SamplerFn(OctCentre, Tree, ColourSampler->UserData);
                 
-                //Tree->Normals.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelNormal)));
-
-                Tree->Normals.push_back(attrib_data{ EncodeMorton3_32(uvec3(OctCentre)), PackVec3ToSnorm3(VoxelNormal) });
-                //Tree->Colours.push_back(std::make_pair(uvec3(OctCentre), PackVec3ToSnorm3(VoxelColour)));
+                Tree->AttribData.push_back(attrib_data{ EncodeMorton3_32(uvec3(OctCentre)), PackVec3ToSnorm3(Normal),  PackVec3ToSnorm3(Colour) });
             }
         }
     }
@@ -576,8 +573,7 @@ CreateScene(u32 ScaleExponent,
         u32 RootScale = (1U << ScaleExponent);
         
         Tree->Bias = ComputeScaleBias(MaxDepth, ScaleExponent);
-        Tree->Normals = std::vector<attrib_data>();
-        Tree->Normals.reserve(128);
+        Tree->AttribData = std::vector<attrib_data>();
 
         // Scale up by the bias
         RootScale <<= Tree->Bias.Scale;
@@ -1253,7 +1249,7 @@ BoxFrustumIntersection(const frustum3* const F, vec3 Min, vec3 Max)
 static inline void
 ComputeFrustumFromEyeAndDir(vec3 Eye, vec3 Dir, const frustum3* const FOut)
 {
-
+//    vec3 TopRightNear = vec3(Eye.X, Eye.Y + 256,  
 }
 
 extern "C" void
