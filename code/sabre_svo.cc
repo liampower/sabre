@@ -8,7 +8,6 @@
 #include "sabre.h"
 #include "sabre_math.h"
 #include "sabre_svo.h"
-#include "vecmath.h"
 
 static constexpr u16 CHILD_PTR_MSK = 0x7FFFU;
 static constexpr u32 FAR_BIT_MSK   = 0x8000U;
