@@ -6,8 +6,10 @@
 #include <map>
 
 #include "sabre.h"
-#include "sabre_math.h"
 #include "sabre_svo.h"
+#include "vecmath.h"
+
+using namespace vm;
 
 static constexpr u16 CHILD_PTR_MSK = 0x7FFFU;
 static constexpr u32 FAR_BIT_MSK   = 0x8000U;
@@ -63,7 +65,7 @@ PackVec3ToSnorm3(vec3 V)
     i8 Sy = (i8)Round(Clamp(V.Y, -1.0f, 1.0f) * Exp);
     i8 Sz = (i8)Round(Clamp(V.Z, -1.0f, 1.0f) * Exp);
 
-    packed_snorm3 Out = 0x00000000U;//((u8)Sx) | ((u8)Sy << 0x08U) | ((u8)Sz << 16U);
+    packed_snorm3 Out = 0x00000000U;
     Out |= (u32)((u8)(Sz) << 16U);
     Out |= (u32)((u8)(Sy) <<  8U);
     Out |= (u32)((u8)(Sx));
@@ -375,7 +377,7 @@ GetOctantCentre(svo_oct Octant, u32 Scale, vec3 ParentCentreP)
 static inline svo_oct
 GetOctantForPosition(vec3 P, vec3 ParentCentreP)
 {
-    uvec3 G = uvec3(GreaterThan(P, ParentCentreP));
+    uvec3 G = static_cast<uvec3>(GreaterThan(P, ParentCentreP));
 
     return (svo_oct) (G.X + G.Y*2 + G.Z*4);
 }
@@ -579,7 +581,7 @@ CreateScene(u32 ScaleExponent,
 
         printf("ROOTSCALE %u\n", RootScale);
 
-        vec3 RootCentre = vec3(RootScale >> 1);
+        vec3 RootCentre = vec3(RootScale >> 1U);
 
         // Initiate the recursive construction process
         // The root depth is initialised to 1 because we are
@@ -751,9 +753,8 @@ InsertVoxel(svo* Tree, vec3 P)
     u32 RootScale = GetTreeMaxScaleBiased(Tree);
 
     // Inserted voxel position, scaled by the tree bias.
-    vec3 InsertP = P * (float)((1U << Tree->Bias.Scale));
+    vec3 InsertP = P * static_cast<f32>(1U << Tree->Bias.Scale);
 
-    //RootScale = 1U << (Tree->ScaleExponent) << Tree->Bias;
     const vec3 TreeMax = vec3(RootScale);
     const vec3 TreeMin = vec3(0);
 
@@ -860,8 +861,8 @@ ComputeRayBoxIntersection(vec3 ROrigin, vec3 RInvDir, vec3 vMin, vec3 vMax)
     vec3 t0 = (vMin - ROrigin) * RInvDir; // Distance along ray to vmin planes
     vec3 t1 = (vMax - ROrigin) * RInvDir; // Distance along ray to vmax planes
 
-    vec3 tMin = Min(t0, t1); // Minimums of all distances
-    vec3 tMax = Max(t0, t1); // Maximums of all distances
+    vec3 tMin = Minimum(t0, t1); // Minimums of all distances
+    vec3 tMax = Maximum(t0, t1); // Maximums of all distances
 
     float ttMin = HorzMax(tMin); // Largest of the min distances (closest to box)
     float ttMax = HorzMin(tMax); // Smallest of max distances (closest to box)
@@ -880,12 +881,12 @@ struct st_frame
 static bool
 IsAdvanceValid(svo_oct NewOct, svo_oct OldOct, vec3 RaySgn)
 {
-    ivec3 NewOctBits = ivec3(NewOct) & ivec3(1, 2, 4);
-    ivec3 OldOctBits = ivec3(OldOct) & ivec3(1, 2, 4);
+    ivec3 NewOctBits = ivec3(uvec3{1, 2, 4} & static_cast<u32>(NewOct));
+    ivec3 OldOctBits = ivec3(uvec3{1, 2, 4} & static_cast<u32>(OldOct));
 
-    vec3 OctSgn = Sign(NewOctBits - OldOctBits);
+    vec3 OctSgn = Sign(vec3(NewOctBits - OldOctBits));
 
-    return Any(Equals(RaySgn, OctSgn, 0.0f));
+    return Any(Equal(RaySgn, OctSgn));
 }
 
 static svo_oct
@@ -906,7 +907,7 @@ GetNearestFreeSlot(vec3 RayOrigin, vec3 RayDir, const svo* const Tree)
     vec3 RaySgn = Sign(RayDir);
     st_frame Stack[64 + 1];
     uint Scale = MaxScale;
-    vec3 RayInvDir = 1.0f / RayDir;
+    vec3 RayInvDir = Reciprocal(RayDir);
     vec3 RootMin = vec3(0);
     vec3 RootMax = vec3(Scale) * Tree->Bias.InvScale;
     const float BiasScale = (1.0f / Tree->Bias.InvScale);
@@ -915,7 +916,7 @@ GetNearestFreeSlot(vec3 RayOrigin, vec3 RayDir, const svo* const Tree)
     ray_intersection CurrentIntersection = ComputeRayBoxIntersection(RayOrigin, RayInvDir, RootMin, RootMax);
     if (CurrentIntersection.tMin <= CurrentIntersection.tMax)    // Raycast to find voxel position
     {
-        vec3 RayP = (CurrentIntersection.tMin >= 0) ? RayOrigin + (CurrentIntersection.tMin * RayDir) : RayOrigin;
+        vec3 RayP = (CurrentIntersection.tMin >= 0) ? RayOrigin + (RayDir *CurrentIntersection.tMin) : RayOrigin;
         vec3 ParentCentre = vec3(Scale >> 1);
         svo_oct CurrentOct = GetOctantForPosition(RayP, ParentCentre*Tree->Bias.InvScale);
         node_ref ParentNodeRef = GetTreeRootNodeRef(Tree);
@@ -960,7 +961,7 @@ GetNearestFreeSlot(vec3 RayOrigin, vec3 RayDir, const svo* const Tree)
                     // }}}
                 }
 
-                RayP = RayOrigin + (CurrentIntersection.tMax + 0.015625f) * RayDir;
+                RayP = RayOrigin + RayDir*(CurrentIntersection.tMax + 0.015625f);
                 const svo_oct NextOct = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
 
                 if (IsAdvanceValid(NextOct, CurrentOct, RaySgn))
@@ -1019,7 +1020,7 @@ GetNearestLeafSlot(vec3 RayOrigin, vec3 RayDir, const svo* const Tree)
     vec3 RaySgn = Sign(RayDir);
     st_frame Stack[64 + 1];
     uint Scale = MaxScale;
-    vec3 RayInvDir = 1.0f / RayDir;
+    vec3 RayInvDir = Reciprocal(RayDir);
     vec3 RootMin = vec3(0);
     vec3 RootMax = vec3(Scale) * Tree->Bias.InvScale;
     const float BiasScale = (1.0f / Tree->Bias.InvScale);
@@ -1027,7 +1028,7 @@ GetNearestLeafSlot(vec3 RayOrigin, vec3 RayDir, const svo* const Tree)
     ray_intersection CurrentIntersection = ComputeRayBoxIntersection(RayOrigin, RayInvDir, RootMin, RootMax);
     if (CurrentIntersection.tMin <= CurrentIntersection.tMax)    // Raycast to find voxel position
     {
-        vec3 RayP = (CurrentIntersection.tMin >= 0) ? RayOrigin + (CurrentIntersection.tMin * RayDir) : RayOrigin;
+        vec3 RayP = (CurrentIntersection.tMin >= 0) ? RayOrigin + (RayDir * CurrentIntersection.tMin) : RayOrigin;
         vec3 ParentCentre = vec3(Scale >> 1);
         svo_oct CurrentOct = GetOctantForPosition(RayP, ParentCentre*Tree->Bias.InvScale);
         node_ref ParentNodeRef = GetTreeRootNodeRef(Tree);
@@ -1070,7 +1071,7 @@ GetNearestLeafSlot(vec3 RayOrigin, vec3 RayDir, const svo* const Tree)
                     // }}}
                 }
 
-                RayP = RayOrigin + (CurrentIntersection.tMax + 0.015625f) * RayDir;
+                RayP = RayOrigin + RayDir*(CurrentIntersection.tMax + 0.015625f);
                 const svo_oct NextOct = GetNextOctant(CurrentIntersection.tMax, CurrentIntersection.tMaxV, CurrentOct);
 
                 if (IsAdvanceValid(NextOct, CurrentOct, RaySgn))

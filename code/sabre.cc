@@ -16,10 +16,11 @@
 #include <glfw/glfw3.h>
 
 #include "sabre.h"
-#include "sabre_math.h"
 #include "sabre_svo.h"
 #include "sabre_data.h"
 #include "sabre_render.h"
+
+using namespace vm;
 
 static constexpr u32 DEMO_MAX_TREE_DEPTH = 12;
 static constexpr u32 DEMO_SCALE_EXPONENT = 5;
@@ -146,7 +147,7 @@ UnprojectViewDirection(const camera& Cam)
 
     vec3 R = Normalize(D - Cam.Position);
 
-    mat3 CameraMatrix = mat3{{
+    mat3x3 CameraMatrix = mat3x3{{
         { Cam.Right.X, Cam.Right.Y, Cam.Right.Z },
         { Cam.Up.X, Cam.Up.Y, Cam.Up.Z },
         { -Cam.Forward.X, -Cam.Forward.Y, -Cam.Forward.Z },
@@ -245,7 +246,7 @@ main(int ArgCount, const char** const Args)
     render_data* RenderData = nullptr;
 
 
-    camera Cam = { };
+    camera Cam;
     Cam.Forward = vec3(0, 0, -1);
     Cam.Right = vec3(1, 0, 0);
     Cam.Up = vec3(0, 1, 0);
@@ -301,6 +302,21 @@ main(int ArgCount, const char** const Args)
             if (ImGui::Button("Load Sibenik"))
             {
                 WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/sib2.glb");
+                ShowMenu = false;
+            }
+            else if (ImGui::Button("Load Test Cube"))
+            {
+                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/tex_cube.glb");
+                ShowMenu = false;
+            }
+            else if (ImGui::Button("Load Fireplace Room"))
+            {
+                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/fireplace_room.glb");
+                ShowMenu = false;
+            }
+            else if (ImGui::Button("Load Gallery"))
+            {
+                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/gallery.glb");
                 ShowMenu = false;
             }
             else if (ImGui::Button("Load Dragon"))
@@ -381,35 +397,12 @@ main(int ArgCount, const char** const Args)
                     glfwSetWindowShouldClose(Window, GLFW_TRUE);
                 }
 
-                if (glfwGetKey(Window, GLFW_KEY_W))
-                {
-                    Cam.Position += Cam.Velocity * Cam.Forward;
-                }
-
-                if (glfwGetKey(Window, GLFW_KEY_S))
-                {
-                    Cam.Position -= Cam.Velocity * Cam.Forward;
-                }
-
-                if (glfwGetKey(Window, GLFW_KEY_A))
-                {
-                    Cam.Position -= Cam.Velocity * Cam.Right;
-                }
-
-                if (glfwGetKey(Window, GLFW_KEY_D))
-                {
-                    Cam.Position += Cam.Velocity * Cam.Right;
-                }
-
-                if (glfwGetKey(Window, GLFW_KEY_SPACE))
-                {
-                    Cam.Position += Cam.Velocity * Cam.Up;
-                }
-
-                if (glfwGetKey(Window, GLFW_KEY_LEFT_SHIFT))
-                {
-                    Cam.Position -= Cam.Velocity * Cam.Up;
-                }
+                if (glfwGetKey(Window, GLFW_KEY_W)) Cam.Position += Cam.Forward * Cam.Velocity;
+                if (glfwGetKey(Window, GLFW_KEY_S)) Cam.Position -= Cam.Forward * Cam.Velocity;
+                if (glfwGetKey(Window, GLFW_KEY_A)) Cam.Position -= Cam.Right * Cam.Velocity;
+                if (glfwGetKey(Window, GLFW_KEY_D)) Cam.Position += Cam.Right * Cam.Velocity;
+                if (glfwGetKey(Window, GLFW_KEY_SPACE)) Cam.Position += Cam.Up * Cam.Velocity;
+                if (glfwGetKey(Window, GLFW_KEY_LEFT_SHIFT)) Cam.Position -= Cam.Up * Cam.Velocity;
 
                 if (glfwGetKey(Window, GLFW_KEY_Y))
                 {
