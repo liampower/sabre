@@ -9,21 +9,104 @@ namespace vm
 constexpr float Pi32  = 3.14159265f;
 constexpr float Sqrt2 = 1.41421569f;
 constexpr float InvSqrt2 = 0.70710678f;
+constexpr float Epsilon = FLT_EPSILON;
 constexpr float PiOver180Dg = 0.01745329f;
 
 
+// {{{ Vectors
+template <typename c>
+struct gvec2
+{
+    c X, Y;
+
+    constexpr explicit gvec2() = default;
+    constexpr explicit gvec2(c All) : X(All), Y(All) {}
+    constexpr explicit gvec2(c _X, c _Y) : X(_X), Y(_Y) {}
+
+    template<typename conv>
+    constexpr explicit gvec2(gvec2<conv> Other) : gvec2(static_cast<c>(Other.X),
+                                                        static_cast<c>(Other.Y)) {}
+
+    template<typename conv>
+    constexpr explicit gvec2(conv Other) : gvec2(static_cast<c>(Other),
+                                                 static_cast<c>(Other)) {}
+};
+
+
+template <typename c>
+struct gvec3
+{
+    c X, Y, Z;
+
+    constexpr explicit gvec3() = default;
+    constexpr explicit gvec3(c All) : X(All), Y(All), Z(All) {}
+    constexpr explicit gvec3(c _X, c _Y, c _Z) : X(_X), Y(_Y), Z(_Z) {}
+
+    template<typename conv>
+    constexpr explicit gvec3(gvec3<conv> Other) : gvec3(static_cast<c>(Other.X),
+                                                        static_cast<c>(Other.Y),
+                                                        static_cast<c>(Other.Z)) {}
+    template<typename conv>
+    constexpr explicit gvec3(conv Other) : gvec3(static_cast<c>(Other),
+                                                 static_cast<c>(Other),
+                                                 static_cast<c>(Other)) {}
+};
+
+
+template <typename c>
+struct gvec4
+{
+    c X, Y, Z, W;
+
+    constexpr explicit gvec4() = default;
+    constexpr explicit gvec4(c All) : X(All), Y(All), Z(All), W(All) {}
+    constexpr explicit gvec4(c _X, c _Y, c _Z, c _W) : X(_X), Y(_Y), Z(_Z), W(_W) {}
+
+    template<typename conv>
+    constexpr explicit gvec4(gvec2<conv> Other) : gvec4(static_cast<c>(Other.X),
+                                                        static_cast<c>(Other.Y),
+                                                        static_cast<c>(Other.Z),
+                                                        static_cast<c>(Other.W)) {}
+    template<typename conv>
+    constexpr explicit gvec4(conv Other) : gvec4(static_cast<c>(Other),
+                                                 static_cast<c>(Other),
+                                                 static_cast<c>(Other),
+                                                 static_cast<c>(Other)) {}
+};
+
+using vec2 = gvec2<float>;
+using vec3 = gvec3<float>;
+using vec4 = gvec4<float>;
+using ivec2 = gvec2<int>;
+using ivec3 = gvec3<int>;
+using ivec4 = gvec4<int>;
+
+using uvec2 = gvec2<unsigned int>;
+using uvec3 = gvec3<unsigned int>;
+using uvec4 = gvec4<unsigned int>;
+
+using bvec2 = gvec2<bool>;
+using bvec3 = gvec3<bool>;
+using bvec4 = gvec4<bool>;
+
+
+// }}}
+
+
 // {{{ Misc utilities
+
 template <typename t> constexpr t
 Maximum(t A, t B)
 {
     return (A > B) ? A : B;
 }
 
-template <typename t> constexpr t
+template <typename t> constexpr inline t
 Minimum(t A, t B)
 {
     return (A < B) ? A : B;
 }
+
 
 template <typename t> constexpr t
 Clamp(t X, t Lo, t Hi)
@@ -33,13 +116,32 @@ Clamp(t X, t Lo, t Hi)
     else        return X;
 }
 
-template <typename t> constexpr t
-Sign(t X)
+constexpr inline float
+Sign(float X)
 {
-    if (X > 0) return t(1.0f);
-    if (X < 0) return t(-1.0f);
-    else       return t(0.0f);
+    if (X > 0.0f) return 1.0f;
+    if (X < 0.0f) return -1.0f;
+    else          return 0.0f;
 }
+
+constexpr inline vec2
+Sign(vec2 V)
+{
+    return vec2{ Sign(V.X), Sign(V.Y) };
+}
+
+constexpr inline vec3
+Sign(vec3 V)
+{
+    return vec3{ Sign(V.X), Sign(V.Y), Sign(V.Z) };
+}
+
+constexpr inline vec4
+Sign(vec4 V)
+{
+    return vec4{ Sign(V.X), Sign(V.Y), Sign(V.Z), Sign(V.W) };
+}
+
 
 static inline int
 Round(float X)
@@ -59,56 +161,106 @@ Rads(float Degrees)
     return (Degrees*PiOver180Dg);
 }
 
-// }}}
-
-
-// {{{ Vectors
-template <typename ctype>
-struct gvec2
+// Min/Max for vectors are always component-wise
+//
+// Since we can't partially specialise function templates, we just define
+// min/max/clamp for float vectors.
+template <> constexpr inline vec2
+Minimum<vec2>(vec2 A, vec2 B)
 {
-    ctype X, Y;
+    return vec2{
+        Minimum(A.X, B.X),
+        Minimum(A.Y, B.Y)
+    };
+}
 
-    constexpr explicit gvec2() = default;
-    constexpr explicit gvec2(ctype Uniform) : X(Uniform), Y(Uniform) {}
-    constexpr explicit gvec2(ctype _X, ctype _Y) : X(_X), Y(_Y) {}
-};
-
-
-template <typename ctype>
-struct gvec3
+template <> constexpr inline vec2
+Maximum<vec2>(vec2 A, vec2 B)
 {
-    ctype X, Y, Z;
+    return vec2{
+        Maximum(A.X, B.X),
+        Maximum(A.Y, B.Y)
+    };
+}
 
-    constexpr explicit gvec3() = default;
-    constexpr explicit gvec3(ctype All) : X(All), Y(All), Z(All) {}
-    constexpr explicit gvec3(ctype _X, ctype _Y, ctype _Z) : X(_X), Y(_Y), Z(_Z) {}
-};
-
-
-template <typename ctype>
-struct gvec4
+template <> constexpr inline vec3
+Minimum<vec3>(vec3 A, vec3 B)
 {
-    ctype X, Y, Z, W;
+    return vec3{
+        Minimum(A.X, B.X),
+        Minimum(A.Y, B.Y),
+        Minimum(A.Z, B.Z)
+    };
+}
 
-    constexpr explicit gvec4() = default;
-    constexpr explicit gvec4(ctype All) : X(All), Y(All), Z(All), W(All) {}
-    constexpr explicit gvec4(ctype _X, ctype _Y, ctype _Z, ctype _W) : X(_X), Y(_Y), Z(_Z), W(_W) {}
-};
+template <> constexpr inline vec3
+Maximum<vec3>(vec3 A, vec3 B)
+{
+    return vec3{
+        Maximum(A.X, B.X),
+        Maximum(A.Y, B.Y),
+        Maximum(A.Z, B.Z)
+    };
+}
 
-using vec2 = gvec2<float>;
-using vec3 = gvec3<float>;
-using vec4 = gvec4<float>;
-using ivec2 = gvec2<int>;
-using ivec3 = gvec3<int>;
-using ivec4 = gvec4<int>;
+template <> constexpr inline vec4
+Minimum<vec4>(vec4 A, vec4 B)
+{
+    return vec4{
+        Minimum(A.X, B.X),
+        Minimum(A.Y, B.Y),
+        Minimum(A.Z, B.Z),
+        Minimum(A.W, B.W)
+    };
+}
 
-using uvec2 = gvec2<unsigned int>;
-using uvec3 = gvec3<unsigned int>;
-using uvec4 = gvec4<unsigned int>;
+template <> constexpr inline vec4
+Maximum<vec4>(vec4 A, vec4 B)
+{
+    return vec4{
+        Maximum(A.X, B.X),
+        Maximum(A.Y, B.Y),
+        Maximum(A.Z, B.Z),
+        Maximum(A.W, B.W)
+    };
+}
 
-using bvec2 = gvec2<bool>;
-using bvec3 = gvec3<bool>;
-using bvec4 = gvec4<bool>;
+template <typename c> constexpr inline c
+HorzMax(gvec2<c> V)
+{
+    return Maximum(V.X, V.Y);
+}
+
+template <typename c> constexpr inline c
+HorzMin(gvec2<c> V)
+{
+    return Minimum(V.X, V.Y);
+}
+
+template <typename c> constexpr inline c
+HorzMax(gvec3<c> V)
+{
+    return Maximum(V.X, Maximum(V.Y, V.Z));
+}
+
+template <typename c> constexpr inline c
+HorzMin(gvec3<c> V)
+{
+    return Minimum(V.X, Minimum(V.Y, V.Z));
+}
+
+template <typename c> constexpr inline c
+HorzMax(gvec4<c> V)
+{
+    return Maximum(V.X, Maximum(V.Y, Maximum(V.Z, V.W)));
+}
+
+template <typename c> constexpr inline c
+HorzMin(gvec4<c> V)
+{
+    return Minimum(V.X, Minimum(V.Y, Minimum(V.Z, V.W)));
+}
+
 // }}}
 
 
@@ -239,6 +391,19 @@ constexpr bvec2 NotEqual(gvec2<c> L, gvec2<c> R)
     return bvec2{ L.X != R.X, L.Y != R.Y };
 }
 
+template<>
+inline bvec2 Equal(vec2 L, vec2 R)
+{
+    return bvec2{ fabs(L.X - R.X) < Epsilon, fabs(L.Y - R.Y) < Epsilon };
+}
+
+template<>
+inline bvec2 NotEqual(vec2 L, vec2 R)
+{
+    return bvec2{ fabs(L.X - R.X) > Epsilon, fabs(L.Y - R.Y) > Epsilon };
+}
+
+
 template<typename c>
 constexpr bvec2 LessThan(gvec2<c> L, gvec2<c> R)
 {
@@ -277,6 +442,26 @@ template<typename c>
 constexpr bvec3 NotEqual(gvec3<c> L, gvec3<c> R)
 {
     return bvec3{ L.X != R.X, L.Y != R.Y, L.Z != R.Z };
+}
+
+template<>
+inline bvec3 Equal(vec3 L, vec3 R)
+{
+    return bvec3{ 
+        std::fabs(L.X - R.X) < Epsilon,
+        std::fabs(L.Y - R.Y) < Epsilon,
+        std::fabs(L.Z - R.Z) < Epsilon,
+    };
+}
+
+template<>
+inline bvec3 NotEqual(vec3 L, vec3 R)
+{
+    return bvec3{ 
+        std::fabs(L.X - R.X) > Epsilon,
+        std::fabs(L.Y - R.Y) > Epsilon,
+        std::fabs(L.Z - R.Z) > Epsilon,
+    };
 }
 
 template<typename c>
@@ -650,6 +835,36 @@ operator~(uvec2 L)
     return uvec2{ ~L.X, ~L.Y };
 }
 
+inline uvec2
+operator&(uvec2 L, unsigned int R)
+{
+    return uvec2{ L.X&R, L.Y&R };
+}
+
+inline uvec2
+operator|(uvec2 L, unsigned int R)
+{
+    return uvec2{ L.X|R, L.Y|R };
+}
+
+inline uvec2
+operator^(uvec2 L, unsigned int R)
+{
+    return uvec2{ L.X^R, L.Y^R };
+}
+
+inline uvec2
+operator>>(uvec2 L, unsigned int R)
+{
+    return uvec2{ L.X>>R, L.Y>>R };
+}
+
+inline uvec2
+operator<<(uvec2 L, unsigned int R)
+{
+    return uvec2{ L.X<<R, L.Y<<R };
+}
+
 
 // Vec3
 inline uvec3
@@ -688,41 +903,101 @@ operator~(uvec3 L)
     return uvec3{ ~L.X, ~L.Y, ~L.Z };
 }
 
+inline uvec3
+operator&(uvec3 L, unsigned int R)
+{
+    return uvec3{ L.X&R, L.Y&R, L.Z&R };
+}
+
+inline uvec3
+operator|(uvec3 L, unsigned int R)
+{
+    return uvec3{ L.X|R, L.Y|R, L.Z|R };
+}
+
+inline uvec3
+operator^(uvec3 L, unsigned int R)
+{
+    return uvec3{ L.X^R, L.Y^R, L.Z^R };
+}
+
+inline uvec3
+operator>>(uvec3 L, unsigned int R)
+{
+    return uvec3{ L.X>>R, L.Y>>R, L.Z>>R };
+}
+
+inline uvec3
+operator<<(uvec3 L, unsigned int R)
+{
+    return uvec3{ L.X<<R, L.Y<<R, L.Z<<R };
+}
+
 // Vec4
-inline uvec4
+constexpr inline uvec4
 operator&(uvec4 L, uvec4 R)
 {
     return uvec4{ L.X&R.X, L.Y&R.Y, L.Z&R.Z, L.W&R.W };
 }
 
-inline uvec4
+constexpr inline uvec4
 operator|(uvec4 L, uvec4 R)
 {
     return uvec4{ L.X|R.X, L.Y|R.Y, L.Z|R.Z, L.W|R.W };
 }
 
-inline uvec4
+constexpr inline uvec4
 operator^(uvec4 L, uvec4 R)
 {
     return uvec4{ L.X^R.X, L.Y^R.Y, L.Z^R.Z, L.W^R.W };
 }
 
-inline uvec4
+constexpr inline uvec4
 operator>>(uvec4 L, uvec4 R)
 {
     return uvec4{ L.X>>R.X, L.Y>>R.Y, L.Z>>R.Z, L.W>>R.W };
 }
 
-inline uvec4
+constexpr inline uvec4
 operator<<(uvec4 L, uvec4 R)
 {
     return uvec4{ L.X<<R.X, L.Y<<R.Y, L.Z<<R.Z, L.W<<R.W };
 }
 
-inline uvec4
+constexpr inline uvec4
 operator~(uvec4 L)
 {
     return uvec4{ ~L.X, ~L.Y, ~L.Z, ~L.W };
+}
+
+constexpr inline uvec4
+operator&(uvec4 L, unsigned int R)
+{
+    return uvec4{ L.X&R, L.Y&R, L.Z&R, L.W&R };
+}
+
+constexpr inline uvec4
+operator|(uvec4 L, unsigned int R)
+{
+    return uvec4{ L.X|R, L.Y|R, L.Z|R, L.W|R };
+}
+
+constexpr inline uvec4
+operator^(uvec4 L, unsigned int R)
+{
+    return uvec4{ L.X^R, L.Y^R, L.Z^R, L.W^R };
+}
+
+constexpr inline uvec4
+operator>>(uvec4 L, unsigned int R)
+{
+    return uvec4{ L.X>>R, L.Y>>R, L.Z>>R, L.W>>R };
+}
+
+constexpr inline uvec4
+operator<<(uvec4 L, unsigned int R)
+{
+    return uvec4{ L.X<<R, L.Y<<R, L.Z<<R, L.W<<R };
 }
 // }}}
 
@@ -788,7 +1063,6 @@ Normalize(vec4 V)
     return (0.0f != L) ? (V / L) : V;
 }
 
-
 constexpr inline vec3
 Cross(vec3 U, vec3 V)
 {
@@ -796,6 +1070,39 @@ Cross(vec3 U, vec3 V)
         (U.Y * V.Z) - (U.Z * V.Y),
         (U.Z * V.X) - (U.X * V.Z),
         (U.X * V.Y) - (U.Y * V.X)
+    };
+}
+
+constexpr inline vec3
+Reciprocal(vec3 V)
+{
+    return vec3{ 1.0f/V.X, 1.0f/V.Y, 1.0f/V.Z };
+}
+
+template <typename c> constexpr inline gvec2<c>
+Select(gvec2<c> T, gvec2<c> F, bvec2 Msk)
+{
+    return gvec2<c>{ (Msk.X) ? T.X : F.X, (Msk.Y) ? T.Y : F.Y };
+}
+
+template <typename c> constexpr inline gvec3<c>
+Select(gvec3<c> T, gvec3<c> F, bvec3 Msk)
+{
+    return gvec3<c>{
+        (Msk.X) ? T.X : F.X,
+        (Msk.Y) ? T.Y : F.Y,
+        (Msk.Z) ? T.Z : F.Z
+    };
+}
+
+template <typename c> constexpr inline gvec4<c>
+Select(gvec4<c> T, gvec4<c> F, bvec4 Msk)
+{
+    return gvec3<c>{
+        (Msk.X) ? T.X : F.X,
+        (Msk.Y) ? T.Y : F.Y,
+        (Msk.Z) ? T.Z : F.Z,
+        (Msk.W) ? T.W : F.W
     };
 }
 
@@ -918,6 +1225,7 @@ PerspectiveProjection(float CotHalfFov, float AspectRatio, float Zn, float Zf)
 
 // }}}
 
+
 // {{{ Quaternions
 struct quat
 {
@@ -1028,6 +1336,94 @@ Rotate(quat Rotation, vec3 V)
 
     return Rotated;
 
+}
+// }}}
+
+
+// {{{ Morton key computation
+
+static inline u32
+Part1By2_32(u32 X)
+{
+    X &= 0X000003ff;                  // X = ---- ---- ---- ---- ---- --98 7654 3210
+    X = (X ^ (X << 16U)) & 0Xff0000ff; // X = ---- --98 ---- ---- ---- ---- 7654 3210
+    X = (X ^ (X <<  8U)) & 0X0300f00f; // X = ---- --98 ---- ---- 7654 ---- ---- 3210
+    X = (X ^ (X <<  4U)) & 0X030c30c3; // X = ---- --98 ---- 76-- --54 ---- 32-- --10
+    X = (X ^ (X <<  2U)) & 0X09249249; // X = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
+
+    return X;
+}
+
+static inline u32
+EncodeMorton3_32(uvec3 V)
+{
+    return (Part1By2_32(V.Z) << 2U) + (Part1By2_32(V.Y) << 1U) + Part1By2_32(V.X);
+}
+
+using morton_key = u64;
+// Morton encoding by Fabien 'ryg' Giesen
+// Giesen 2009, "Decoding Morton Codes"
+// https://fgiesen.wordpress.com/2009/12/13/decoding-morton-codes/
+// Accessed Mar. 2020
+
+static inline u64
+Part1By2(u64 X)
+{
+    X &= 0X000003ffULL;                     // X = ---- ---- ---- ---- ---- --98 7654 3210
+    X = (X ^ (X << 16ULL)) & 0Xff0000ffULL; // X = ---- --98 ---- ---- ---- ---- 7654 3210
+    X = (X ^ (X <<  8ULL)) & 0X0300f00fULL; // X = ---- --98 ---- ---- 7654 ---- ---- 3210
+    X = (X ^ (X <<  4ULL)) & 0X030c30c3ULL; // X = ---- --98 ---- 76-- --54 ---- 32-- --10
+    X = (X ^ (X <<  2ULL)) & 0X09249249ULL; // X = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
+    return X;
+}
+
+static inline u64
+Part1By2_64(u64 X)
+{
+    // Select low 21 bits
+    // Since we're interleaving the bits of three coordinates,
+    // we can only fit 3*21 = 63 bits in a 64-bit number.
+    X &= 0x1FFFFF;
+
+    X = (X ^ (X << 32ULL)) & 0x001F00000000FFFF;
+    X = (X ^ (X << 16ULL)) & 0x001F0000FF0000FF;
+    X = (X ^ (X <<  8ULL)) & 0x100F00F00F00F00F;
+    X = (X ^ (X <<  4ULL)) & 0x10C30C30C30C30C3;
+    X = (X ^ (X <<  2ULL)) & 0x1249249249249249;
+
+    return X;
+
+}
+
+
+static inline morton_key
+EncodeMorton3(uvec3 V)
+{
+    return (Part1By2_64((u64)V.Z) << 2ULL) + (Part1By2_64((u64)V.Y) << 1ULL) + Part1By2_64((u64)V.X);
+}
+
+
+static inline vec3
+BarycentricCoords(vec3 V0, vec3 V1, vec3 V2, vec3 X)
+{
+    vec3 Barycentric;
+
+    vec3 E0 = V1 - V0;
+    vec3 E1 = V2 - V0;
+    vec3 EX = X - V0;
+
+    float D00 = Dot(E0, E0);
+    float D01 = Dot(E0, E1);
+    float D11 = Dot(E1, E1);
+    float D20 = Dot(EX, E0);
+    float D21 = Dot(EX, E1);
+
+    float Denom = D00 * D11 - D01 * D01;
+    Barycentric.Y = (D11 * D20 - D01 * D21) / Denom;
+    Barycentric.Z = (D00 * D21 - D01 * D20) / Denom;
+    Barycentric.X = 1.0f - Barycentric.Y - Barycentric.Z;
+
+    return Barycentric;
 }
 // }}}
 
