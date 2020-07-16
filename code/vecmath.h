@@ -642,7 +642,7 @@ operator+(gvec3<c> L, gvec3<c> R)
 template <typename c> constexpr gvec3<c>
 operator-(gvec3<c> L, gvec3<c> R)
 {
-    return gvec3<c>{ L.X-R.X, L.Y-R.Y, L.Y-R.Y };
+    return gvec3<c>{ L.X-R.X, L.Y-R.Y, L.Z-R.Z };
 }
 
 template <typename c> constexpr gvec3<c>
@@ -1341,7 +1341,6 @@ Rotate(quat Rotation, vec3 V)
 
 
 // {{{ Morton key computation
-
 static inline u32
 Part1By2_32(u32 X)
 {
@@ -1365,17 +1364,6 @@ using morton_key = u64;
 // Giesen 2009, "Decoding Morton Codes"
 // https://fgiesen.wordpress.com/2009/12/13/decoding-morton-codes/
 // Accessed Mar. 2020
-
-static inline u64
-Part1By2(u64 X)
-{
-    X &= 0X000003ffULL;                     // X = ---- ---- ---- ---- ---- --98 7654 3210
-    X = (X ^ (X << 16ULL)) & 0Xff0000ffULL; // X = ---- --98 ---- ---- ---- ---- 7654 3210
-    X = (X ^ (X <<  8ULL)) & 0X0300f00fULL; // X = ---- --98 ---- ---- 7654 ---- ---- 3210
-    X = (X ^ (X <<  4ULL)) & 0X030c30c3ULL; // X = ---- --98 ---- 76-- --54 ---- 32-- --10
-    X = (X ^ (X <<  2ULL)) & 0X09249249ULL; // X = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
-    return X;
-}
 
 static inline u64
 Part1By2_64(u64 X)
