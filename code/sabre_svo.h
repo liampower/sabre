@@ -4,7 +4,8 @@
 #include <vector>
 
 #include "sabre.h"
-#include "sabre_math.h"
+
+#include "vecmath.h"
 
 static constexpr u32 SBR_NODES_PER_BLK = 16384;
 static constexpr u32 SBR_FAR_PTRS_PER_BLK = 16384;
@@ -18,8 +19,8 @@ typedef u32 packed_snorm3;
 
 struct svo;
 
-typedef vec3 (*data_sampler_fn)(vec3, const svo* const, const void* const);
-typedef bool (*shape_sampler_fn)(vec3, vec3, const svo* const, const void* const);
+typedef vm::vec3 (*data_sampler_fn)(vm::vec3, const svo* const, const void* const);
+typedef bool (*shape_sampler_fn)(vm::vec3, vm::vec3, const svo* const, const void* const);
 
 struct shape_sampler
 {
@@ -131,22 +132,22 @@ struct svo
     std::vector<attrib_data> AttribData;
 };
 
-typedef sbr_surface (*intersector_fn)(vec3, vec3, const svo* const, const void* const);
-typedef vec3 (*normal_fn)(vec3, const svo* const, const void* const);
-typedef vec3 (*colour_fn)(vec3, const svo* const, const void* const);
+typedef sbr_surface (*intersector_fn)(vm::vec3, vm::vec3, const svo* const, const void* const);
+typedef vm::vec3 (*normal_fn)(vm::vec3, const svo* const, const void* const);
+typedef vm::vec3 (*colour_fn)(vm::vec3, const svo* const, const void* const);
 
 
-extern vec3
-GetNearestFreeSlot(vec3 Pos, vec3 Dir, const svo* const Tree);
+extern vm::vec3
+GetNearestFreeSlot(vm::vec3 Pos, vm::vec3 Dir, const svo* const Tree);
 
-extern vec3
-GetNearestLeafSlot(vec3 Pos, vec3 Dir, const svo* const Tree);
-
-extern "C" void
-InsertVoxel(svo* Tree, vec3 P);
+extern vm::vec3
+GetNearestLeafSlot(vm::vec3 Pos, vm::vec3 Dir, const svo* const Tree);
 
 extern "C" void
-DeleteVoxel(svo* Tree, vec3 P);
+InsertVoxel(svo* Tree, vm::vec3 P);
+
+extern "C" void
+DeleteVoxel(svo* Tree, vm::vec3 P);
 
 extern "C" svo_bias
 ComputeScaleBias(u32 MaxDepth,
@@ -183,7 +184,7 @@ extern "C" svo*
 CreateEmptySvo(u32 MaxDepth, u32 ScaleExponent);
 
 static inline void
-DEBUGPrintVec3(vec3 V)
+DEBUGPrintVec3(vm::vec3 V)
 {
     printf("(%f, %f, %f)", (f64)V.X, (f64)V.Y, (f64)V.Z);
 }
