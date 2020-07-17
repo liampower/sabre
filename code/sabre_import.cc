@@ -70,19 +70,21 @@ struct texcoord_attrib
 static std::unordered_map<cgltf_image*, img>* GlobalTextureCache;
 
 
-static uint64_t
-SOHash(uint64_t x) {
-    x = (x ^ (x >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
-    x = (x ^ (x >> 27)) * UINT64_C(0x94d049bb133111eb);
-    x = x ^ (x >> 31);
-    return x;
+static constexpr u64
+U64Hash(u64 X)
+{
+    X = (X ^ (X >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+    X = (X ^ (X >> 27)) * UINT64_C(0x94d049bb133111eb);
+    X = X ^ (X >> 31);
+    return X;
 }
 
 struct u64_hash
 {
-public:
-    size_t operator()(const u64& Element) const{
-        return (size_t) SOHash(Element);
+    constexpr inline size_t
+    operator()(const u64& Element) const
+    {
+        return static_cast<size_t>(U64Hash(Element));
     }
 };
 
@@ -115,20 +117,19 @@ BarycentricCoords(vec3 V0, vec3 V1, vec3 V2, vec3 X)
 
 
 static inline void
-DecodeTextureImage(const cgltf_buffer_view* const Texture, img* const ImageOut)
+DecodeTextureImage(const cgltf_buffer_view* const Texture, img* const ImgOut)
 {
     int Width, Height, Channels;
     stbi_uc* ImgData = static_cast<stbi_uc*>(Texture->buffer->data) + Texture->offset;
-    stbi_uc* Pixels = stbi_load_from_memory(
-            ImgData,
-            (int)Texture->size,
-            &Width,
-            &Height,
-            &Channels,
-            0);
+    stbi_uc* Pixels = stbi_load_from_memory(ImgData,
+                                            static_cast<int>(Texture->size),
+                                            &Width,
+                                            &Height,
+                                            &Channels,
+                                            0);
     assert(Pixels);
 
-    *ImageOut = img{ u32(Width), u32(Height), u32(Channels), Pixels };
+    *ImgOut = img{ u32(Width), u32(Height), u32(Channels), Pixels };
 }
 
 static inline vec3
@@ -141,33 +142,15 @@ ComputeTriangleNormal(tri3* Triangle)
 }
 
 static inline vec3
-ComputeVoxelColour(const tri_data* const Tri, vec3 VoxelCentre)
+SampleMaterialColour(const cgltf_material* const Mat, vec2 UV)
 {
-    cgltf_material* Mat = Tri->Material;
-
-    if (nullptr == Mat)
-    {
-        return vec3{1.0f, 0.84f, 0.0f};
-    }
-
-    // Get the voxel's UV coords within the triangle through
-    // barycentric interpolation.
-    vec2 V0 = vec2{ Tri->TexCoord[0].X, Tri->TexCoord[0].Y };
-    vec2 V1 = vec2{ Tri->TexCoord[1].X, Tri->TexCoord[1].Y };
-    vec2 V2 = vec2{ Tri->TexCoord[2].X, Tri->TexCoord[2].Y };
-
-    vec3 B = BarycentricCoords(Tri->T.V0, Tri->T.V1, Tri->T.V2, VoxelCentre);
-    vec2 VoxelUV;
-    VoxelUV.X = Clamp(V0.X + B.Y*(V1.X - V0.X) + B.Z*(V2.X - V0.X), 0.0f, 0.99f);
-    VoxelUV.Y = Clamp(V0.Y + B.Y*(V1.Y - V0.Y) + B.Z*(V2.Y - V0.Y), 0.0f, 0.99f);
-
     // Figure out where in the material to sample
     if (Mat->has_pbr_metallic_roughness)
     {
         // Sample the metallic texture
-        cgltf_pbr_metallic_roughness* R = &Mat->pbr_metallic_roughness;        
+        const cgltf_pbr_metallic_roughness* R = &Mat->pbr_metallic_roughness;        
 
-        vec3 BaseColourFactor = vec3{
+        vec3 BaseColourFactor{
             R->base_color_factor[0],
             R->base_color_factor[1],
             R->base_color_factor[2],
@@ -191,11 +174,11 @@ ComputeVoxelColour(const tri_data* const Tri, vec3 VoxelCentre)
 
             assert(Img.Pixels);
 
-            u32 TexelX = u32(f32(Img.Width) * VoxelUV.X);
-            u32 TexelY = u32(f32(Img.Height) * VoxelUV.Y);
+            u32 TexelX = u32(f32(Img.Width) * UV.X);
+            u32 TexelY = u32(f32(Img.Height) * UV.Y);
             assert(TexelX < Img.Width && TexelY < Img.Height);
 
-            unsigned char* Pixel = &Img.Pixels[Img.Channels*(TexelY * Img.Width + TexelX)];
+            stbi_uc* Pixel = &Img.Pixels[Img.Channels*(TexelY * Img.Width + TexelX)];
             if (3 == Img.Channels || 4 == Img.Channels)
             {
                 f32 Red = f32(Pixel[0]) / 255.0f;
@@ -218,7 +201,32 @@ ComputeVoxelColour(const tri_data* const Tri, vec3 VoxelCentre)
     {
         return vec3(1, 0, 0);
     }
+}
 
+static inline vec3
+ComputeVoxelColour(const tri_data* const Tri, vec3 VoxelCentre)
+{
+    cgltf_material* Mat = Tri->Material;
+
+    if (nullptr == Mat)
+    {
+        return vec3{1.0f, 0.84f, 0.0f};
+    }
+    else
+    {
+        // Get the voxel's UV coords within the triangle through
+        // barycentric interpolation.
+        vec2 V0{ Tri->TexCoord[0].X, Tri->TexCoord[0].Y };
+        vec2 V1{ Tri->TexCoord[1].X, Tri->TexCoord[1].Y };
+        vec2 V2{ Tri->TexCoord[2].X, Tri->TexCoord[2].Y };
+
+        vec3 B = BarycentricCoords(Tri->T.V0, Tri->T.V1, Tri->T.V2, VoxelCentre);
+        vec2 VoxelUV;
+        VoxelUV.X = Clamp(V0.X + B.Y*(V1.X - V0.X) + B.Z*(V2.X - V0.X), 0.0f, 0.99f);
+        VoxelUV.Y = Clamp(V0.Y + B.Y*(V1.Y - V0.Y) + B.Z*(V2.Y - V0.Y), 0.0f, 0.99f);
+
+        return SampleMaterialColour(Mat, VoxelUV);
+    }
 }
 
 
@@ -449,10 +457,14 @@ ColourSampler(vec3 C, const svo* const, const void* const UserData)
 }
 
 static tri_buffer*
-LoadMeshTriangles(cgltf_mesh* Mesh)
+LoadMeshTriangles(const cgltf_data* const MeshData)
 {
+    cgltf_mesh* Mesh = &MeshData->meshes[0];
+
     usize LastTri = 0;
     tri_buffer* TriBuffer = nullptr;
+    std::unordered_map<std::string, cgltf_material*> MaterialMap;
+    MaterialMap.reserve(MeshData->materials_count);
 
     // Locate the primitive entry for the mesh's triangle data block.
     // We do not handle non-triangle meshes.
@@ -755,7 +767,7 @@ ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
 
 	if (cgltf_result_success == Result)
     {
-        tri_buffer* TriangleData = LoadMeshTriangles(&Data->meshes[0]);
+        tri_buffer* TriangleData = LoadMeshTriangles(Data);
 
         if (nullptr == TriangleData)
         {
