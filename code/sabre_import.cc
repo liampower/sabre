@@ -38,6 +38,7 @@ struct img
     unsigned char* Pixels;
 };
 
+
 struct tri_data
 {
     tri3 T;
@@ -51,6 +52,7 @@ struct tri_buffer
 {
     u32      TriangleCount;
     tri_data Triangles[1];
+
 };
 
 
@@ -111,6 +113,24 @@ BarycentricCoords(vec3 V0, vec3 V1, vec3 V2, vec3 X)
     return Barycentric;
 }
 
+
+static inline void
+DecodeTextureImage(const cgltf_buffer_view* const Texture, img* const ImageOut)
+{
+    int Width, Height, Channels;
+    stbi_uc* ImgData = static_cast<stbi_uc*>(Texture->buffer->data) + Texture->offset;
+    stbi_uc* Pixels = stbi_load_from_memory(
+            ImgData,
+            (int)Texture->size,
+            &Width,
+            &Height,
+            &Channels,
+            0);
+    assert(Pixels);
+
+    *ImageOut = img{ u32(Width), u32(Height), u32(Channels), Pixels };
+}
+
 static inline vec3
 ComputeTriangleNormal(tri3* Triangle)
 {
@@ -121,9 +141,14 @@ ComputeTriangleNormal(tri3* Triangle)
 }
 
 static inline vec3
-ComputeVoxelColour(tri_data* Tri, vec3 VoxelCentre)
+ComputeVoxelColour(const tri_data* const Tri, vec3 VoxelCentre)
 {
     cgltf_material* Mat = Tri->Material;
+
+    if (nullptr == Mat)
+    {
+        return vec3{1.0f, 0.84f, 0.0f};
+    }
 
     // Get the voxel's UV coords within the triangle through
     // barycentric interpolation.
@@ -159,18 +184,8 @@ ComputeVoxelColour(tri_data* Tri, vec3 VoxelCentre)
             else
             {
                 cgltf_image* TextureImage = BaseColourTex->image;
-                cgltf_buffer_view* ImageDataBuffer = TextureImage->buffer_view;
 
-                int Width, Height, Channels;
-                unsigned char* Pixels = stbi_load_from_memory((unsigned char*)ImageDataBuffer->buffer->data + ImageDataBuffer->offset,
-                        (int)TextureImage->buffer_view->size,
-                        &Width,
-                        &Height,
-                        &Channels,
-                        0);
-                assert(Pixels);
-
-                Img = img{ u32(Width), u32(Height), u32(Channels), Pixels };
+                DecodeTextureImage(TextureImage->buffer_view, &Img);
                 GlobalTextureCache->emplace(TextureImage, Img);
             }
 
