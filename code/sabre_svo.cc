@@ -218,7 +218,7 @@ ComputeScaleBias(u32 MaxDepth, u32 ScaleExponent)
     if (MaxDepth > ScaleExponent)
     {
         u32 Bias = (MaxDepth - ScaleExponent);
-        f32 InvBias = 1.0f / ((f32)(1U << Bias));
+        f32 InvBias = 1.0f / (static_cast<f32>(1U << Bias));
 
         return svo_bias{ InvBias, Bias };
     }
@@ -465,13 +465,13 @@ BuildSubOctreeRecursive(svo_node* Parent,
         svo_block* Blk;
     };
 
-    u32 NextScale = Scale >> 1;
+    u32 NextScale = Scale >> 1U;
     u32 NextDepth = Depth + 1;
 
     node_child Children[8];
     u32 LastChildIndex = 0;
 
-    uvec3 Radius = uvec3(Scale >> 1);
+    uvec3 Radius = uvec3(Scale >> 1U);
 
     const node_ref ParentRef = node_ref{ ParentBlk, Parent };
 
