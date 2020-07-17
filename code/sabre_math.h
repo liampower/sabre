@@ -5,13 +5,13 @@
 #include <math.h>
 #include <intrin.h>
 
-#define Pi32  3.14159265f
+//#define Pi32  3.14159265f
 
-#define Sqrt2       1.41421569f
-#define InvSqrt2    0.70710678f
-#define PiOver180Dg 0.01745329f
+//#define Sqrt2       1.41421569f
+//#define InvSqrt2    0.70710678f
+//#define PiOver180Dg 0.01745329f
 
-#define Rads(Deg) ((Deg)*PiOver180Dg)
+//#define Rads(Deg) ((Deg)*PiOver180Dg)
 
 
 #define V3(X, Y, Z) { (float)(X), (float)(Y), (float)(Z) }
@@ -25,6 +25,11 @@
   #define inline __attribute__((always_inline))
   #define aligned(N) __attribute__((aligned(N)))
 #endif
+
+struct vec4
+{
+    float X, Y, Z, W;
+};
 
 
 
@@ -1398,6 +1403,30 @@ static inline morton_key
 EncodeMorton3(uvec3 V)
 {
     return (Part1By2_64((u64)V.Z) << 2ULL) + (Part1By2_64((u64)V.Y) << 1ULL) + Part1By2_64((u64)V.X);
+}
+
+
+static inline vec3
+BarycentricCoords(vec3 V0, vec3 V1, vec3 V2, vec3 X)
+{
+    vec3 Barycentric;
+
+    vec3 E0 = V1 - V0;
+    vec3 E1 = V2 - V0;
+    vec3 EX = X - V0;
+
+    float D00 = Dot(E0, E0);
+    float D01 = Dot(E0, E1);
+    float D11 = Dot(E1, E1);
+    float D20 = Dot(EX, E0);
+    float D21 = Dot(EX, E1);
+
+    float Denom = D00 * D11 - D01 * D01;
+    Barycentric.Y = (D11 * D20 - D01 * D21) / Denom;
+    Barycentric.Z = (D00 * D21 - D01 * D20) / Denom;
+    Barycentric.X = 1.0f - Barycentric.Y - Barycentric.Z;
+
+    return Barycentric;
 }
 
 
