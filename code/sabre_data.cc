@@ -451,13 +451,13 @@ vec3 Raycast(in ray R)
                     }
                     else
                     {
-                        return vec3(1, 0, 1);
+                        return vec3(0.16);
                     }
                 }
             }
             else
             {
-                return vec3(1, 1, 0);
+                return vec3(0.16);
             }
         }
     }
@@ -467,7 +467,7 @@ vec3 Raycast(in ray R)
         return vec3(0.08);
     }*/
 
-    return vec3(1, 0, 0);
+    return vec3(0.16);
 }
 
 
