@@ -260,11 +260,11 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
     // the supplied min/max dimensions?
     m128 TriMin = _mm_min_ps(_mm_min_ps(V0, V1), V2);
     int MinMask = _mm_movemask_ps(_mm_cmpgt_ps(TriMin, Radius));
-    if (0x0 != (0x7 & MinMask)) return false;
+    if (0x7 & MinMask) return false;
 
     m128 TriMax = _mm_max_ps(_mm_max_ps(V0, V1), V2);
     int MaxMask = _mm_movemask_ps(_mm_cmplt_ps(TriMax, NRadius));
-    if (0x0 != (0x7 & MaxMask)) return false;
+    if (0x7 & MaxMask) return false;
 
     // Msk: 3 2 1 0
     //      W Z Y X
@@ -294,7 +294,7 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
         Hsum = _mm_add_ps(Hsum, Pdt_s); // Dot in elements 0 and 2
 
         int Dmsk = _mm_movemask_ps(_mm_cmpgt_ps(Hsum, Zero4));
-        if (0x0 != (0x1 & Dmsk)) return false; // If d.p. > 0 then return false
+        if (0x1 & Dmsk) return false; // If d.p. > 0 then return false
 
         Pdt = _mm_mul_ps(TNormal, VMax);
         Pdt_s = _mm_movehdup_ps(Pdt);
@@ -303,7 +303,7 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
         Hsum = _mm_add_ps(Hsum, Pdt_s);
 
         Dmsk = _mm_movemask_ps(_mm_cmplt_ps(Hsum, Zero4));
-        if (0x0 != (0x1 & Dmsk)) return false;
+        if (0x1 & Dmsk) return false;
 
     }
     
@@ -395,7 +395,7 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
     Lmsk = _mm_cmplt_ps(P_Max, NR_123);
     Or = _mm_or_ps(Gmsk, Lmsk);
     OutMsk = _mm_movemask_ps(Or);
-    if (0x0 != (OutMsk & 0x7)) return false;
+    if (OutMsk & 0x7) return false;
 
     // p0_1 = e2z.v0y - e2y.v0z
     // p0_2 = e2x.v0z - e2z.v0x
@@ -429,7 +429,7 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
 
     Or = _mm_or_ps(Gmsk, Lmsk);
     OutMsk = _mm_movemask_ps(Or);
-    if (0x0 != (OutMsk & 0x7)) return false;
+    if (OutMsk & 0x7) return false;
 
     return true;
 }
