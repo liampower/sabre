@@ -56,6 +56,7 @@ struct mat3
 };
 
 
+
 // {{{ Vectors
 // NOTE: COLUMN vector.
 //
@@ -1398,6 +1399,8 @@ EncodeMorton3(uvec3 V)
 {
     return (Part1By2_64((u64)V.Z) << 2ULL) + (Part1By2_64((u64)V.Y) << 1ULL) + Part1By2_64((u64)V.X);
 }
+
+
 
 
 #endif

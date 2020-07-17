@@ -16,15 +16,13 @@ static constexpr uint WORK_SIZE_Y = 512U;
 // The actual memory used for the hashmap buffer is
 // HTABLE_SLOT_COUNT * sizeof(htable_entry). This is usually
 // 8 bytes. 
-static constexpr usize HTABLE_SLOT_COUNT = 1024U*1024U*8U;
-
-static void
-Test(const std::vector<attrib_data>& Data);
+static constexpr usize HTABLE_SLOT_COUNT = 1024U*1024U*128U;
 
 typedef GLuint gl_uint;
 typedef GLint  gl_int;
 typedef GLsizei gl_sizei;
 typedef GLenum gl_enum;
+typedef GLuint64 gl_u64;
 
 enum cs_bindings
 {
@@ -36,6 +34,19 @@ enum htable_cs_bindings
 {
     HTableOutputBufferBinding = 0,
     HTableInputBufferBinding = 1,
+};
+
+enum htable_uniforms
+{
+    HTableUniformTableSize = 2,
+    HTableUniformOffset = 3,
+};
+
+
+struct gl_timer
+{
+    uint    Front;
+    gl_uint Q[2];
 };
 
 // Holds the contextual data required to render a SVO voxel
@@ -57,6 +68,8 @@ struct render_data
     gl_uint HTableBuilderShader; // Compute shader to construct the leaf hashtable
     gl_uint HTableInputBuffer;
     gl_uint HTableOutputBuffer;
+
+    gl_timer Timer;
 };
 
 
@@ -65,6 +78,8 @@ struct svo_buffers
     union { gl_uint SvoBuffer, VAO; };
     union { gl_uint FarPtrBuffer, VBO; };
 };
+
+
 
 // Vertices of a full-screen quad which we 
 // render to using a compute shader.
@@ -79,6 +94,48 @@ static const f32 GlobalCanvasVerts[12] = {
 };
 
 
+static inline gl_timer
+CreateGPUTimer(void)
+{
+    gl_timer Timer = {};
+
+    glGenQueries(2, Timer.Q);
+    glQueryCounter(Timer.Q[Timer.Front], GL_TIME_ELAPSED);
+
+    return Timer;
+}
+
+static inline void
+DeleteGPUTimer(gl_timer* Timer)
+{
+    glDeleteQueries(2, Timer->Q);
+}
+
+static inline gl_u64
+GetGPUTimeElapsed(gl_timer* Timer)
+{
+    gl_u64 Time = 0;
+    glGetQueryObjectui64v(Timer->Q[Timer->Front], GL_QUERY_RESULT, &Time);
+
+    // Swap active query (0 -> 1, 1 -> 0)
+    Timer->Front ^= 1;
+
+    return Time;
+}
+
+
+static inline void
+BeginTimerQuery(const gl_timer* Timer)
+{
+    glBeginQuery(GL_TIME_ELAPSED, Timer->Q[Timer->Front]);
+}
+
+static inline void
+EndTimerQuery(const gl_timer* const Timer)
+{
+    glEndQuery(GL_TIME_ELAPSED);
+}
+
 static gl_uint
 CreateLeafDataHashTable(render_data* RenderData, const attrib_data* const Data, usize Count)
 {
@@ -87,35 +144,39 @@ CreateLeafDataHashTable(render_data* RenderData, const attrib_data* const Data, 
 
     glGenBuffers(2, DataBuffers);
 
-    { // Upload the input leaf data key-value pairs into the leaf buffer
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, DataBuffers[0]);
-        glBufferData(GL_SHADER_STORAGE_BUFFER, Count*sizeof(attrib_data), nullptr, GL_DYNAMIC_COPY);
-        attrib_data* GPUDataBuffer = (attrib_data*)glMapBuffer(GL_SHADER_STORAGE_BUFFER,
-                                                         GL_WRITE_ONLY);
-        memcpy(GPUDataBuffer, Data, Count*sizeof(attrib_data));
-        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
-    }
+    // Upload the input leaf data key-value pairs into the leaf buffer
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, DataBuffers[0]);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, Count*sizeof(attrib_data), nullptr, GL_DYNAMIC_COPY);
+    attrib_data* GPUDataBuffer = (attrib_data*)glMapBuffer(GL_SHADER_STORAGE_BUFFER,
+                                                           GL_WRITE_ONLY);
+    memcpy(GPUDataBuffer, Data, Count*sizeof(attrib_data));
+    glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 
-    {
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, DataBuffers[1]);
-        glBufferData(GL_SHADER_STORAGE_BUFFER, HTableDataSize, nullptr, GL_DYNAMIC_COPY);
-        attrib_data* GPUHTableBuffer = (attrib_data*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
-        memset(GPUHTableBuffer, 0xFF, HTableDataSize);
-        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
-    }
-
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, DataBuffers[1]);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, HTableDataSize, nullptr, GL_DYNAMIC_COPY);
+    attrib_data* GPUHTableBuffer = (attrib_data*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+    memset(GPUHTableBuffer, 0xFF, HTableDataSize);
+    glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 
     glUseProgram(RenderData->HTableBuilderShader);
-    glUniform1ui(glGetUniformLocation(RenderData->HTableBuilderShader, "TableSizeUniform"), HTABLE_SLOT_COUNT);
+    glUniform1ui(HTableUniformTableSize, HTABLE_SLOT_COUNT);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, HTableInputBufferBinding, DataBuffers[0]);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, HTableOutputBufferBinding, DataBuffers[1]);
 
-    // Kick the table builder kernel
     printf("BEGINNING HASH BUILD...\n");
-    usize WorkGroupCount = Minimum(65535ULL, Count);
-    glDispatchCompute(WorkGroupCount, 1, 1);
 
-    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+    Count = Minimum(Count, HTABLE_SLOT_COUNT);
+    usize Remaining = Count;
+    while (Remaining > 0)
+    {
+        usize WorkGroupCount = Minimum(65535ULL, Remaining);
+
+        glUniform1ui(HTableUniformOffset, Count - Remaining);
+        glDispatchCompute(WorkGroupCount, 1, 1);
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+        Remaining -= WorkGroupCount;
+    }
 
     RenderData->HTableInputBuffer = DataBuffers[0];
     RenderData->HTableOutputBuffer = DataBuffers[1];
@@ -437,9 +498,10 @@ UploadOctreeBlockData(const svo* const Svo)
 }
 
 
-extern "C" void
+extern "C" u64
 DrawScene(const render_data* const RenderData, const view_data* const ViewData)
 {
+    BeginTimerQuery(&RenderData->Timer);
     glUseProgram(RenderData->RenderShader);
     glUniformMatrix3fv(RenderData->ViewMatUniformLocation, 1, GL_TRUE, ViewData->CamTransform);
     glUniform3fv(RenderData->ViewPosUniformLocation, 1, ViewData->CamPos);
@@ -455,11 +517,14 @@ DrawScene(const render_data* const RenderData, const view_data* const ViewData)
 
     glBindBuffer(GL_ARRAY_BUFFER, RenderData->CanvasVBO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
+    EndTimerQuery(&RenderData->Timer);
+
+    return (u64)GetGPUTimeElapsed(const_cast<gl_timer*>(&RenderData->Timer));
 }
 
 
 extern "C" render_data*
-CreateRenderData(const svo* const Tree, const view_data* const ViewData)
+CreateRenderData(const svo* const Svo, const view_data* const ViewData)
 {
     render_data* RenderData = (render_data*) calloc(1, sizeof(render_data));
     if (nullptr == RenderData)
@@ -495,12 +560,11 @@ CreateRenderData(const svo* const Tree, const view_data* const ViewData)
         return nullptr;
     }
 
-    //Test(Tree->Normals);
-    CreateLeafDataHashTable(RenderData, Tree->Normals.data(), Tree->Normals.size());
+    CreateLeafDataHashTable(RenderData, Svo->AttribData.data(), Svo->AttribData.size());
 
 
     RenderData->RenderImage = CreateRenderImage(ViewData->ScreenWidth, ViewData->ScreenHeight);
-    SetUniformData(Tree, RenderData);
+    SetUniformData(Svo, RenderData);
 
     svo_buffers CanvasBuffers = UploadCanvasVertices();
     if (0 == CanvasBuffers.VAO || 0 == CanvasBuffers.VBO)
@@ -514,7 +578,7 @@ CreateRenderData(const svo* const Tree, const view_data* const ViewData)
     RenderData->CanvasVAO = CanvasBuffers.VAO;
     RenderData->CanvasVBO = CanvasBuffers.VBO;
 
-    svo_buffers SvoBuffers = UploadSvoBlockData(Tree);
+    svo_buffers SvoBuffers = UploadSvoBlockData(Svo);
     if (0 == SvoBuffers.SvoBuffer || 0 == SvoBuffers.FarPtrBuffer)
     {
         DeleteRenderData(RenderData);
@@ -532,6 +596,13 @@ CreateRenderData(const svo* const Tree, const view_data* const ViewData)
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, RenderData->SvoBuffer);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, RenderData->HTableOutputBuffer);
     glActiveTexture(GL_TEXTURE0);
+
+    FILE* OutFile;
+    fopen_s(&OutFile, "data/cs.nvasm", "wb");
+    DEBUGOutputRenderShaderAssembly(RenderData, OutFile);
+    fclose(OutFile);
+
+    RenderData->Timer = CreateGPUTimer();
 
     return RenderData;
 }
@@ -555,6 +626,8 @@ DeleteRenderData(render_data* RenderData)
         glDeleteVertexArrays(1, &RenderData->CanvasVAO);
 
         glBindTexture(GL_TEXTURE_3D, 0);
+
+        DeleteGPUTimer(&RenderData->Timer);
 
         free(RenderData);
     }
@@ -630,65 +703,3 @@ DEBUGOutputRenderShaderAssembly(const render_data* const RenderData, FILE* OutFi
     return true;
 }
 
-
-
-#if 0
-static inline uvec4
-ComputeHashes2(u32 Key)
-{
-    const uvec4 C0 = uvec4(UINT32_C(0x7feb352d), UINT32_C(0xa136aaad), UINT32_C(0x24f4d2cd), UINT32_C(0xe2d0d4cb));
-    const uvec4 S0 = uvec4(16, 18, 17, 16);
-    const uvec4 C1 = uvec4(UINT32_C(0x846ca68b), UINT32_C(0x9f6d62d7), UINT32_C(0x1ba3b969), UINT32_C(0x3c6ad939));
-    const uvec4 S1 = uvec4(15, 16, 15, 15);
-    const uvec4 S2 = uvec4(16, 17, 16, 15);
-
-    uvec4 K = uvec4(Key);
-
-    K ^= K >> S0;
-    K *= C0;
-    K ^= K >> S1;
-    K *= C1;
-    K ^= K >> S2;
-
-    return K % 2047U;
-}
-
-static inline uvec4
-ComputeHashes3(u32 Key)
-{
-    const uvec4 S0 = uvec4(17, 16, 16, 18);
-    const uvec4 C0 = uvec4(0xed5ad4bb, 0xaeccedab, 0x236f7153, 0x4260bb47);
-    const uvec4 S1 = uvec4(11, 14, 12, 13);
-    const uvec4 C1 = uvec4(0xac4c1b51, 0xac613e37, 0x33cd8663, 0x27e8e1ed); 
-    const uvec4 S2 = uvec4(15, 16, 15, 15);
-    const uvec4 C2 = uvec4(0x31848bab, 0x19c89935, 0x3e06b66b, 0x9d48a33b);  
-    const uvec4 S3 = uvec4(14, 17, 16, 15);
-    uvec4 K = uvec4(Key);
-
-    K ^= K >> S0;
-    K *= C0;
-    K ^= K >> S1;
-    K *= C1;
-    K ^= K >> S2;
-    K *= C2;
-    K ^= K >> S3;
-
-    return K % 65536U;
-}
-
-
-static void
-Test(const std::vector<attrib_data>& Data)
-{
-    std::vector<uvec4> Hashes{};
-
-    for (auto It = Data.begin(); It != Data.end(); ++It)
-    {
-        uvec4 H = ComputeHashes3(It->Key);
-        Hashes.push_back(H);
-
-        printf("%d,%d,%d,%d,%d\n", It->Key, H.X, H.Y, H.Z, H.W);
-    }
-
-}
-#endif

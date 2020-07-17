@@ -16,12 +16,13 @@
 #include <glfw/glfw3.h>
 
 #include "sabre.h"
-#include "sabre_math.h"
 #include "sabre_svo.h"
 #include "sabre_data.h"
 #include "sabre_render.h"
 
-static constexpr u32 DEMO_MAX_TREE_DEPTH = 10;
+using namespace vm;
+
+static constexpr u32 DEMO_MAX_TREE_DEPTH = 12;
 static constexpr u32 DEMO_SCALE_EXPONENT = 5;
 
 static constexpr u32 DisplayWidth = 1280;
@@ -134,13 +135,6 @@ CreateCubeSphereTestScene(u32 Lod)
 }
 
 
-static inline svo*
-CreateImportedMeshTestScene(const char* const GLBFileName)
-{
-    return ImportGLBFile(DEMO_MAX_TREE_DEPTH, GLBFileName);
-}
-
-
 static vec3
 UnprojectViewDirection(const camera& Cam)
 {
@@ -153,7 +147,7 @@ UnprojectViewDirection(const camera& Cam)
 
     vec3 R = Normalize(D - Cam.Position);
 
-    mat3 CameraMatrix = mat3{{
+    mat3x3 CameraMatrix = mat3x3{{
         { Cam.Right.X, Cam.Right.Y, Cam.Right.Z },
         { Cam.Up.X, Cam.Up.Y, Cam.Up.Z },
         { -Cam.Forward.X, -Cam.Forward.Y, -Cam.Forward.Z },
@@ -221,16 +215,6 @@ main(int ArgCount, const char** const Args)
         return EXIT_FAILURE;
     }
 
-#if 0
-    if (GLFW_FALSE == glfwExtensionSupported("GL_ARB_sparse_texture"))
-    {
-        fprintf(stderr, "Failed to initialise application\n");
-        MessageBox(nullptr, "The application cannot start because your system does not support OpenGL sparse textures (ensure you are running this application with up-to-date graphics drivers)", "Error", MB_ICONWARNING);
-        glfwTerminate();
-        return EXIT_FAILURE;
-    }
-#endif
-
     OutputGraphicsDeviceInfo();
 
     IMGUI_CHECKVERSION();
@@ -262,7 +246,7 @@ main(int ArgCount, const char** const Args)
     render_data* RenderData = nullptr;
 
 
-    camera Cam = { };
+    camera Cam;
     Cam.Forward = vec3(0, 0, -1);
     Cam.Right = vec3(1, 0, 0);
     Cam.Up = vec3(0, 1, 0);
@@ -286,6 +270,7 @@ main(int ArgCount, const char** const Args)
 
     bool ShowMenu = true;
     int Lod = 0;
+    u64 GPUTime = 0;
     while (GLFW_FALSE == glfwWindowShouldClose(Window))
     {
         FrameStartTime = glfwGetTime();
@@ -310,21 +295,56 @@ main(int ArgCount, const char** const Args)
                 ImGui::End();
             }
 
-            ImGui::SliderInt("Level of Detail", &Lod, 0, 11);
+            ImGui::SliderInt("Level of Detail", &Lod, 0, DEMO_MAX_TREE_DEPTH);
             ImGui::TextUnformatted("Higher levels will take longer to generate");
             ImGui::Separator();
 
-            if (ImGui::Button("Load rabbit scene"))
+            if (ImGui::Button("Load Sibenik"))
             {
                 WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/sib2.glb");
                 ShowMenu = false;
             }
-            else if (ImGui::Button("Load Serapis scene"))
+            else if (ImGui::Button("Load Test Cube"))
+            {
+                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/tex_cube.glb");
+                ShowMenu = false;
+            }
+            else if (ImGui::Button("Load Fireplace Room"))
+            {
+                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/fireplace_room.glb");
+                ShowMenu = false;
+            }
+            else if (ImGui::Button("Load Gallery"))
+            {
+                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/gallery.glb");
+                ShowMenu = false;
+            }
+            else if (ImGui::Button("Load Dragon"))
+            {
+                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/dragon.glb");
+                ShowMenu = false;
+            }
+            else if (ImGui::Button("Load Bunny"))
+            {
+                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/bunny.glb");
+                ShowMenu = false;
+            }
+            else if (ImGui::Button("Load Buddha"))
+            {
+                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/buddha.glb");
+                ShowMenu = false;
+            }
+            else if (ImGui::Button("Load Serapis"))
             {
                 WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/serapis.glb");
                 ShowMenu = false;
             }
-            else if (ImGui::Button("Load generated sphere scene"))
+            else if (ImGui::Button("Load Indonesian"))
+            {
+                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/indonesian.glb");
+                ShowMenu = false;
+            }
+            else if (ImGui::Button("Load Sphere"))
             {
                 WorldSvo = CreateCubeSphereTestScene(SafeIntToU32(Lod));
                 ShowMenu = false;
@@ -363,7 +383,12 @@ main(int ArgCount, const char** const Args)
             {
                 if (ImGui::BeginMainMenuBar())
                 {
-                    ImGui::Text("%fms CPU  %d BLKS  %d LVLS  %llu DATA", 1000.0*DeltaTime, GetSvoUsedBlockCount(WorldSvo), GetSvoDepth(WorldSvo), WorldSvo->Normals.size());
+                    ImGui::Text("%fms CPU  %fms GPU  %d BLKS  %d LVLS  %llu DATA", 
+                                 1000.0*DeltaTime,
+                                 f64(GPUTime) / 1000000.0,
+                                 GetSvoUsedBlockCount(WorldSvo),
+                                 GetSvoDepth(WorldSvo),
+                                 WorldSvo->AttribData.size());
                     ImGui::EndMainMenuBar();
                 }
 
@@ -372,35 +397,12 @@ main(int ArgCount, const char** const Args)
                     glfwSetWindowShouldClose(Window, GLFW_TRUE);
                 }
 
-                if (glfwGetKey(Window, GLFW_KEY_W))
-                {
-                    Cam.Position += Cam.Velocity * Cam.Forward;
-                }
-
-                if (glfwGetKey(Window, GLFW_KEY_S))
-                {
-                    Cam.Position -= Cam.Velocity * Cam.Forward;
-                }
-
-                if (glfwGetKey(Window, GLFW_KEY_A))
-                {
-                    Cam.Position -= Cam.Velocity * Cam.Right;
-                }
-
-                if (glfwGetKey(Window, GLFW_KEY_D))
-                {
-                    Cam.Position += Cam.Velocity * Cam.Right;
-                }
-
-                if (glfwGetKey(Window, GLFW_KEY_SPACE))
-                {
-                    Cam.Position += Cam.Velocity * Cam.Up;
-                }
-
-                if (glfwGetKey(Window, GLFW_KEY_LEFT_SHIFT))
-                {
-                    Cam.Position -= Cam.Velocity * Cam.Up;
-                }
+                if (glfwGetKey(Window, GLFW_KEY_W)) Cam.Position += Cam.Forward * Cam.Velocity;
+                if (glfwGetKey(Window, GLFW_KEY_S)) Cam.Position -= Cam.Forward * Cam.Velocity;
+                if (glfwGetKey(Window, GLFW_KEY_A)) Cam.Position -= Cam.Right * Cam.Velocity;
+                if (glfwGetKey(Window, GLFW_KEY_D)) Cam.Position += Cam.Right * Cam.Velocity;
+                if (glfwGetKey(Window, GLFW_KEY_SPACE)) Cam.Position += Cam.Up * Cam.Velocity;
+                if (glfwGetKey(Window, GLFW_KEY_LEFT_SHIFT)) Cam.Position -= Cam.Up * Cam.Velocity;
 
                 if (glfwGetKey(Window, GLFW_KEY_Y))
                 {
@@ -457,7 +459,7 @@ main(int ArgCount, const char** const Args)
                 ViewData.CamTransform = (float*)CameraMatrix;
                 ViewData.CamPos = F;
 
-                DrawScene(RenderData, &ViewData);
+                GPUTime = DrawScene(RenderData, &ViewData);
             }
 
 
