@@ -48,11 +48,17 @@ struct tri_data
     cgltf_material* Material;
 };
 
+
+struct material_data
+{
+    std::vector<img> Images;
+    std::vector<cgltf_material*> Material;
+};
+
 struct tri_buffer
 {
     u32      TriangleCount;
     tri_data Triangles[1];
-
 };
 
 
@@ -117,12 +123,12 @@ BarycentricCoords(vec3 V0, vec3 V1, vec3 V2, vec3 X)
 
 
 static inline void
-DecodeTextureImage(const cgltf_buffer_view* const Texture, img* const ImgOut)
+DecodeTextureImage(const cgltf_buffer_view* const Tex, img* const ImgOut)
 {
     int Width, Height, Channels;
-    stbi_uc* ImgData = static_cast<stbi_uc*>(Texture->buffer->data) + Texture->offset;
+    stbi_uc* ImgData = static_cast<stbi_uc*>(Tex->buffer->data) + Tex->offset;
     stbi_uc* Pixels = stbi_load_from_memory(ImgData,
-                                            static_cast<int>(Texture->size),
+                                            static_cast<int>(Tex->size),
                                             &Width,
                                             &Height,
                                             &Channels,
@@ -815,6 +821,11 @@ ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
         NormalIndex.clear();
         free(TriangleData);
         cgltf_free(Data);
+
+        for (auto It = GlobalTextureCache->begin(); It != GlobalTextureCache->end(); ++It)
+        {
+            stbi_image_free(It->second.Pixels);
+        }
 
         delete GlobalTextureCache;
         return Svo;
