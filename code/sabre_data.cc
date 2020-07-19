@@ -115,28 +115,20 @@ luma SampleLuma(vec2 UV)
 void main()
 {
     FragCr = texture(OutputTextureUniform, UV);
-    return;
     luma L = SampleLuma(UV);
-    if (false)
-    {
-        FragCr = texture(OutputTextureUniform, UV);
-    }
-    else
-    {
-        float Blend = ComputeBlendFactor(L);
-        edge E = ComputeEdge(L);
+    float Blend = ComputeBlendFactor(L);
+    edge E = ComputeEdge(L);
 
-        vec2 UV2 = UV;
-        if (E.Horz) {
-            UV2.y += E.StepSize * Blend;
-        }
-        else {
-            UV2.x += E.StepSize * Blend;
-        }
-        
-
-        FragCr = vec4(textureLod(OutputTextureUniform, UV2, 0).rgb, L.M);
+    vec2 UV2 = UV;
+    if (E.Horz) {
+        UV2.y += E.StepSize * Blend;
     }
+    else {
+        UV2.x += E.StepSize * Blend;
+    }
+    
+
+    FragCr = vec4(textureLod(OutputTextureUniform, UV2, 0).rgb, L.M);
 }
 
 )GLSL";
@@ -150,7 +142,7 @@ extern const char* const RaycasterComputeKernel = R"GLSL(
 #define SVO_NODE_CHILD_PTR_MASK 0x7FFF0000U
 #define SVO_FAR_PTR_BIT_MASK    0x80000000U
 
-#define MAX_STEPS 128
+#define MAX_STEPS 256
 #define SCREEN_DIM 512
 #define EMPTY_KEY 0xFFFFFFFF
 
@@ -561,13 +553,15 @@ vec3 Raycast(in ray R)
                     }
                     else
                     {
-                        return vec3(0.16);
+                        return vec3(1, 0, 0);
+                        //return vec3(0.16);
                     }
                 }
             }
             else
             {
-                return vec3(0.16);
+                        return vec3(1, 0, 1);
+                //return vec3(0.16);
             }
         }
     }

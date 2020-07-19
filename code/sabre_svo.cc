@@ -473,7 +473,7 @@ BuildSubOctreeRecursive(svo_node* Parent,
 
     uvec3 Radius = uvec3(Scale >> 1U);
 
-    const node_ref ParentRef = node_ref{ ParentBlk, Parent };
+    const node_ref ParentRef{ ParentBlk, Parent };
 
     for (u32 Oct = 0; Oct < 8; ++Oct)
     {

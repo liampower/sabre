@@ -785,6 +785,7 @@ ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
 
         // Compute max scale exponent from mesh max and min vertices.
         f32 MaxDim = GetMeshMaxDimension(&Data->meshes[0].primitives[0]);
+        printf("%lf\n", f64(MaxDim));
 
         assert(MaxDim > 0);
         u32 ScaleExponent = NextPowerOf2Exponent((u32)ceilf(MaxDim));
@@ -839,3 +840,4 @@ ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
         return nullptr;
     }
 }
+
