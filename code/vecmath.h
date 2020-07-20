@@ -6,11 +6,13 @@
 namespace vm
 {
 
-constexpr float Pi32  = 3.14159265f;
-constexpr float Sqrt2 = 1.41421569f;
-constexpr float InvSqrt2 = 0.70710678f;
-constexpr float Epsilon = FLT_EPSILON;
-constexpr float PiOver180Dg = 0.01745329f;
+constexpr float PI_32  = 3.14159265f;
+constexpr float SQRT_2 = 1.41421569f;
+constexpr float INV_SQRT_2 = 0.70710678f;
+constexpr float EPSILON = FLT_EPSILON;
+constexpr float PI_OVER_180_DG = 0.01745329f;
+constexpr float F32_MAX = FLT_MAX;
+constexpr float F32_MIN = FLT_MIN;
 
 
 // {{{ Vectors
@@ -146,19 +148,19 @@ Sign(vec4 V)
 static inline int
 Round(float X)
 {
-    return (int)std::roundf(X);
+    return static_cast<int>(std::roundf(X));
 }
 
 static inline u32
 SafeIntToU32(int X)
 {
-    return (u32)(Maximum(X, 0));
+    return static_cast<u32>(Maximum(X, 0));
 }
 
 constexpr inline float
 Rads(float Degrees)
 {
-    return (Degrees*PiOver180Dg);
+    return (Degrees*PI_OVER_180_DG);
 }
 
 // Min/Max for vectors are always component-wise
@@ -394,13 +396,13 @@ constexpr bvec2 NotEqual(gvec2<c> L, gvec2<c> R)
 template<>
 inline bvec2 Equal(vec2 L, vec2 R)
 {
-    return bvec2{ fabs(L.X - R.X) < Epsilon, fabs(L.Y - R.Y) < Epsilon };
+    return bvec2{ fabs(L.X - R.X) < EPSILON, fabs(L.Y - R.Y) < EPSILON };
 }
 
 template<>
 inline bvec2 NotEqual(vec2 L, vec2 R)
 {
-    return bvec2{ fabs(L.X - R.X) > Epsilon, fabs(L.Y - R.Y) > Epsilon };
+    return bvec2{ fabs(L.X - R.X) > EPSILON, fabs(L.Y - R.Y) > EPSILON };
 }
 
 
@@ -448,9 +450,9 @@ template<>
 inline bvec3 Equal(vec3 L, vec3 R)
 {
     return bvec3{ 
-        std::fabs(L.X - R.X) < Epsilon,
-        std::fabs(L.Y - R.Y) < Epsilon,
-        std::fabs(L.Z - R.Z) < Epsilon,
+        std::fabs(L.X - R.X) < EPSILON,
+        std::fabs(L.Y - R.Y) < EPSILON,
+        std::fabs(L.Z - R.Z) < EPSILON,
     };
 }
 
@@ -458,9 +460,9 @@ template<>
 inline bvec3 NotEqual(vec3 L, vec3 R)
 {
     return bvec3{ 
-        std::fabs(L.X - R.X) > Epsilon,
-        std::fabs(L.Y - R.Y) > Epsilon,
-        std::fabs(L.Z - R.Z) > Epsilon,
+        std::fabs(L.X - R.X) > EPSILON,
+        std::fabs(L.Y - R.Y) > EPSILON,
+        std::fabs(L.Z - R.Z) > EPSILON,
     };
 }
 
