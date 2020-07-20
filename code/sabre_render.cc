@@ -15,6 +15,10 @@ using namespace vm;
 static constexpr uint WORK_SIZE_X = 512U;
 static constexpr uint WORK_SIZE_Y = 512U;
 
+// Maximum size (in bytes) of the SVO SSBO GPU memory
+// buffer.
+static constexpr usize MAX_SVO_SSBO_SIZE = 1024ULL*1024ULL*32ULL;
+
 // The actual memory used for the hashmap buffer is
 // HTABLE_SLOT_COUNT * sizeof(htable_entry). This is usually
 // 8 bytes. 
@@ -224,12 +228,14 @@ UploadSvoBlockData(const svo* const Svo)
     usize FarPtrBlkSize = (SBR_FAR_PTRS_PER_BLK * sizeof(far_ptr));
     usize BlkSize = NodeBlkSize + FarPtrBlkSize;
 
-    // The minimum SSBO size guaranteed by the implementation is 128MiB. To be
-    // safe (and to avoid gratuitous memory hogging) we allocate 16MiB for the
-    // view buffer.
-    usize MaxSSBOSize = 16777216ULL;
-    usize MaxViewableBlkCount = (MaxSSBOSize / BlkSize);
+    usize MaxViewableBlkCount = (MAX_SVO_SSBO_SIZE / BlkSize);
     usize ViewableBlkCount = Minimum(MaxViewableBlkCount, (usize)Svo->UsedBlockCount);
+
+    if (ViewableBlkCount < static_cast<usize>(Svo->UsedBlockCount))
+    {
+        fprintf(stderr, "[WARNING] SVO block data exceeds max GPU buffer size\n");
+    }
+
     usize NodeBufferSize = NodeBlkSize * ViewableBlkCount;
     usize FarPtrBufferSize = FarPtrBlkSize * ViewableBlkCount;
 
