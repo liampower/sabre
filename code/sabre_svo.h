@@ -53,7 +53,6 @@ struct far_ptr
 
 struct attrib_data
 {
-    u32 RegionKey;
     u32 VoxelKey;
     packed_snorm3 PackedNormal;
     packed_snorm3 PackedColour;
@@ -144,15 +143,13 @@ extern "C" void
 DeleteVoxel(svo* Tree, vm::vec3 P);
 
 extern "C" svo_bias
-ComputeScaleBias(u32 MaxDepth,
-                 u32 ScaleExponent);
+ComputeScaleBias(u32 MaxDepth, u32 ScaleExponent);
 
 extern "C" void
 DeleteScene(svo* Tree);
 
 extern "C" svo*
-ImportGLBFile(u32 MaxDepth,
-              const char* const GLTFPath);
+ImportGLBFile(u32 MaxDepth, const char* const GLBPath);
 
 extern "C" svo*
 CreateScene(u32 ScaleExp,
