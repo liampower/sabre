@@ -228,8 +228,8 @@ ComputeVoxelColour(const tri_data* const Tri, vec3 VoxelCentre)
 
         vec3 B = BarycentricCoords(Tri->T.V0, Tri->T.V1, Tri->T.V2, VoxelCentre);
         vec2 VoxelUV;
-        VoxelUV.X = Clamp(V0.X + B.Y*(V1.X - V0.X) + B.Z*(V2.X - V0.X), 0.0f, 0.99f);
-        VoxelUV.Y = Clamp(V0.Y + B.Y*(V1.Y - V0.Y) + B.Z*(V2.Y - V0.Y), 0.0f, 0.99f);
+        VoxelUV.X = fabsf(fmod(V0.X + B.Y*(V1.X - V0.X) + B.Z*(V2.X - V0.X), 1.0f));
+        VoxelUV.Y = fabsf(fmod(V0.Y + B.Y*(V1.Y - V0.Y) + B.Z*(V2.Y - V0.Y), 1.0f));
 
         return SampleMaterialColour(Mat, VoxelUV);
     }
@@ -605,6 +605,46 @@ GetOctantCentre(u32 Oct, u32 Scale, vec3 ParentCentreP)
     return ParentCentreP + (vec3(X, Y, Z) * Rad);
 }
 
+static inline void
+MeshMinMaxDimensions(const cgltf_mesh* const Mesh, vec3& MinOut, vec3& MaxOut)
+{
+    // Check the max/min values of each primitive
+    vec3 Min(F32_MAX);
+    vec3 Max(F32_MIN);
+
+    for (u32 PrimIndex = 0; PrimIndex < Mesh->primitives_count; ++PrimIndex)
+    {
+        const cgltf_primitive* const Prim = &Mesh->primitives[PrimIndex];
+        cgltf_accessor* PosAttr = nullptr;
+        for (u32 AttrIndex = 0; AttrIndex < Prim->attributes_count; ++AttrIndex)
+        {
+            if (cgltf_attribute_type_position == Prim->attributes[AttrIndex].type)
+            {
+                PosAttr = Prim->attributes[AttrIndex].data;
+            }
+        }
+
+        if (nullptr != PosAttr && PosAttr->has_min)
+        {
+            f32* Mins = PosAttr->min;
+            f32* Maxes = PosAttr->max;
+
+            if (Mins[0] < Min.X) Min.X = Mins[0];
+            if (Mins[1] < Min.Y) Min.Y = Mins[1];
+            if (Mins[2] < Min.Z) Min.Z = Mins[2];
+        
+            if (Maxes[0] > Max.X) Max.X = Maxes[0];
+            if (Maxes[1] > Max.Y) Max.Y = Maxes[1];
+            if (Maxes[2] > Max.Z) Max.Z = Maxes[2];
+        }
+    }
+    
+    // TODO: Try to eliminate copying here
+    MinOut = Min;
+    MaxOut = Max;
+}
+
+
 static inline u32
 NextPowerOf2Exponent(u32 X)
 { 
@@ -663,7 +703,7 @@ BuildTriangleIndex(u32 MaxDepth,
             st_ctx CurrentCtx = Stack.front();
             Stack.pop_front();
 
-            vec3 Radius = vec3(CurrentCtx.Scale >> 1) * Bias.InvScale;
+            vec3 Radius = vec3(CurrentCtx.Scale >> 1U) * Bias.InvScale;
             alignas(16) m128 RadiusM = _mm_set_ps(0.0f, Radius.Z, Radius.Y, Radius.X);
 
             for (u32 Oct = 0; Oct < 8; ++Oct)
@@ -785,7 +825,11 @@ ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
 
         // Compute max scale exponent from mesh max and min vertices.
         f32 MaxDim = GetMeshMaxDimension(&Data->meshes[0].primitives[0]);
+        vec3 Min, Max;
+        MeshMinMaxDimensions(&Data->meshes[0], Min, Max);
         printf("%lf\n", f64(MaxDim));
+        DEBUGPrintVec3(Min);
+        DEBUGPrintVec3(Max);
 
         assert(MaxDim > 0);
         u32 ScaleExponent = NextPowerOf2Exponent((u32)ceilf(MaxDim));
