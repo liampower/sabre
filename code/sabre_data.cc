@@ -112,9 +112,10 @@ luma SampleLuma(vec2 UV)
 }
 
 
+
 void main()
 {
-    FragCr = texture(OutputTextureUniform, UV);
+    //FragCr = texture(OutputTextureUniform, UV);
     luma L = SampleLuma(UV);
     float Blend = ComputeBlendFactor(L);
     edge E = ComputeEdge(L);
@@ -129,6 +130,7 @@ void main()
     
 
     FragCr = vec4(textureLod(OutputTextureUniform, UV2, 0).rgb, L.M);
+    //FragCr = texture(OutputTextureUniform, UV);
 }
 
 )GLSL";
@@ -360,55 +362,51 @@ struct st_frame
 // * Vector min/max map directly to asm instructions
 
 
-uvec3 Part1By2_32v(uvec3 X)
+uint HashVec3(uvec3 V)
 {
-    X &= 0X000003ff;                  // X = ---- ---- ---- ---- ---- --98 7654 3210
-    X = (X ^ (X << 16)) & 0Xff0000ff; // X = ---- --98 ---- ---- ---- ---- 7654 3210
-    X = (X ^ (X <<  8)) & 0X0300f00f; // X = ---- --98 ---- ---- 7654 ---- ---- 3210
-    X = (X ^ (X <<  4)) & 0X030c30c3; // X = ---- --98 ---- 76-- --54 ---- 32-- --10
-    X = (X ^ (X <<  2)) & 0X09249249; // X = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
-
-    return X;
-}
-
-uint ComputeMortonKey3(uvec3 V)
-{
-    uvec3 K = Part1By2_32v(V) << uvec3(0, 1, 2);
-    return K.z + K.y + K.x;
+    return (V.x*73856093U) ^ (V.y*19349663U) ^ (V.z*83492791U);
 }
 
 
 uvec4 ComputeHashes(uint Key)
 {
-    // Hash constants; just random integers
-    const uvec4 C0 = uvec4(3749099615, 4208530976, 3117210442, 2719242218);
-    const uvec4 C1 = uvec4(2147483647, 3501430569, 1291568700, 848507473);
-    const uint P = 334214459;
+    const uvec4 S0 = uvec4(16, 18, 17, 16);
+    const uvec4 S1 = uvec4(15, 16, 15, 16);
+    const uvec4 S2 = uvec4(16, 17, 16, 15);
 
-    return (((C0 * Key) + C1) % P) % (TableSizeUniform - 1);
+    const uvec4 C0 = uvec4(0x7feb352d, 0xa136aaad, 0x24f4d2cd, 0xe2d0d4cb);
+    const uvec4 C1 = uvec4(0x846ca68b, 0x9f6d62d7, 0x1ba3b969, 0x3c6ad939);
+
+    uvec4 K = uvec4(Key);
+    K ^= K >> S0;
+    K *= C0;
+    K ^= K >> S1;
+    K *= C1;
+    K ^= K >> S2;
+    return K % (TableSizeUniform - 1);
 }
 
 void LookupLeafVoxelData(uvec3 Pos, out vec3 NormalOut, out vec3 ColourOut)
 {
-    uint Key = ComputeMortonKey3(Pos);
+    uint Key = HashVec3(Pos);
     uvec4 Hashes = ComputeHashes(Key);
 
-    if (LeafInputBuffer.Entries[Hashes.x].Key != EMPTY_KEY)
+    if (LeafInputBuffer.Entries[Hashes.x].Key == Key)
     {
         NormalOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.x].PackedNormal).xyz;
         ColourOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.x].PackedColour).xyz;
     }
-    else if (LeafInputBuffer.Entries[Hashes.y].Key != EMPTY_KEY)
+    else if (LeafInputBuffer.Entries[Hashes.y].Key == Key)
     {
         NormalOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.y].PackedNormal).xyz;
         ColourOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.y].PackedColour).xyz;
     }
-    else if (LeafInputBuffer.Entries[Hashes.z].Key != EMPTY_KEY)
+    else if (LeafInputBuffer.Entries[Hashes.z].Key == Key)
     {
         NormalOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.z].PackedNormal).xyz;
         ColourOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.z].PackedColour).xyz;
     }
-    else if (LeafInputBuffer.Entries[Hashes.w].Key != EMPTY_KEY)
+    else if (LeafInputBuffer.Entries[Hashes.w].Key == Key)
     {
         NormalOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.w].PackedNormal).xyz;
         ColourOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.w].PackedColour).xyz;
@@ -600,7 +598,7 @@ extern const char* const HasherComputeKernel = R"GLSL(
 layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
 #define EMPTY_KEY 0xFFFFFFFF
-#define MAX_STEPS 25
+#define MAX_STEPS 1024
 
 struct entry
 {
@@ -622,15 +620,22 @@ layout (std430, binding = 1) readonly restrict buffer data_in
 layout (location = 2) uniform uint TableSizeUniform;
 layout (location = 3) uniform uint OffsetUniform;
 
-
 uvec4 ComputeHashes(uint Key)
 {
-    // Hash constants; just random integers
-    const uvec4 C0 = uvec4(3749099615, 4208530976, 3117210442, 2719242218);
-    const uvec4 C1 = uvec4(2147483647, 3501430569, 1291568700, 848507473);
-    const uint P = 334214459;
+    const uvec4 S0 = uvec4(16, 18, 17, 16);
+    const uvec4 S1 = uvec4(15, 16, 15, 16);
+    const uvec4 S2 = uvec4(16, 17, 16, 15);
 
-    return (((C0 * Key) + C1) % P) % (TableSizeUniform - 1);
+    const uvec4 C0 = uvec4(0x7feb352d, 0xa136aaad, 0x24f4d2cd, 0xe2d0d4cb);
+    const uvec4 C1 = uvec4(0x846ca68b, 0x9f6d62d7, 0x1ba3b969, 0x3c6ad939);
+
+    uvec4 K = uvec4(Key);
+    K ^= K >> S0;
+    K *= C0;
+    K ^= K >> S1;
+    K *= C1;
+    K ^= K >> S2;
+    return K % (TableSizeUniform - 1);
 }
 
 void main()
@@ -650,21 +655,13 @@ void main()
         {
             uvec4 Hashes = ComputeHashes(InputPair.Key);
 
-            if (Slot0 == Hashes.x) Slot0 = Hashes.y;
-            else if (Slot0 == Hashes.y) Slot0 = Hashes.z;
-            else if (Slot0 == Hashes.z) Slot0 = Hashes.w;
-            else Slot0 = Hashes.x;
+            bvec4 Msk = equal(Hashes, uvec4(Slot0));
+            Slot0 = uint(dot(mix(uvec4(0), Hashes.yzwx, Msk), uvec4(1)));
         }
         else
         {
             break;
         }
-    }
-
-    // Failed to find slot for key
-    if (Step == MAX_STEPS)
-    {
-        atomicAdd(HTableOutBuffer.Entries[TableSizeUniform - 1].Key, 1);
     }
 }
 
