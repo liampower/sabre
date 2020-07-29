@@ -17,18 +17,19 @@ static constexpr uint WORK_SIZE_Y = 512U;
 
 // Maximum size (in bytes) of the SVO SSBO GPU memory
 // buffer.
-static constexpr usize MAX_SVO_SSBO_SIZE = 1024ULL*1024ULL*32ULL;
+static constexpr usize MAX_SVO_SSBO_SIZE = 1024ULL*1024ULL*128ULL;
 
 // The actual memory used for the hashmap buffer is
 // HTABLE_SLOT_COUNT * sizeof(htable_entry). This is usually
 // 8 bytes. 
-static constexpr usize HTABLE_SLOT_COUNT = 1024U*1024U*256U;
+static constexpr usize HTABLE_SLOT_COUNT = 1024ULL*1024ULL*256ULL;
 
 typedef GLuint gl_uint;
 typedef GLint  gl_int;
 typedef GLsizei gl_sizei;
 typedef GLenum gl_enum;
 typedef GLuint64 gl_u64;
+
 
 enum cs_bindings
 {
@@ -186,6 +187,7 @@ CreateLeafDataHashTable(render_data* RenderData, const attrib_data* const Data, 
 
     RenderData->HTableInputBuffer = DataBuffers[0];
     RenderData->HTableOutputBuffer = DataBuffers[1];
+
 
     return 0;
 }
@@ -422,8 +424,8 @@ CreateRenderImage(int ImgWidth, int ImgHeight)
     glBindTexture(GL_TEXTURE_2D, OutputTexture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, ImgWidth, ImgHeight, 0, GL_RGBA, GL_FLOAT, nullptr);
 
     glBindImageTexture(BIND_RENDER_TEX, OutputTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
