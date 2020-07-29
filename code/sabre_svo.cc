@@ -519,7 +519,7 @@ BuildSubOctreeRecursive(svo_node* Parent,
                 vec3 Normal = NormalSampler->SamplerFn(OctCentre, Tree, NormalSampler->UserData);
                 vec3 Colour = ColourSampler->SamplerFn(OctCentre, Tree, ColourSampler->UserData);
                 
-                Tree->AttribData.push_back(attrib_data{ EncodeMorton3_32(uvec3(OctCentre)), PackVec3ToSnorm3(Normal),  PackVec3ToSnorm3(Colour) });
+                Tree->AttribData.push_back(attrib_data{ HashVec3(uvec3(OctCentre)), PackVec3ToSnorm3(Normal),  PackVec3ToSnorm3(Colour) });
             }
         }
     }
