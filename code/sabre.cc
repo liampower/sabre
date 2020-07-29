@@ -251,7 +251,7 @@ main(int ArgCount, const char** const Args)
     Cam.Right = vec3(1, 0, 0);
     Cam.Up = vec3(0, 1, 0);
     Cam.Position = vec3(4, 4, 96);
-    Cam.Velocity = 1.32f;
+    Cam.Velocity = 0.15f;
 
     const vec3 WorldYAxis = vec3(0, 1, 0);
 
@@ -381,6 +381,7 @@ main(int ArgCount, const char** const Args)
 
             if (WorldSvo)
             {
+                f64 CurrentTime = glfwGetTime();
                 if (ImGui::BeginMainMenuBar())
                 {
                     ImGui::Text("%fms CPU  %fms GPU  %d BLKS  %d LVLS  %llu DATA", 
@@ -403,6 +404,8 @@ main(int ArgCount, const char** const Args)
                 if (glfwGetKey(Window, GLFW_KEY_D)) Cam.Position += Cam.Right * Cam.Velocity;
                 if (glfwGetKey(Window, GLFW_KEY_SPACE)) Cam.Position += Cam.Up * Cam.Velocity;
                 if (glfwGetKey(Window, GLFW_KEY_LEFT_SHIFT)) Cam.Position -= Cam.Up * Cam.Velocity;
+                if (glfwGetKey(Window, GLFW_KEY_V)&& ((CurrentTime - LastMouseRTime)) >= 1) Cam.Velocity += 0.15f;
+                if (glfwGetKey(Window, GLFW_KEY_X)&& ((CurrentTime - LastMouseRTime)) >= 1) Cam.Velocity -= 0.15f;
 
                 if (glfwGetKey(Window, GLFW_KEY_Y))
                 {
@@ -419,7 +422,6 @@ main(int ArgCount, const char** const Args)
                     f64 MouseX, MouseY;
                     glfwGetCursorPos(Window, &MouseX, &MouseY);
 
-                    f64 CurrentTime = glfwGetTime();
                     if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_RIGHT) && ((CurrentTime - LastMouseRTime)) >= 1)
                     {
                         InsertVoxelAtMousePoint(MouseX, MouseY, Cam, WorldSvo);
