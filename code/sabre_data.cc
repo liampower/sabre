@@ -22,11 +22,115 @@ out vec4 FragCr;
 
 uniform sampler2D OutputTextureUniform;
 
+struct luma
+{
+    float N, S, E, W, M;
+    float Min, Max, Contrast;
+
+    float NE, NW, SE, SW;
+};
+
+struct edge
+{
+    bool Horz;
+    float StepSize;
+};
+
+
 in vec2 UV;
+
+
+float ComputeBlendFactor(luma L)
+{
+    float F = 2.0 * (L.N + L.E + L.S + L.W);
+    F += L.NE + L.NW + L.SE + L.SW;
+    F *= 1/12.0;
+    F = abs(F - L.M);
+    F = clamp(F / L.Contrast, 0, 1);
+    float B = smoothstep(0, 1, F);
+    
+    return B*B*0.75;
+}
+
+edge ComputeEdge(in luma L)
+{
+    edge E;
+    float HorzContrast =
+        abs(L.N + L.S - 2 * L.M) * 2 +
+        abs(L.NE + L.SE - 2 * L.E) +
+        abs(L.NW + L.SW - 2 * L.W);
+    float VertContrast =
+        abs(L.E + L.W - 2 * L.M) * 2 +
+        abs(L.NE + L.NW - 2 * L.N) +
+        abs(L.SE + L.SW - 2 * L.S);
+
+    E.Horz = HorzContrast >= VertContrast;
+    E.StepSize = E.Horz ? 1/512.0 : 1/512.0;
+    float pLuminance = E.Horz ? L.N : L.E;
+	float nLuminance = E.Horz ? L.S : L.W;
+    float pGradient = abs(pLuminance - L.M);
+    float nGradient = abs(nLuminance - L.M);
+
+	if (pGradient < nGradient) {
+        E.StepSize = -E.StepSize;
+    }
+
+    return E;
+}
+
+luma SampleLuma(vec2 UV)
+{
+    const vec2 Offsets[8] = {
+        vec2(0, 1),
+        vec2(1, 0),
+        vec2(0, -1),
+        vec2(-1, 0),
+
+        vec2(1, 1),
+        vec2(-1, 1),
+        vec2(1, -1),
+        vec2(-1, -1),
+    };
+    const float Ts = 1/512.0;
+
+    float M = texture(OutputTextureUniform, UV).g;
+    float N = texture(OutputTextureUniform, UV + Offsets[0]*Ts).g;
+    float E = texture(OutputTextureUniform, UV + Offsets[1]*Ts).g;
+    float S = texture(OutputTextureUniform, UV + Offsets[2]*Ts).g;
+    float W = texture(OutputTextureUniform, UV + Offsets[3]*Ts).g;
+    float NE = texture(OutputTextureUniform, UV + Offsets[4]*Ts).g;
+    float NW = texture(OutputTextureUniform, UV + Offsets[5]*Ts).g;
+    float SE = texture(OutputTextureUniform, UV + Offsets[6]*Ts).g;
+    float SW = texture(OutputTextureUniform, UV + Offsets[7]*Ts).g;
+
+    float Min = min(min(min(min(M, N), E), S), W);
+    float Max = max(max(max(max(M, N), E), S), W);
+
+    float Contrast = Max - Min;
+
+    return luma(N, S, E, W, M, Min, Max, Contrast, NE, NW, SE, SW);
+}
+
+
 
 void main()
 {
-    FragCr = texture(OutputTextureUniform, UV);
+    //FragCr = texture(OutputTextureUniform, UV);
+    luma L = SampleLuma(UV);
+    float Blend = ComputeBlendFactor(L);
+    edge E = ComputeEdge(L);
+
+    vec2 UV2 = UV;
+    if (E.Horz) {
+        UV2.y += E.StepSize * Blend;
+    }
+    else {
+        UV2.x += E.StepSize * Blend;
+    }
+    
+
+    FragCr = vec4(textureLod(OutputTextureUniform, UV2, 0).rgb, L.M);
+    //FragCr = texture(OutputTextureUniform, UV);
 }
 
 )GLSL";
@@ -40,7 +144,7 @@ extern const char* const RaycasterComputeKernel = R"GLSL(
 #define SVO_NODE_CHILD_PTR_MASK 0x7FFF0000U
 #define SVO_FAR_PTR_BIT_MASK    0x80000000U
 
-#define MAX_STEPS 128
+#define MAX_STEPS 256
 #define SCREEN_DIM 512
 #define EMPTY_KEY 0xFFFFFFFF
 
@@ -258,55 +362,51 @@ struct st_frame
 // * Vector min/max map directly to asm instructions
 
 
-uvec3 Part1By2_32v(uvec3 X)
+uint HashVec3(uvec3 V)
 {
-    X &= 0X000003ff;                  // X = ---- ---- ---- ---- ---- --98 7654 3210
-    X = (X ^ (X << 16)) & 0Xff0000ff; // X = ---- --98 ---- ---- ---- ---- 7654 3210
-    X = (X ^ (X <<  8)) & 0X0300f00f; // X = ---- --98 ---- ---- 7654 ---- ---- 3210
-    X = (X ^ (X <<  4)) & 0X030c30c3; // X = ---- --98 ---- 76-- --54 ---- 32-- --10
-    X = (X ^ (X <<  2)) & 0X09249249; // X = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
-
-    return X;
-}
-
-uint ComputeMortonKey3(uvec3 V)
-{
-    uvec3 K = Part1By2_32v(V) << uvec3(0, 1, 2);
-    return K.z + K.y + K.x;
+    return (V.x*73856093U) ^ (V.y*19349663U) ^ (V.z*83492791U);
 }
 
 
 uvec4 ComputeHashes(uint Key)
 {
-    // Hash constants; just random integers
-    const uvec4 C0 = uvec4(3749099615, 4208530976, 3117210442, 2719242218);
-    const uvec4 C1 = uvec4(2147483647, 3501430569, 1291568700, 848507473);
-    const uint P = 334214459;
+    const uvec4 S0 = uvec4(16, 18, 17, 16);
+    const uvec4 S1 = uvec4(15, 16, 15, 16);
+    const uvec4 S2 = uvec4(16, 17, 16, 15);
 
-    return (((C0 * Key) + C1) % P) % (TableSizeUniform - 1);
+    const uvec4 C0 = uvec4(0x7feb352d, 0xa136aaad, 0x24f4d2cd, 0xe2d0d4cb);
+    const uvec4 C1 = uvec4(0x846ca68b, 0x9f6d62d7, 0x1ba3b969, 0x3c6ad939);
+
+    uvec4 K = uvec4(Key);
+    K ^= K >> S0;
+    K *= C0;
+    K ^= K >> S1;
+    K *= C1;
+    K ^= K >> S2;
+    return K % (TableSizeUniform - 1);
 }
 
 void LookupLeafVoxelData(uvec3 Pos, out vec3 NormalOut, out vec3 ColourOut)
 {
-    uint Key = ComputeMortonKey3(Pos);
+    uint Key = HashVec3(Pos);
     uvec4 Hashes = ComputeHashes(Key);
 
-    if (LeafInputBuffer.Entries[Hashes.x].Key != EMPTY_KEY)
+    if (LeafInputBuffer.Entries[Hashes.x].Key == Key)
     {
         NormalOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.x].PackedNormal).xyz;
         ColourOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.x].PackedColour).xyz;
     }
-    else if (LeafInputBuffer.Entries[Hashes.y].Key != EMPTY_KEY)
+    else if (LeafInputBuffer.Entries[Hashes.y].Key == Key)
     {
         NormalOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.y].PackedNormal).xyz;
         ColourOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.y].PackedColour).xyz;
     }
-    else if (LeafInputBuffer.Entries[Hashes.z].Key != EMPTY_KEY)
+    else if (LeafInputBuffer.Entries[Hashes.z].Key == Key)
     {
         NormalOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.z].PackedNormal).xyz;
         ColourOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.z].PackedColour).xyz;
     }
-    else if (LeafInputBuffer.Entries[Hashes.w].Key != EMPTY_KEY)
+    else if (LeafInputBuffer.Entries[Hashes.w].Key == Key)
     {
         NormalOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.w].PackedNormal).xyz;
         ColourOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.w].PackedColour).xyz;
@@ -451,23 +551,18 @@ vec3 Raycast(in ray R)
                     }
                     else
                     {
-                        return vec3(1, 0, 1);
+                        return vec3(0.16);
                     }
                 }
             }
             else
             {
-                return vec3(1, 1, 0);
+                return vec3(0.16);
             }
         }
     }
-    /*else
-    {
-        // Ray doesn't hit octree --- output background colour
-        return vec3(0.08);
-    }*/
 
-    return vec3(1, 0, 0);
+    return vec3(0.16);
 }
 
 
@@ -501,7 +596,7 @@ extern const char* const HasherComputeKernel = R"GLSL(
 layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
 #define EMPTY_KEY 0xFFFFFFFF
-#define MAX_STEPS 25
+#define MAX_STEPS 1024
 
 struct entry
 {
@@ -523,15 +618,22 @@ layout (std430, binding = 1) readonly restrict buffer data_in
 layout (location = 2) uniform uint TableSizeUniform;
 layout (location = 3) uniform uint OffsetUniform;
 
-
 uvec4 ComputeHashes(uint Key)
 {
-    // Hash constants; just random integers
-    const uvec4 C0 = uvec4(3749099615, 4208530976, 3117210442, 2719242218);
-    const uvec4 C1 = uvec4(2147483647, 3501430569, 1291568700, 848507473);
-    const uint P = 334214459;
+    const uvec4 S0 = uvec4(16, 18, 17, 16);
+    const uvec4 S1 = uvec4(15, 16, 15, 16);
+    const uvec4 S2 = uvec4(16, 17, 16, 15);
 
-    return (((C0 * Key) + C1) % P) % (TableSizeUniform - 1);
+    const uvec4 C0 = uvec4(0x7feb352d, 0xa136aaad, 0x24f4d2cd, 0xe2d0d4cb);
+    const uvec4 C1 = uvec4(0x846ca68b, 0x9f6d62d7, 0x1ba3b969, 0x3c6ad939);
+
+    uvec4 K = uvec4(Key);
+    K ^= K >> S0;
+    K *= C0;
+    K ^= K >> S1;
+    K *= C1;
+    K ^= K >> S2;
+    return K % (TableSizeUniform - 1);
 }
 
 void main()
@@ -551,21 +653,13 @@ void main()
         {
             uvec4 Hashes = ComputeHashes(InputPair.Key);
 
-            if (Slot0 == Hashes.x) Slot0 = Hashes.y;
-            else if (Slot0 == Hashes.y) Slot0 = Hashes.z;
-            else if (Slot0 == Hashes.z) Slot0 = Hashes.w;
-            else Slot0 = Hashes.x;
+            bvec4 Msk = equal(Hashes, uvec4(Slot0));
+            Slot0 = uint(dot(mix(uvec4(0), Hashes.yzwx, Msk), uvec4(1)));
         }
         else
         {
             break;
         }
-    }
-
-    // Failed to find slot for key
-    if (Step == MAX_STEPS)
-    {
-        atomicAdd(HTableOutBuffer.Entries[TableSizeUniform - 1].Key, 1);
     }
 }
 

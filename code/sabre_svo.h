@@ -53,9 +53,7 @@ struct far_ptr
 
 struct attrib_data
 {
-    // TODO(Liam): One-to-many for K-V here? Might need
-    // more data arrays for normals, colours, etc.
-    u32 Key;
+    u32 VoxelKey;
     packed_snorm3 PackedNormal;
     packed_snorm3 PackedColour;
 };
@@ -132,11 +130,6 @@ struct svo
     std::vector<attrib_data> AttribData;
 };
 
-typedef sbr_surface (*intersector_fn)(vm::vec3, vm::vec3, const svo* const, const void* const);
-typedef vm::vec3 (*normal_fn)(vm::vec3, const svo* const, const void* const);
-typedef vm::vec3 (*colour_fn)(vm::vec3, const svo* const, const void* const);
-
-
 extern vm::vec3
 GetNearestFreeSlot(vm::vec3 Pos, vm::vec3 Dir, const svo* const Tree);
 
@@ -150,15 +143,13 @@ extern "C" void
 DeleteVoxel(svo* Tree, vm::vec3 P);
 
 extern "C" svo_bias
-ComputeScaleBias(u32 MaxDepth,
-                 u32 ScaleExponent);
+ComputeScaleBias(u32 MaxDepth, u32 ScaleExponent);
 
 extern "C" void
 DeleteScene(svo* Tree);
 
 extern "C" svo*
-ImportGLBFile(u32 MaxDepth,
-              const char* const GLTFPath);
+ImportGLBFile(u32 MaxDepth, const char* const GLBPath);
 
 extern "C" svo*
 CreateScene(u32 ScaleExp,
@@ -177,16 +168,11 @@ GetSvoUsedBlockCount(const svo* const Svo);
 extern "C" unsigned int
 GetSvoDepth(const svo* const Svo);
 
-extern "C" void*
-CopyRawBlockData(const svo_block* const Blk, usize CopySize, void* const BlkDataOut);
-
-extern "C" svo*
-CreateEmptySvo(u32 MaxDepth, u32 ScaleExponent);
-
 static inline void
 DEBUGPrintVec3(vm::vec3 V)
 {
-    printf("(%f, %f, %f)", (f64)V.X, (f64)V.Y, (f64)V.Z);
+    printf("(%f, %f, %f)\n", (f64)V.X, (f64)V.Y, (f64)V.Z);
 }
 
 #endif
+

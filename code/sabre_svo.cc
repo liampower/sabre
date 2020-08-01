@@ -218,7 +218,7 @@ ComputeScaleBias(u32 MaxDepth, u32 ScaleExponent)
     if (MaxDepth > ScaleExponent)
     {
         u32 Bias = (MaxDepth - ScaleExponent);
-        f32 InvBias = 1.0f / ((f32)(1U << Bias));
+        f32 InvBias = 1.0f / (static_cast<f32>(1U << Bias));
 
         return svo_bias{ InvBias, Bias };
     }
@@ -465,15 +465,15 @@ BuildSubOctreeRecursive(svo_node* Parent,
         svo_block* Blk;
     };
 
-    u32 NextScale = Scale >> 1;
+    u32 NextScale = Scale >> 1U;
     u32 NextDepth = Depth + 1;
 
     node_child Children[8];
     u32 LastChildIndex = 0;
 
-    uvec3 Radius = uvec3(Scale >> 1);
+    uvec3 Radius = uvec3(Scale >> 1U);
 
-    const node_ref ParentRef = node_ref{ ParentBlk, Parent };
+    const node_ref ParentRef{ ParentBlk, Parent };
 
     for (u32 Oct = 0; Oct < 8; ++Oct)
     {
@@ -519,7 +519,7 @@ BuildSubOctreeRecursive(svo_node* Parent,
                 vec3 Normal = NormalSampler->SamplerFn(OctCentre, Tree, NormalSampler->UserData);
                 vec3 Colour = ColourSampler->SamplerFn(OctCentre, Tree, ColourSampler->UserData);
                 
-                Tree->AttribData.push_back(attrib_data{ EncodeMorton3_32(uvec3(OctCentre)), PackVec3ToSnorm3(Normal),  PackVec3ToSnorm3(Colour) });
+                Tree->AttribData.push_back(attrib_data{ HashVec3(uvec3(OctCentre)), PackVec3ToSnorm3(Normal),  PackVec3ToSnorm3(Colour) });
             }
         }
     }

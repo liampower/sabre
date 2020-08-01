@@ -6,11 +6,13 @@
 namespace vm
 {
 
-constexpr float Pi32  = 3.14159265f;
-constexpr float Sqrt2 = 1.41421569f;
-constexpr float InvSqrt2 = 0.70710678f;
-constexpr float Epsilon = FLT_EPSILON;
-constexpr float PiOver180Dg = 0.01745329f;
+constexpr float PI_32  = 3.14159265f;
+constexpr float SQRT_2 = 1.41421569f;
+constexpr float INV_SQRT_2 = 0.70710678f;
+constexpr float EPSILON = FLT_EPSILON;
+constexpr float PI_OVER_180_DG = 0.01745329f;
+constexpr float F32_MAX = FLT_MAX;
+constexpr float F32_MIN = FLT_MIN;
 
 
 // {{{ Vectors
@@ -146,19 +148,19 @@ Sign(vec4 V)
 static inline int
 Round(float X)
 {
-    return (int)std::roundf(X);
+    return static_cast<int>(std::roundf(X));
 }
 
 static inline u32
 SafeIntToU32(int X)
 {
-    return (u32)(Maximum(X, 0));
+    return static_cast<u32>(Maximum(X, 0));
 }
 
 constexpr inline float
 Rads(float Degrees)
 {
-    return (Degrees*PiOver180Dg);
+    return (Degrees*PI_OVER_180_DG);
 }
 
 // Min/Max for vectors are always component-wise
@@ -259,6 +261,24 @@ template <typename c> constexpr inline c
 HorzMin(gvec4<c> V)
 {
     return Minimum(V.X, Minimum(V.Y, Minimum(V.Z, V.W)));
+}
+
+template <typename c> constexpr inline gvec2<c>
+Abs(gvec2<c> V)
+{
+    return gvec2<c>{std::abs(V.X), std::abs(V.Y) };
+}
+
+template <typename c> constexpr inline gvec3<c>
+Abs(gvec3<c> V)
+{
+    return gvec3<c>{std::abs(V.X), std::abs(V.Y), std::abs(V.Z) };
+}
+
+template <typename c> constexpr inline gvec4<c>
+Abs(gvec4<c> V)
+{
+    return gvec4<c>{std::abs(V.X), std::abs(V.Y), std::abs(V.Z), std::abs(V.W) };
 }
 
 // }}}
@@ -394,13 +414,13 @@ constexpr bvec2 NotEqual(gvec2<c> L, gvec2<c> R)
 template<>
 inline bvec2 Equal(vec2 L, vec2 R)
 {
-    return bvec2{ fabs(L.X - R.X) < Epsilon, fabs(L.Y - R.Y) < Epsilon };
+    return bvec2{ fabs(L.X - R.X) < EPSILON, fabs(L.Y - R.Y) < EPSILON };
 }
 
 template<>
 inline bvec2 NotEqual(vec2 L, vec2 R)
 {
-    return bvec2{ fabs(L.X - R.X) > Epsilon, fabs(L.Y - R.Y) > Epsilon };
+    return bvec2{ fabs(L.X - R.X) > EPSILON, fabs(L.Y - R.Y) > EPSILON };
 }
 
 
@@ -448,9 +468,9 @@ template<>
 inline bvec3 Equal(vec3 L, vec3 R)
 {
     return bvec3{ 
-        std::fabs(L.X - R.X) < Epsilon,
-        std::fabs(L.Y - R.Y) < Epsilon,
-        std::fabs(L.Z - R.Z) < Epsilon,
+        std::fabs(L.X - R.X) < EPSILON,
+        std::fabs(L.Y - R.Y) < EPSILON,
+        std::fabs(L.Z - R.Z) < EPSILON,
     };
 }
 
@@ -458,9 +478,9 @@ template<>
 inline bvec3 NotEqual(vec3 L, vec3 R)
 {
     return bvec3{ 
-        std::fabs(L.X - R.X) > Epsilon,
-        std::fabs(L.Y - R.Y) > Epsilon,
-        std::fabs(L.Z - R.Z) > Epsilon,
+        std::fabs(L.X - R.X) > EPSILON,
+        std::fabs(L.Y - R.Y) > EPSILON,
+        std::fabs(L.Z - R.Z) > EPSILON,
     };
 }
 
@@ -737,25 +757,25 @@ operator%(gvec3<c> L, c R)
 template <typename c> constexpr gvec4<c>
 inline operator+(gvec4<c> L, gvec4<c> R)
 {
-    return gvec4<c>{ L.X+R.X, L.Y+R.Y, L.Z+R.Z };
+    return gvec4<c>{ L.X+R.X, L.Y+R.Y, L.Z+R.Z, L.W+R.W };
 }
 
 template <typename c> constexpr gvec4<c>
 inline operator-(gvec4<c> L, gvec4<c> R)
 {
-    return gvec4<c>{ L.X-R.X, L.Y-R.Y, L.Y-R.Y };
+    return gvec4<c>{ L.X-R.X, L.Y-R.Y, L.Z-R.Z, L.W-R.W };
 }
 
 template <typename c> constexpr gvec4<c>
 inline operator*(gvec4<c> L, gvec4<c> R)
 {
-    return gvec4<c>{ L.X*R.X, L.Y*R.Y, L.Z*R.Z };
+    return gvec4<c>{ L.X*R.X, L.Y*R.Y, L.Z*R.Z, L.W*R.W };
 }
 
 template <typename c> constexpr gvec4<c>
 inline operator/(gvec4<c> L, gvec4<c> R)
 {
-    return gvec4<c>{ L.X/R.X, L.Y/R.Y, L.Z/R.Z, L.W/R.w };
+    return gvec4<c>{ L.X/R.X, L.Y/R.Y, L.Z/R.Z, L.W/R.W };
 }
 
 template <typename c> constexpr gvec4<c>
@@ -1342,21 +1362,9 @@ Rotate(quat Rotation, vec3 V)
 
 // {{{ Morton key computation
 static inline u32
-Part1By2_32(u32 X)
+HashVec3(uvec3 V)
 {
-    X &= 0X000003ff;                  // X = ---- ---- ---- ---- ---- --98 7654 3210
-    X = (X ^ (X << 16U)) & 0Xff0000ff; // X = ---- --98 ---- ---- ---- ---- 7654 3210
-    X = (X ^ (X <<  8U)) & 0X0300f00f; // X = ---- --98 ---- ---- 7654 ---- ---- 3210
-    X = (X ^ (X <<  4U)) & 0X030c30c3; // X = ---- --98 ---- 76-- --54 ---- 32-- --10
-    X = (X ^ (X <<  2U)) & 0X09249249; // X = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
-
-    return X;
-}
-
-static inline u32
-EncodeMorton3_32(uvec3 V)
-{
-    return (Part1By2_32(V.Z) << 2U) + (Part1By2_32(V.Y) << 1U) + Part1By2_32(V.X);
+    return (V.X*73856093U) ^ (V.Y*19349663U) ^ (V.Z*83492791U);
 }
 
 using morton_key = u64;

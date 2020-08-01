@@ -8,21 +8,28 @@
 #include "sabre_svo.h"
 #include "sabre_render.h"
 #include "sabre_data.h"
-#include "sabre_math.h"
+#include "vecmath.h"
+
+using namespace vm;
 
 static constexpr uint WORK_SIZE_X = 512U;
 static constexpr uint WORK_SIZE_Y = 512U;
 
+// Maximum size (in bytes) of the SVO SSBO GPU memory
+// buffer.
+static constexpr usize MAX_SVO_SSBO_SIZE = 1024ULL*1024ULL*128ULL;
+
 // The actual memory used for the hashmap buffer is
 // HTABLE_SLOT_COUNT * sizeof(htable_entry). This is usually
 // 8 bytes. 
-static constexpr usize HTABLE_SLOT_COUNT = 1024U*1024U*128U;
+static constexpr usize HTABLE_SLOT_COUNT = 1024ULL*1024ULL*256ULL;
 
 typedef GLuint gl_uint;
 typedef GLint  gl_int;
 typedef GLsizei gl_sizei;
 typedef GLenum gl_enum;
 typedef GLuint64 gl_u64;
+
 
 enum cs_bindings
 {
@@ -181,6 +188,7 @@ CreateLeafDataHashTable(render_data* RenderData, const attrib_data* const Data, 
     RenderData->HTableInputBuffer = DataBuffers[0];
     RenderData->HTableOutputBuffer = DataBuffers[1];
 
+
     return 0;
 }
 
@@ -222,12 +230,14 @@ UploadSvoBlockData(const svo* const Svo)
     usize FarPtrBlkSize = (SBR_FAR_PTRS_PER_BLK * sizeof(far_ptr));
     usize BlkSize = NodeBlkSize + FarPtrBlkSize;
 
-    // The minimum SSBO size guaranteed by the implementation is 128MiB. To be
-    // safe (and to avoid gratuitous memory hogging) we allocate 16MiB for the
-    // view buffer.
-    usize MaxSSBOSize = 16777216ULL;
-    usize MaxViewableBlkCount = (MaxSSBOSize / BlkSize);
+    usize MaxViewableBlkCount = (MAX_SVO_SSBO_SIZE / BlkSize);
     usize ViewableBlkCount = Minimum(MaxViewableBlkCount, (usize)Svo->UsedBlockCount);
+
+    if (ViewableBlkCount < static_cast<usize>(Svo->UsedBlockCount))
+    {
+        fprintf(stderr, "[WARNING] SVO block data exceeds max GPU buffer size\n");
+    }
+
     usize NodeBufferSize = NodeBlkSize * ViewableBlkCount;
     usize FarPtrBufferSize = FarPtrBlkSize * ViewableBlkCount;
 
@@ -414,8 +424,8 @@ CreateRenderImage(int ImgWidth, int ImgHeight)
     glBindTexture(GL_TEXTURE_2D, OutputTexture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, ImgWidth, ImgHeight, 0, GL_RGBA, GL_FLOAT, nullptr);
 
     glBindImageTexture(BIND_RENDER_TEX, OutputTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
@@ -543,7 +553,7 @@ CreateRenderData(const svo* const Svo, const view_data* const ViewData)
     }
 
     RenderData->CanvasShader = CompileShader(MainVertexCode, MainFragmentCode);
-    if (0 == RenderData->RenderShader)
+    if (0 == RenderData->CanvasShader)
     {
         fprintf(stderr, "Failed to compile canvas shader\n");
 

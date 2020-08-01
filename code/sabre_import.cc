@@ -1,5 +1,3 @@
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
 #include <stdio.h>
 #include "sabre.h"
 #include "sabre_svo.h"
@@ -16,6 +14,12 @@
 #include <deque>
 #include <xmmintrin.h>
 #include <smmintrin.h>
+#include "vecmath.h"
+
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
+using namespace vm;
 
 typedef __m128 m128;
 
@@ -26,40 +30,29 @@ struct tri3
     vec3 V2;
 };
 
-
-static inline vec3
-ComputeTriangleNormal(tri3* Triangle)
+struct img
 {
-    vec3 E0 = Triangle->V1 - Triangle->V0;
-    vec3 E1 = Triangle->V2 - Triangle->V0;
-
-    return Normalize(Cross(E0, E1));
-}
-
-static uint64_t
-SOHash(uint64_t x) {
-    x = (x ^ (x >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
-    x = (x ^ (x >> 27)) * UINT64_C(0x94d049bb133111eb);
-    x = x ^ (x >> 31);
-    return x;
-}
-
-struct u64_hash
-{
-public:
-    size_t operator()(const u64& Element) const{
-        return (size_t) SOHash(Element);
-    }
+    u32 Width;
+    u32 Height;
+    u32 Channels;
+    unsigned char* Pixels;
 };
 
-
-using morton_map = std::unordered_map<morton_key, vec3, u64_hash>;
 
 struct tri_data
 {
     tri3 T;
     vec3 Normal;
-    vec3 Colour;
+
+    vec2 TexCoord[3]; // TODO Split into different table
+    cgltf_material* Material;
+};
+
+
+struct material_data
+{
+    std::vector<img> Images;
+    std::vector<cgltf_material*> Material;
 };
 
 struct tri_buffer
@@ -68,17 +61,180 @@ struct tri_buffer
     tri_data Triangles[1];
 };
 
-struct normals_buffer
-{
-    u32  NormalCount;
-    vec3 Normals[1];
-};
-
 
 struct pos_attrib
 {
-    float V[3];
+    f32 V[3];
 };
+
+
+struct texcoord_attrib
+{
+    f32 V[2];
+};
+
+
+static std::unordered_map<cgltf_image*, img>* GlobalTextureCache;
+
+
+static constexpr u64
+U64Hash(u64 X)
+{
+    X = (X ^ (X >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+    X = (X ^ (X >> 27)) * UINT64_C(0x94d049bb133111eb);
+    X = X ^ (X >> 31);
+    return X;
+}
+
+struct u64_hash
+{
+    constexpr inline size_t
+    operator()(const u64& Element) const
+    {
+        return static_cast<size_t>(U64Hash(Element));
+    }
+};
+
+
+using morton_map = std::unordered_map<morton_key, vec3, u64_hash>;
+
+static inline vec3
+BarycentricCoords(vec3 V0, vec3 V1, vec3 V2, vec3 X)
+{
+    vec3 Barycentric;
+
+    vec3 E0 = V1 - V0;
+    vec3 E1 = V2 - V0;
+    vec3 EX = X - V0;
+
+    float D00 = Dot(E0, E0);
+    float D01 = Dot(E0, E1);
+    float D11 = Dot(E1, E1);
+    float D20 = Dot(EX, E0);
+    float D21 = Dot(EX, E1);
+
+    float Denom = (D00 * D11) - (D01 * D01);
+    float SafeRatio = (Denom == 0.0f) ? 1.0f : (1.0f / Denom);
+    Barycentric.Y = (D11 * D20 - D01 * D21) * SafeRatio;
+    Barycentric.Z = (D00 * D21 - D01 * D20) * SafeRatio;
+    Barycentric.X = 1.0f - Barycentric.Y - Barycentric.Z;
+
+    return Barycentric;
+}
+
+
+static inline void
+DecodeTextureImage(const cgltf_buffer_view* const Tex, img* const ImgOut)
+{
+    int Width, Height, Channels;
+    stbi_uc* ImgData = static_cast<stbi_uc*>(Tex->buffer->data) + Tex->offset;
+    stbi_uc* Pixels = stbi_load_from_memory(ImgData,
+                                            static_cast<int>(Tex->size),
+                                            &Width,
+                                            &Height,
+                                            &Channels,
+                                            0);
+    assert(Pixels);
+
+    *ImgOut = img{ u32(Width), u32(Height), u32(Channels), Pixels };
+}
+
+static inline vec3
+ComputeTriangleNormal(vec3 V0, vec3 V1, vec3 V2)
+{
+    vec3 E0 = V1 - V0;
+    vec3 E1 = V2 - V0;
+
+    return Normalize(Cross(E1, E0));
+}
+
+static inline vec3
+SampleMaterialColour(const cgltf_material* const Mat, vec2 UV)
+{
+    // Figure out where in the material to sample
+    if (Mat->has_pbr_metallic_roughness)
+    {
+        // Sample the metallic texture
+        const cgltf_pbr_metallic_roughness* R = &Mat->pbr_metallic_roughness;        
+
+        vec3 BaseColourFactor{
+            R->base_color_factor[0],
+            R->base_color_factor[1],
+            R->base_color_factor[2],
+        };
+
+        cgltf_texture* BaseColourTex = R->base_color_texture.texture;
+        if (BaseColourTex && BaseColourTex->image)
+        {
+            img Img;
+            if (GlobalTextureCache->find(BaseColourTex->image) != GlobalTextureCache->end())
+            {
+                Img = GlobalTextureCache->at(BaseColourTex->image);
+            }             
+            else
+            {
+                cgltf_image* TextureImage = BaseColourTex->image;
+
+                DecodeTextureImage(TextureImage->buffer_view, &Img);
+                GlobalTextureCache->emplace(TextureImage, Img);
+            }
+
+            assert(Img.Pixels);
+
+            u32 TexelX = u32(f32(Img.Width) * UV.X);
+            u32 TexelY = u32(f32(Img.Height) * UV.Y);
+            assert(TexelX < Img.Width && TexelY < Img.Height);
+
+            stbi_uc* Pixel = &Img.Pixels[Img.Channels*(TexelY * Img.Width + TexelX)];
+            if (3 == Img.Channels || 4 == Img.Channels)
+            {
+                f32 Red = f32(Pixel[0]) / 255.0f;
+                f32 Green = f32(Pixel[1]) / 255.0f;
+                f32 Blue = f32(Pixel[2]) / 255.0f;
+
+                return vec3(Red, Green, Blue) * BaseColourFactor;
+            }
+            else
+            {
+                return vec3(1, 0, 0);
+            }
+        }
+        else
+        {
+            return BaseColourFactor;
+        }
+    }
+    else
+    {
+        return vec3(1, 0, 0);
+    }
+}
+
+static inline vec3
+ComputeVoxelColour(const tri_data* const Tri, vec3 VoxelCentre)
+{
+    cgltf_material* Mat = Tri->Material;
+
+    if (nullptr == Mat)
+    {
+        return vec3{1.0f, 0.84f, 0.0f};
+    }
+    else
+    {
+        // Get the voxel's UV coords within the triangle through
+        // barycentric interpolation.
+        vec2 V0{ Tri->TexCoord[0].X, Tri->TexCoord[0].Y };
+        vec2 V1{ Tri->TexCoord[1].X, Tri->TexCoord[1].Y };
+        vec2 V2{ Tri->TexCoord[2].X, Tri->TexCoord[2].Y };
+
+        vec3 B = BarycentricCoords(Tri->T.V0, Tri->T.V1, Tri->T.V2, VoxelCentre);
+        vec2 VoxelUV;
+        VoxelUV.X = fabsf(fmod(V0.X + B.Y*(V1.X - V0.X) + B.Z*(V2.X - V0.X), 1.0f));
+        VoxelUV.Y = fabsf(fmod(V0.Y + B.Y*(V1.Y - V0.Y) + B.Z*(V2.Y - V0.Y), 1.0f));
+
+        return SampleMaterialColour(Mat, VoxelUV);
+    }
+}
 
 
 static inline bool
@@ -111,11 +267,11 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
     // the supplied min/max dimensions?
     m128 TriMin = _mm_min_ps(_mm_min_ps(V0, V1), V2);
     int MinMask = _mm_movemask_ps(_mm_cmpgt_ps(TriMin, Radius));
-    if (0x0 != (0x7 & MinMask)) return false;
+    if (0x7 & MinMask) return false;
 
     m128 TriMax = _mm_max_ps(_mm_max_ps(V0, V1), V2);
     int MaxMask = _mm_movemask_ps(_mm_cmplt_ps(TriMax, NRadius));
-    if (0x0 != (0x7 & MaxMask)) return false;
+    if (0x7 & MaxMask) return false;
 
     // Msk: 3 2 1 0
     //      W Z Y X
@@ -145,7 +301,7 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
         Hsum = _mm_add_ps(Hsum, Pdt_s); // Dot in elements 0 and 2
 
         int Dmsk = _mm_movemask_ps(_mm_cmpgt_ps(Hsum, Zero4));
-        if (0x0 != (0x1 & Dmsk)) return false; // If d.p. > 0 then return false
+        if (0x1 & Dmsk) return false; // If d.p. > 0 then return false
 
         Pdt = _mm_mul_ps(TNormal, VMax);
         Pdt_s = _mm_movehdup_ps(Pdt);
@@ -154,7 +310,7 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
         Hsum = _mm_add_ps(Hsum, Pdt_s);
 
         Dmsk = _mm_movemask_ps(_mm_cmplt_ps(Hsum, Zero4));
-        if (0x0 != (0x1 & Dmsk)) return false;
+        if (0x1 & Dmsk) return false;
 
     }
     
@@ -246,7 +402,7 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
     Lmsk = _mm_cmplt_ps(P_Max, NR_123);
     Or = _mm_or_ps(Gmsk, Lmsk);
     OutMsk = _mm_movemask_ps(Or);
-    if (0x0 != (OutMsk & 0x7)) return false;
+    if (OutMsk & 0x7) return false;
 
     // p0_1 = e2z.v0y - e2y.v0z
     // p0_2 = e2x.v0z - e2z.v0x
@@ -280,7 +436,7 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
 
     Or = _mm_or_ps(Gmsk, Lmsk);
     OutMsk = _mm_movemask_ps(Or);
-    if (0x0 != (OutMsk & 0x7)) return false;
+    if (OutMsk & 0x7) return false;
 
     return true;
 }
@@ -291,22 +447,24 @@ NormalSampler(vec3 C, const svo* const, const void* const UserData)
 {
     morton_key MortonCode = EncodeMorton3(uvec3(C));
 
-    //std::unordered_map<morton_key, vec3>* const* Index = (std::unordered_map<morton_key, vec3>* const*)UserData;
     morton_map* const* Index = (morton_map* const*)UserData;
     return (*Index)->at(MortonCode);
 }
 
 static inline vec3
-ColourSampler(vec3 C, const svo* const, const void* const)
+ColourSampler(vec3 C, const svo* const, const void* const UserData)
 {
-    // Loading mesh colours isn't implemented, however it would
-    // be simple to implement in the same manner as the normals.
-    return Normalize(C);
+    morton_key MortonCode = EncodeMorton3(uvec3(C));
+    morton_map* const* Index = (morton_map* const*)UserData;
+
+    return (*Index)->at(MortonCode);
 }
 
 static tri_buffer*
-LoadMeshTriangles(cgltf_mesh* Mesh)
+LoadMeshTriangles(const cgltf_data* const MeshData, vec3 Origin)
 {
+    cgltf_mesh* Mesh = &MeshData->meshes[0];
+
     usize LastTri = 0;
     tri_buffer* TriBuffer = nullptr;
 
@@ -325,70 +483,100 @@ LoadMeshTriangles(cgltf_mesh* Mesh)
                 assert(IndexBuffer);
 
                 // Copy the indices into the index buffer.
-                for (cgltf_size Elem = 0; Elem < Prim->indices->count; ++Elem)
+                for (cgltf_size Elem = 0; Elem < IndexCount; ++Elem)
                 {
                     IndexBuffer[Elem] = (u32) cgltf_accessor_read_index(Prim->indices, Elem);
                 }
 
+                usize TriCount = IndexCount / 3;
+
+                
+                if (nullptr == TriBuffer)
+                {
+                    TriBuffer = (tri_buffer*) calloc(1, sizeof(tri_buffer) + (sizeof(tri_data) * TriCount));
+                    assert(TriBuffer);
+                }
+                else
+                {
+                    TriBuffer = (tri_buffer*) realloc(TriBuffer, sizeof(tri_buffer) + (sizeof(tri_data) * (TriBuffer->TriangleCount + TriCount)));
+                    assert(TriBuffer);
+                }
+
+                TriBuffer->TriangleCount += TriCount;
+
+                pos_attrib* PosBuffer = nullptr;
+                texcoord_attrib* TexCoordBuffer = nullptr;
                 for (cgltf_size AttribIndex = 0; AttribIndex < Prim->attributes_count; ++AttribIndex)
                 {
                     cgltf_attribute* Attrib = &Prim->attributes[AttribIndex];
 
+                    cgltf_accessor* Accessor = Attrib->data;
+
                     if (cgltf_attribute_type_position == Attrib->type)
                     {
-                        cgltf_accessor* Accessor = Attrib->data;
-
                         cgltf_size PosCount = Accessor->count;
 
                         assert(cgltf_num_components(Accessor->type) == 3);
-                        pos_attrib* PosBuffer = (pos_attrib*) malloc(sizeof(pos_attrib) * PosCount);
+                        PosBuffer = (pos_attrib*) malloc(sizeof(pos_attrib) * PosCount);
                         assert(PosBuffer);
 
                         cgltf_accessor_unpack_floats(Accessor, (f32*)PosBuffer, PosCount*3);
-
-                        usize TriCount = IndexCount / 3;
-
-                        
-                        if (nullptr == TriBuffer)
-                        {
-                            TriBuffer = (tri_buffer*) calloc(1, sizeof(tri_buffer) + (sizeof(tri_data) * TriCount));
-                            assert(TriBuffer);
-                        }
-                        else
-                        {
-                            TriBuffer = (tri_buffer*) realloc(TriBuffer, sizeof(tri_buffer) + (sizeof(tri_data) * (TriBuffer->TriangleCount + TriCount)));
-                            assert(TriBuffer);
-                        }
-
-                        TriBuffer->TriangleCount += TriCount;
-
-
-                        for (cgltf_size TriIndex = 0; TriIndex < (TriCount*3); TriIndex+=3)
-                        {
-                            tri3 T;
-
-                            // Load the indices
-                            u32 I0 = IndexBuffer[TriIndex];
-                            u32 I1 = IndexBuffer[TriIndex + 1];
-                            u32 I2 = IndexBuffer[TriIndex + 2];
-                            pos_attrib P0 = PosBuffer[I0];
-                            pos_attrib P1 = PosBuffer[I1];
-                            pos_attrib P2 = PosBuffer[I2];
-
-                            // TODO Hack here to get around blender exporting bug
-                            T.V0 = vec3(P0.V[0], P0.V[1], fabsf(P0.V[2]));
-                            T.V1 = vec3(P1.V[0], P1.V[1], fabsf(P1.V[2]));
-                            T.V2 = vec3(P2.V[0], P2.V[1], fabsf(P2.V[2]));
-
-                            TriBuffer->Triangles[LastTri].T = T;
-                            TriBuffer->Triangles[LastTri].Normal = ComputeTriangleNormal(&T);
-                            TriBuffer->Triangles[LastTri].Colour = vec3(1, 0, 0);
-                            ++LastTri;
-                        }
-
-                        free(PosBuffer);
+                    }
+                    else if (cgltf_attribute_type_texcoord == Attrib->type)
+                    {
+                        // Load texcoords into a temporary buffer
+                        cgltf_size TexCoordCount = Accessor->count;    
+                        assert(cgltf_num_components(Accessor->type) == 2);
+                        TexCoordBuffer = (texcoord_attrib*)malloc(sizeof(texcoord_attrib) * TexCoordCount);  
+                        assert(TexCoordBuffer);
+                        cgltf_accessor_unpack_floats(Accessor, (f32*)TexCoordBuffer, TexCoordCount * 2);
                     }
                 }
+
+                for (cgltf_size TriIndex = 0; TriIndex < (TriCount*3); TriIndex+=3)
+                {
+                    tri3 T;
+
+                    // Load the indices
+                    u32 I0 = IndexBuffer[TriIndex];
+                    u32 I1 = IndexBuffer[TriIndex + 1];
+                    u32 I2 = IndexBuffer[TriIndex + 2];
+                    pos_attrib P0 = PosBuffer[I0];
+                    pos_attrib P1 = PosBuffer[I1];
+                    pos_attrib P2 = PosBuffer[I2];
+
+                    if (TexCoordBuffer)
+                    {
+                        texcoord_attrib T0 = TexCoordBuffer[I0];
+                        texcoord_attrib T1 = TexCoordBuffer[I1];
+                        texcoord_attrib T2 = TexCoordBuffer[I2];
+
+                        if (Prim->material)
+                        {
+                            TriBuffer->Triangles[LastTri].Material = Prim->material;
+                        }
+
+                        TriBuffer->Triangles[LastTri].TexCoord[0] = vec2{ T0.V[0], T0.V[1] };
+                        TriBuffer->Triangles[LastTri].TexCoord[1] = vec2{ T1.V[0], T1.V[1] };
+                        TriBuffer->Triangles[LastTri].TexCoord[2] = vec2{ T2.V[0], T2.V[1] };
+                    }
+
+                    vec3 K0 = vec3(P0.V[0], (P0.V[1]), (P0.V[2]));
+                    vec3 K1 = vec3(P1.V[0], (P1.V[1]), (P1.V[2]));
+                    vec3 K2 = vec3(P2.V[0], (P2.V[1]), (P2.V[2]));
+
+                    T.V0 = K0 - Origin;
+                    T.V1 = K1 - Origin;
+                    T.V2 = K2 - Origin;
+
+                    TriBuffer->Triangles[LastTri].T = T;
+                    TriBuffer->Triangles[LastTri].Normal = ComputeTriangleNormal(T.V0, T.V1, T.V2);
+
+                    ++LastTri;
+                }
+
+                if (PosBuffer) free(PosBuffer);
+                if (TexCoordBuffer) free(TexCoordBuffer);
 
                 // Didn't find any positions, free the index buffer and exit.
                 free(IndexBuffer);
@@ -405,6 +593,8 @@ LoadMeshTriangles(cgltf_mesh* Mesh)
 static inline vec3
 GetOctantCentre(u32 Oct, u32 Scale, vec3 ParentCentreP)
 {
+    assert(Scale > 0);
+
     f32 Rad = (f32)(Scale >> 1U);
     f32 X = (Oct & 1U) ? 1.0f : -1.0f;
     f32 Y = (Oct & 2U) ? 1.0f : -1.0f;
@@ -413,10 +603,51 @@ GetOctantCentre(u32 Oct, u32 Scale, vec3 ParentCentreP)
     return ParentCentreP + (vec3(X, Y, Z) * Rad);
 }
 
+static inline void
+MeshMinMaxDimensions(const cgltf_mesh* const Mesh, vec3& MinOut, vec3& MaxOut)
+{
+    // Check the max/min values of each primitive
+    vec3 Min(F32_MAX);
+    vec3 Max(F32_MIN);
+
+    for (u32 PrimIndex = 0; PrimIndex < Mesh->primitives_count; ++PrimIndex)
+    {
+        const cgltf_primitive* const Prim = &Mesh->primitives[PrimIndex];
+        cgltf_accessor* PosAttr = nullptr;
+        for (u32 AttrIndex = 0; AttrIndex < Prim->attributes_count; ++AttrIndex)
+        {
+            if (cgltf_attribute_type_position == Prim->attributes[AttrIndex].type)
+            {
+                PosAttr = Prim->attributes[AttrIndex].data;
+            }
+        }
+
+        if (nullptr != PosAttr && PosAttr->has_min)
+        {
+            f32* Mins = PosAttr->min;
+            f32* Maxes = PosAttr->max;
+
+            if (Mins[0] < Min.X) Min.X = Mins[0];
+            if (Mins[1] < Min.Y) Min.Y = Mins[1];
+            if (Mins[2] < Min.Z) Min.Z = Mins[2];
+        
+            if (Maxes[0] > Max.X) Max.X = Maxes[0];
+            if (Maxes[1] > Max.Y) Max.Y = Maxes[1];
+            if (Maxes[2] > Max.Z) Max.Z = Maxes[2];
+        }
+    }
+    
+    // TODO: Try to eliminate copying here
+    MinOut = Min;
+    MaxOut = Max;
+}
+
+
 static inline u32
 NextPowerOf2Exponent(u32 X)
 { 
-    return 32U - (u32)__builtin_clz(X - 1U);
+    return (X > 1U) ? 32U - (u32)__builtin_clz(X - 1U)
+                    : 1U;
 }  
 
 
@@ -438,21 +669,15 @@ BuildTriangleIndex(u32 MaxDepth,
 
     std::deque<st_ctx> Stack;
 
-    u32 Bias = 0;
-    f32 InvBias = 1.0f;
-    if (MaxDepth > ScaleExponent)
-    {
-        Bias = (MaxDepth - ScaleExponent);
-        InvBias = 1.0f / f32(1 << Bias);
-    }
+    svo_bias Bias = ComputeScaleBias(MaxDepth, ScaleExponent);
 
-    u32 RootScale = 1U << (ScaleExponent) << Bias;
-    vec3 ParentCentreP = vec3(RootScale >> 1);
+    u32 RootScale = 1U << (ScaleExponent) << Bias.Scale;
+    vec3 ParentCentreP = vec3(RootScale >> 1U);
 
-    st_ctx RootCtx = { };
+    st_ctx RootCtx;
     RootCtx.Oct = 0;
     RootCtx.Depth = 1;
-    RootCtx.Scale = RootScale >> 1;
+    RootCtx.Scale = RootScale >> 1U;
     RootCtx.ParentCentre = ParentCentreP;
 
     morton_key RootCode = EncodeMorton3(uvec3(ParentCentreP));
@@ -476,7 +701,7 @@ BuildTriangleIndex(u32 MaxDepth,
             st_ctx CurrentCtx = Stack.front();
             Stack.pop_front();
 
-            vec3 Radius = vec3(CurrentCtx.Scale >> 1) * InvBias;
+            vec3 Radius = vec3(CurrentCtx.Scale >> 1U) * Bias.InvScale;
             alignas(16) m128 RadiusM = _mm_set_ps(0.0f, Radius.Z, Radius.Y, Radius.X);
 
             for (u32 Oct = 0; Oct < 8; ++Oct)
@@ -484,25 +709,25 @@ BuildTriangleIndex(u32 MaxDepth,
                 // TODO(Liam): Make GetOctantCentre *only* return uvecs, then can differentiate
                 // at the type level between scaled and unscaled vectors.
                 vec3 Centre = GetOctantCentre(Oct, CurrentCtx.Scale, CurrentCtx.ParentCentre);
-                alignas(16) m128 CentreM = _mm_set_ps(0.0f, Centre.Z*InvBias, Centre.Y*InvBias, Centre.X*InvBias);
+                alignas(16) m128 CentreM = _mm_set_ps(0.0f, Centre.Z*Bias.InvScale, Centre.Y*Bias.InvScale, Centre.X*Bias.InvScale);
 
                 if (TriangleAABBIntersection(CentreM, RadiusM, TriVerts))
                 {
                     morton_key ChildVoxelCode = EncodeMorton3(uvec3(Centre)); 
                     if ((CurrentCtx.Depth + 1) >= MaxDepth)
                     {
-                        NormalsMap.insert(std::make_pair(ChildVoxelCode, Tris->Triangles[TriIndex].Normal));
-                        //ColourMap.insert(std::make_pair(ChildVoxelCode, Tris->Triangles[TriIndex].Normal));
+                        NormalsMap.emplace(ChildVoxelCode, Tris->Triangles[TriIndex].Normal);
+                        ColourMap.emplace(ChildVoxelCode, ComputeVoxelColour(&Tris->Triangles[TriIndex], Centre*Bias.InvScale));
                     }
 
                     IndexOut.insert(ChildVoxelCode);
 
                     if (CurrentCtx.Depth < MaxDepth)
                     {
-                        st_ctx NewCtx = { };
+                        st_ctx NewCtx;
                         NewCtx.Oct = Oct;
                         NewCtx.Depth = CurrentCtx.Depth + 1;
-                        NewCtx.Scale = CurrentCtx.Scale >> 1;
+                        NewCtx.Scale = CurrentCtx.Scale >> 1U;
                         NewCtx.ParentCentre = Centre;
                         Stack.push_front(NewCtx);
                     }
@@ -517,121 +742,37 @@ static bool
 IntersectorFunction(vec3 vMin, vec3 vMax, const svo* const Tree, const void* const UserData)
 {
     vec3 Halfsize = (vMax - vMin) * 0.5f;
-    uvec3 Centre = uvec3((vMin + Halfsize) * float(1 << Tree->Bias.Scale));
-    
+    vec3 Centre = ((vMin + Halfsize) * f32(1 << Tree->Bias.Scale));
+
     const std::set<morton_key>* const* OccupancyIndex = (const std::set<morton_key>* const*)UserData;
 
     morton_key MortonCode = EncodeMorton3(uvec3(Centre));
     return (*OccupancyIndex)->find(MortonCode) != (*OccupancyIndex)->end();
 }
 
-static inline f32
-GetMeshMaxDimension(const cgltf_primitive* const Prim)
-{
-    cgltf_accessor* PosAttrib = nullptr;
-    for (u32 AttribIndex = 0; AttribIndex < Prim->attributes_count; ++AttribIndex)
-    {
-        if (Prim->attributes[AttribIndex].type == cgltf_attribute_type_position)
-        {
-            PosAttrib = Prim->attributes[AttribIndex].data;
-        }
-    }
-
-    if (nullptr == PosAttrib) return 0.0f;
-    if (false == PosAttrib->has_max) return 0.0f;
-
-    f32 MaxX = PosAttrib->max[0];
-    f32 MaxY = PosAttrib->max[1];
-    f32 MaxZ = PosAttrib->max[2];
-
-    return Max(Max(MaxX, MaxY), MaxZ);
-}
-
-
-
-static inline f32
-GetMeshMinDimension(const cgltf_primitive* const Prim)
-{
-    cgltf_accessor* PosAttrib = nullptr;
-    for (u32 AttribIndex = 0; AttribIndex < Prim->attributes_count; ++AttribIndex)
-    {
-        if (Prim->attributes[AttribIndex].type == cgltf_attribute_type_position)
-        {
-            PosAttrib = Prim->attributes[AttribIndex].data;
-        }
-    }
-
-    if (nullptr == PosAttrib) return 0.0f;
-    if (false == PosAttrib->has_min) return 0.0f;
-
-    f32 MinX = PosAttrib->min[0];
-    f32 MinY = PosAttrib->min[1];
-    f32 MinZ = PosAttrib->min[2];
-
-    return Min(Min(MinX, MinY), MinZ);
-}
-
-#if 0
-extern "C" svo*
-SvoFromTriangleMesh(u32 MaxDepth, u32 ScaleExp, const tri_buffer* const Tris)
-{
-    std::vector<tri3*> OctTriangles[8];
-
-    svo_bias Bias = ComputeScaleBias(MaxDepth, ScaleExp);
-    f32 InvBias = Bias.InvScale;
-    u32 RootScale = 1U << (ScaleExp) << Bias.Scale;
-    u32 CurrentScale = RootScale >> 1;
-
-    vec3 ParentCentre = vec3(CurrentScale);
-
-    // Partition triangles into octant queues
-    for (usize TriIndex = 0; TriIndex < Tris->Count; ++TriIndex)
-    {
-        const tri3* T = &Tris->Triangles[TriIndex].T;
-        alignas(16) m128 TriVerts[3];
-        TriVerts[0] = _mm_set_ps(0.0f, T->V0.Z, T->V0.Y, T->V0.X);
-        TriVerts[1] = _mm_set_ps(0.0f, T->V1.Z, T->V1.Y, T->V1.X);
-        TriVerts[2] = _mm_set_ps(0.0f, T->V2.Z, T->V2.Y, T->V2.X);
-
-        for (u32 Oct = 0; Oct < 8; ++Oct)
-        {
-            vec3 Centre = GetOctantCentre(Oct, CurrentScale, ParentCentre);
-
-            // TODO Can put the invbias into a m128 and just use a mulps here
-            m128 CentreM = _mm_set_ps(0.0f, 
-                                      Centre.Z*InvBias,
-                                      Centre.Y*InvBias,
-                                      Centre.X*InvBias);
-
-            if (TriangleAABBIntersection(CentreM, RadiusM, TriVerts))
-            {
-                OctTriangles[Oct].push_back(T);
-                // Mark this octant as 
-            }
-        }
-    }
-
-    while (CurrentScale > MinScale)
-    {
-
-    }
-}
-#endif
 
 extern "C" svo*
-ImportGLBFile(uint32_t MaxDepth, const char* const GLTFPath)
+ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
 {
 	cgltf_options Options = { };
     cgltf_data* Data = nullptr;
 
 	cgltf_result Result = cgltf_parse_file(&Options, GLTFPath, &Data);
+    GlobalTextureCache = new std::unordered_map<cgltf_image*, img>();
 
     Result = cgltf_load_buffers(&Options, Data, nullptr);
     Result = cgltf_validate(Data);
 
 	if (cgltf_result_success == Result)
     {
-        tri_buffer* TriangleData = LoadMeshTriangles(&Data->meshes[0]);
+        vec3 Min, Max;
+        MeshMinMaxDimensions(&Data->meshes[0], Min, Max);
+        f32 MaxDim = Maximum(HorzMax(Abs(Min)), HorzMax(Abs(Max)));
+        assert(MaxDim > 0);
+        u32 ScaleExponent = NextPowerOf2Exponent(static_cast<u32>(ceilf(MaxDim)));
+        assert(ScaleExponent > 0);
+
+        tri_buffer* TriangleData = LoadMeshTriangles(Data, Min);
 
         if (nullptr == TriangleData)
         {
@@ -641,12 +782,6 @@ ImportGLBFile(uint32_t MaxDepth, const char* const GLTFPath)
             return nullptr;
         }
 
-        // Compute max scale exponent from mesh max and min vertices.
-        f32 MaxDim = GetMeshMaxDimension(&Data->meshes[0].primitives[0]);
-
-        assert(MaxDim > 0);
-        u32 ScaleExponent = NextPowerOf2Exponent((u32)ceilf(MaxDim));
-        assert(ScaleExponent > 0);
 
         std::set<morton_key> OccupancyIndex{};
         morton_map NormalIndex{};
@@ -680,6 +815,12 @@ ImportGLBFile(uint32_t MaxDepth, const char* const GLTFPath)
         free(TriangleData);
         cgltf_free(Data);
 
+        for (auto It = GlobalTextureCache->begin(); It != GlobalTextureCache->end(); ++It)
+        {
+            stbi_image_free(It->second.Pixels);
+        }
+
+        delete GlobalTextureCache;
         return Svo;
     }
     else
@@ -687,6 +828,8 @@ ImportGLBFile(uint32_t MaxDepth, const char* const GLTFPath)
         fprintf(stderr, "Failed to load mesh data file\n");
 
         if (Data) cgltf_free(Data);
+        delete GlobalTextureCache;
         return nullptr;
     }
 }
+
