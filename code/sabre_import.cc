@@ -67,6 +67,7 @@ struct pos_attrib
     f32 V[3];
 };
 
+
 struct texcoord_attrib
 {
     f32 V[2];
@@ -139,12 +140,12 @@ DecodeTextureImage(const cgltf_buffer_view* const Tex, img* const ImgOut)
 }
 
 static inline vec3
-ComputeTriangleNormal(tri3* Triangle)
+ComputeTriangleNormal(vec3 V0, vec3 V1, vec3 V2)
 {
-    vec3 E0 = Triangle->V1 - Triangle->V0;
-    vec3 E1 = Triangle->V2 - Triangle->V0;
+    vec3 E0 = V1 - V0;
+    vec3 E1 = V2 - V0;
 
-    return Normalize(Cross(E0, E1));
+    return Normalize(Cross(E1, E0));
 }
 
 static inline vec3
@@ -453,24 +454,19 @@ NormalSampler(vec3 C, const svo* const, const void* const UserData)
 static inline vec3
 ColourSampler(vec3 C, const svo* const, const void* const UserData)
 {
-    // Loading mesh colours isn't implemented, however it would
-    // be simple to implement in the same manner as the normals.
     morton_key MortonCode = EncodeMorton3(uvec3(C));
-
     morton_map* const* Index = (morton_map* const*)UserData;
 
     return (*Index)->at(MortonCode);
 }
 
 static tri_buffer*
-LoadMeshTriangles(const cgltf_data* const MeshData)
+LoadMeshTriangles(const cgltf_data* const MeshData, vec3 Origin)
 {
     cgltf_mesh* Mesh = &MeshData->meshes[0];
 
     usize LastTri = 0;
     tri_buffer* TriBuffer = nullptr;
-    std::unordered_map<std::string, cgltf_material*> MaterialMap;
-    MaterialMap.reserve(MeshData->materials_count);
 
     // Locate the primitive entry for the mesh's triangle data block.
     // We do not handle non-triangle meshes.
@@ -535,7 +531,6 @@ LoadMeshTriangles(const cgltf_data* const MeshData)
                         assert(TexCoordBuffer);
                         cgltf_accessor_unpack_floats(Accessor, (f32*)TexCoordBuffer, TexCoordCount * 2);
                     }
-
                 }
 
                 for (cgltf_size TriIndex = 0; TriIndex < (TriCount*3); TriIndex+=3)
@@ -566,13 +561,16 @@ LoadMeshTriangles(const cgltf_data* const MeshData)
                         TriBuffer->Triangles[LastTri].TexCoord[2] = vec2{ T2.V[0], T2.V[1] };
                     }
 
-                    // TODO Hack here to get around blender exporting bug
-                    T.V0 = vec3(P0.V[0], (P0.V[1]), fabsf(P0.V[2]));
-                    T.V1 = vec3(P1.V[0], (P1.V[1]), fabsf(P1.V[2]));
-                    T.V2 = vec3(P2.V[0], (P2.V[1]), fabsf(P2.V[2]));
+                    vec3 K0 = vec3(P0.V[0], (P0.V[1]), (P0.V[2]));
+                    vec3 K1 = vec3(P1.V[0], (P1.V[1]), (P1.V[2]));
+                    vec3 K2 = vec3(P2.V[0], (P2.V[1]), (P2.V[2]));
+
+                    T.V0 = K0 - Origin;
+                    T.V1 = K1 - Origin;
+                    T.V2 = K2 - Origin;
 
                     TriBuffer->Triangles[LastTri].T = T;
-                    TriBuffer->Triangles[LastTri].Normal = ComputeTriangleNormal(&T);
+                    TriBuffer->Triangles[LastTri].Normal = ComputeTriangleNormal(T.V0, T.V1, T.V2);
 
                     ++LastTri;
                 }
@@ -752,52 +750,6 @@ IntersectorFunction(vec3 vMin, vec3 vMax, const svo* const Tree, const void* con
     return (*OccupancyIndex)->find(MortonCode) != (*OccupancyIndex)->end();
 }
 
-static inline f32
-GetMeshMaxDimension(const cgltf_primitive* const Prim)
-{
-    cgltf_accessor* PosAttrib = nullptr;
-    for (u32 AttribIndex = 0; AttribIndex < Prim->attributes_count; ++AttribIndex)
-    {
-        if (Prim->attributes[AttribIndex].type == cgltf_attribute_type_position)
-        {
-            PosAttrib = Prim->attributes[AttribIndex].data;
-        }
-    }
-
-    if (nullptr == PosAttrib) return 0.0f;
-    if (false == PosAttrib->has_max) return 0.0f;
-
-    f32 MaxX = PosAttrib->max[0];
-    f32 MaxY = PosAttrib->max[1];
-    f32 MaxZ = PosAttrib->max[2];
-
-    return Maximum(Maximum(MaxX, MaxY), MaxZ);
-}
-
-
-
-static inline f32
-GetMeshMinDimension(const cgltf_primitive* const Prim)
-{
-    cgltf_accessor* PosAttrib = nullptr;
-    for (u32 AttribIndex = 0; AttribIndex < Prim->attributes_count; ++AttribIndex)
-    {
-        if (Prim->attributes[AttribIndex].type == cgltf_attribute_type_position)
-        {
-            PosAttrib = Prim->attributes[AttribIndex].data;
-        }
-    }
-
-    if (nullptr == PosAttrib) return 0.0f;
-    if (false == PosAttrib->has_min) return 0.0f;
-
-    f32 MinX = PosAttrib->min[0];
-    f32 MinY = PosAttrib->min[1];
-    f32 MinZ = PosAttrib->min[2];
-
-    return Minimum(Minimum(MinX, MinY), MinZ);
-}
-
 
 extern "C" svo*
 ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
@@ -813,7 +765,14 @@ ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
 
 	if (cgltf_result_success == Result)
     {
-        tri_buffer* TriangleData = LoadMeshTriangles(Data);
+        vec3 Min, Max;
+        MeshMinMaxDimensions(&Data->meshes[0], Min, Max);
+        f32 MaxDim = Maximum(HorzMax(Abs(Min)), HorzMax(Abs(Max)));
+        assert(MaxDim > 0);
+        u32 ScaleExponent = NextPowerOf2Exponent(static_cast<u32>(ceilf(MaxDim)));
+        assert(ScaleExponent > 0);
+
+        tri_buffer* TriangleData = LoadMeshTriangles(Data, Min);
 
         if (nullptr == TriangleData)
         {
@@ -823,17 +782,6 @@ ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
             return nullptr;
         }
 
-        // Compute max scale exponent from mesh max and min vertices.
-        f32 MaxDim = GetMeshMaxDimension(&Data->meshes[0].primitives[0]);
-        vec3 Min, Max;
-        MeshMinMaxDimensions(&Data->meshes[0], Min, Max);
-        printf("%lf\n", f64(MaxDim));
-        DEBUGPrintVec3(Min);
-        DEBUGPrintVec3(Max);
-
-        assert(MaxDim > 0);
-        u32 ScaleExponent = NextPowerOf2Exponent((u32)ceilf(MaxDim));
-        assert(ScaleExponent > 0);
 
         std::set<morton_key> OccupancyIndex{};
         morton_map NormalIndex{};
