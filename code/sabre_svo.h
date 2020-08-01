@@ -171,7 +171,7 @@ GetSvoDepth(const svo* const Svo);
 static inline void
 DEBUGPrintVec3(vm::vec3 V)
 {
-    printf("(%f, %f, %f)", (f64)V.X, (f64)V.Y, (f64)V.Z);
+    printf("(%f, %f, %f)\n", (f64)V.X, (f64)V.Y, (f64)V.Z);
 }
 
 #endif
