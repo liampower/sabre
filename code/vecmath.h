@@ -263,6 +263,24 @@ HorzMin(gvec4<c> V)
     return Minimum(V.X, Minimum(V.Y, Minimum(V.Z, V.W)));
 }
 
+template <typename c> constexpr inline gvec2<c>
+Abs(gvec2<c> V)
+{
+    return gvec2<c>{std::abs(V.X), std::abs(V.Y) };
+}
+
+template <typename c> constexpr inline gvec3<c>
+Abs(gvec3<c> V)
+{
+    return gvec3<c>{std::abs(V.X), std::abs(V.Y), std::abs(V.Z) };
+}
+
+template <typename c> constexpr inline gvec4<c>
+Abs(gvec4<c> V)
+{
+    return gvec4<c>{std::abs(V.X), std::abs(V.Y), std::abs(V.Z), std::abs(V.W) };
+}
+
 // }}}
 
 
