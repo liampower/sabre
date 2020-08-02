@@ -31,12 +31,13 @@ struct tri3
     vec3 V2;
 };
 
+
 struct img
 {
     u32 Width;
     u32 Height;
     u32 Channels;
-    unsigned char* Pixels;
+    stbi_uc* Pixels;
 };
 
 
@@ -75,9 +76,6 @@ struct texcoord_attrib
 };
 
 
-static std::unordered_map<cgltf_image*, img>* GlobalTextureCache;
-
-
 static constexpr u64
 U64Hash(u64 X)
 {
@@ -98,6 +96,48 @@ struct u64_hash
 
 
 using morton_map = std::unordered_map<morton_key, vec3, u64_hash>;
+
+
+static inline void
+DecodeTextureImage(const cgltf_buffer_view* const Tex, img* const ImgOut)
+{
+    int Width, Height, Channels;
+    stbi_uc* ImgData = static_cast<stbi_uc*>(Tex->buffer->data) + Tex->offset;
+    stbi_uc* Pixels = stbi_load_from_memory(ImgData,
+                                            static_cast<int>(Tex->size),
+                                            &Width,
+                                            &Height,
+                                            &Channels,
+                                            0);
+    assert(Pixels);
+
+    *ImgOut = img{ u32(Width), u32(Height), u32(Channels), Pixels };
+}
+
+
+static std::unordered_map<cgltf_image*,img>
+CreateTextureCache(cgltf_image* Images, cgltf_size ImageCount)
+{
+    std::unordered_map<cgltf_image*, img> TextureCache;
+
+    for (cgltf_size ImgIndex = 0; ImgIndex < ImageCount; ++ImgIndex)
+    {
+        img ImgData;
+        DecodeTextureImage(Images[ImgIndex].buffer_view, &ImgData);
+        TextureCache.emplace(&Images[ImgIndex], ImgData);
+    }
+
+    return TextureCache;
+}
+
+static inline void
+DeleteTextureCache(const std::unordered_map<cgltf_image*, img>& TexCache)
+{
+    for (auto It = TexCache.begin(); It != TexCache.end(); ++It)
+    {
+        stbi_image_free(It->second.Pixels);
+    }
+}
 
 static inline vec3
 BarycentricCoords(vec3 V0, vec3 V1, vec3 V2, vec3 X)
@@ -124,21 +164,6 @@ BarycentricCoords(vec3 V0, vec3 V1, vec3 V2, vec3 X)
 }
 
 
-static inline void
-DecodeTextureImage(const cgltf_buffer_view* const Tex, img* const ImgOut)
-{
-    int Width, Height, Channels;
-    stbi_uc* ImgData = static_cast<stbi_uc*>(Tex->buffer->data) + Tex->offset;
-    stbi_uc* Pixels = stbi_load_from_memory(ImgData,
-                                            static_cast<int>(Tex->size),
-                                            &Width,
-                                            &Height,
-                                            &Channels,
-                                            0);
-    assert(Pixels);
-
-    *ImgOut = img{ u32(Width), u32(Height), u32(Channels), Pixels };
-}
 
 static inline vec3
 ComputeTriangleNormal(vec3 V0, vec3 V1, vec3 V2)
@@ -150,7 +175,7 @@ ComputeTriangleNormal(vec3 V0, vec3 V1, vec3 V2)
 }
 
 static inline vec3
-SampleMaterialColour(const cgltf_material* const Mat, vec2 UV)
+SampleMaterialColour(const cgltf_material* const Mat, vec2 UV, const std::unordered_map<cgltf_image*, img>& TexCache)
 {
     // Figure out where in the material to sample
     if (Mat->has_pbr_metallic_roughness)
@@ -167,18 +192,7 @@ SampleMaterialColour(const cgltf_material* const Mat, vec2 UV)
         cgltf_texture* BaseColourTex = R->base_color_texture.texture;
         if (BaseColourTex && BaseColourTex->image)
         {
-            img Img;
-            if (GlobalTextureCache->find(BaseColourTex->image) != GlobalTextureCache->end())
-            {
-                Img = GlobalTextureCache->at(BaseColourTex->image);
-            }             
-            else
-            {
-                cgltf_image* TextureImage = BaseColourTex->image;
-
-                DecodeTextureImage(TextureImage->buffer_view, &Img);
-                GlobalTextureCache->emplace(TextureImage, Img);
-            }
+            img Img = TexCache.at(BaseColourTex->image);
 
             assert(Img.Pixels);
 
@@ -212,7 +226,7 @@ SampleMaterialColour(const cgltf_material* const Mat, vec2 UV)
 }
 
 static inline vec3
-ComputeVoxelColour(const tri_data* const Tri, vec3 VoxelCentre)
+ComputeVoxelColour(const tri_data* const Tri, vec3 VoxelCentre, const std::unordered_map<cgltf_image*, img>& TexCache)
 {
     cgltf_material* Mat = Tri->Material;
 
@@ -233,7 +247,7 @@ ComputeVoxelColour(const tri_data* const Tri, vec3 VoxelCentre)
         VoxelUV.X = fabsf(fmod(V0.X + B.Y*(V1.X - V0.X) + B.Z*(V2.X - V0.X), 1.0f));
         VoxelUV.Y = fabsf(fmod(V0.Y + B.Y*(V1.Y - V0.Y) + B.Z*(V2.Y - V0.Y), 1.0f));
 
-        return SampleMaterialColour(Mat, VoxelUV);
+        return SampleMaterialColour(Mat, VoxelUV, TexCache);
     }
 }
 
@@ -658,7 +672,8 @@ BuildTriangleIndex(u32 MaxDepth,
                    tri_buffer* Tris,
                    std::set<morton_key>& IndexOut,
                    morton_map& NormalsMap,
-                   morton_map& ColourMap)
+                   morton_map& ColourMap,
+                   const std::unordered_map<cgltf_image*, img>& TexCache)
 {
     struct st_ctx
     {
@@ -718,7 +733,7 @@ BuildTriangleIndex(u32 MaxDepth,
                     if ((CurrentCtx.Depth + 1) >= MaxDepth)
                     {
                         NormalsMap.emplace(ChildVoxelCode, Tris->Triangles[TriIndex].Normal);
-                        ColourMap.emplace(ChildVoxelCode, ComputeVoxelColour(&Tris->Triangles[TriIndex], Centre*Bias.InvScale));
+                        ColourMap.emplace(ChildVoxelCode, ComputeVoxelColour(&Tris->Triangles[TriIndex], Centre*Bias.InvScale, TexCache));
                     }
 
                     IndexOut.insert(ChildVoxelCode);
@@ -759,7 +774,6 @@ ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
     cgltf_data* Data = nullptr;
 
 	cgltf_result Result = cgltf_parse_file(&Options, GLTFPath, &Data);
-    GlobalTextureCache = new std::unordered_map<cgltf_image*, img>();
 
     Result = cgltf_load_buffers(&Options, Data, nullptr);
     Result = cgltf_validate(Data);
@@ -773,6 +787,8 @@ ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
         u32 ScaleExponent = NextPowerOf2Exponent(static_cast<u32>(ceilf(MaxDim)));
         assert(ScaleExponent > 0);
 
+        std::unordered_map<cgltf_image*, img> TextureCache = CreateTextureCache(Data->images, Data->images_count);
+
         tri_buffer* TriangleData = LoadMeshTriangles(Data, Min);
 
         if (nullptr == TriangleData)
@@ -782,7 +798,6 @@ ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
 
             return nullptr;
         }
-
 
         std::set<morton_key> OccupancyIndex{};
         morton_map NormalIndex{};
@@ -795,7 +810,8 @@ ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
                            TriangleData,
                            OccupancyIndex,
                            NormalIndex,
-                           ColourIndex);
+                           ColourIndex,
+                           TextureCache);
 
 
         const morton_map* const NormalsPtr = &NormalIndex;
@@ -816,12 +832,7 @@ ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
         free(TriangleData);
         cgltf_free(Data);
 
-        for (auto It = GlobalTextureCache->begin(); It != GlobalTextureCache->end(); ++It)
-        {
-            stbi_image_free(It->second.Pixels);
-        }
-
-        delete GlobalTextureCache;
+        DeleteTextureCache(TextureCache);
         return Svo;
     }
     else
@@ -829,7 +840,6 @@ ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
         fprintf(stderr, "Failed to load mesh data file\n");
 
         if (Data) cgltf_free(Data);
-        delete GlobalTextureCache;
         return nullptr;
     }
 }
