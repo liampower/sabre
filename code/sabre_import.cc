@@ -1,9 +1,8 @@
-#include <stdio.h>
 #include "sabre.h"
 #include "sabre_svo.h"
+#include "vecmath.h"
 
-#define CGLTF_IMPLEMENTATION
-#include <cgltf.h>
+#include <stdio.h>
 #include <vector>
 #include <assert.h>
 #include <math.h>
@@ -14,10 +13,12 @@
 #include <deque>
 #include <xmmintrin.h>
 #include <smmintrin.h>
-#include "vecmath.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
+
+#define CGLTF_IMPLEMENTATION
+#include <cgltf.h>
 
 using namespace vm;
 
@@ -107,14 +108,14 @@ BarycentricCoords(vec3 V0, vec3 V1, vec3 V2, vec3 X)
     vec3 E1 = V2 - V0;
     vec3 EX = X - V0;
 
-    float D00 = Dot(E0, E0);
-    float D01 = Dot(E0, E1);
-    float D11 = Dot(E1, E1);
-    float D20 = Dot(EX, E0);
-    float D21 = Dot(EX, E1);
+    f32 D00 = Dot(E0, E0);
+    f32 D01 = Dot(E0, E1);
+    f32 D11 = Dot(E1, E1);
+    f32 D20 = Dot(EX, E0);
+    f32 D21 = Dot(EX, E1);
 
-    float Denom = (D00 * D11) - (D01 * D01);
-    float SafeRatio = (Denom == 0.0f) ? 1.0f : (1.0f / Denom);
+    f32 Denom = (D00 * D11) - (D01 * D01);
+    f32 SafeRatio = (Denom == 0.0f) ? 1.0f : (1.0f / Denom);
     Barycentric.Y = (D11 * D20 - D01 * D21) * SafeRatio;
     Barycentric.Z = (D00 * D21 - D01 * D20) * SafeRatio;
     Barycentric.X = 1.0f - Barycentric.Y - Barycentric.Z;
@@ -365,7 +366,7 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
     m128 Lmsk = _mm_cmplt_ps(P_Max, NR_123);
     m128 Or = _mm_or_ps(Gmsk, Lmsk);
     int OutMsk = _mm_movemask_ps(Or);
-    if (0x0 != (OutMsk & 0x7)) return false;
+    if (OutMsk & 0x7) return false;
 
     // p0_1 = e1z.v0y - e1y.v0z
     // p0_2 = e1x.v0z - e1z.v0x
