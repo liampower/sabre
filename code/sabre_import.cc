@@ -96,6 +96,7 @@ struct u64_hash
 
 
 using morton_map = std::unordered_map<morton_key, vec3, u64_hash>;
+using tex_cache = std::unordered_map<cgltf_image*, img>;
 
 
 static inline void
@@ -115,10 +116,10 @@ DecodeTextureImage(const cgltf_buffer_view* const Tex, img* const ImgOut)
 }
 
 
-static std::unordered_map<cgltf_image*,img>
-CreateTextureCache(cgltf_image* Images, cgltf_size ImageCount)
+static tex_cache
+CreateImageCache(cgltf_image* Images, cgltf_size ImageCount)
 {
-    std::unordered_map<cgltf_image*, img> TextureCache;
+    tex_cache TextureCache;
 
     for (cgltf_size ImgIndex = 0; ImgIndex < ImageCount; ++ImgIndex)
     {
@@ -131,7 +132,7 @@ CreateTextureCache(cgltf_image* Images, cgltf_size ImageCount)
 }
 
 static inline void
-DeleteTextureCache(const std::unordered_map<cgltf_image*, img>& TexCache)
+DeleteImageCache(const tex_cache& TexCache)
 {
     for (auto It = TexCache.begin(); It != TexCache.end(); ++It)
     {
@@ -226,7 +227,7 @@ SampleMaterialColour(const cgltf_material* const Mat, vec2 UV, const std::unorde
 }
 
 static inline vec3
-ComputeVoxelColour(const tri_data* const Tri, vec3 VoxelCentre, const std::unordered_map<cgltf_image*, img>& TexCache)
+ComputeVoxelColour(const tri_data* const Tri, vec3 VoxelCentre, const tex_cache& TexCache)
 {
     cgltf_material* Mat = Tri->Material;
 
@@ -673,7 +674,7 @@ BuildTriangleIndex(u32 MaxDepth,
                    std::set<morton_key>& IndexOut,
                    morton_map& NormalsMap,
                    morton_map& ColourMap,
-                   const std::unordered_map<cgltf_image*, img>& TexCache)
+                   const tex_cache& TexCache)
 {
     struct st_ctx
     {
@@ -787,7 +788,7 @@ ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
         u32 ScaleExponent = NextPowerOf2Exponent(static_cast<u32>(ceilf(MaxDim)));
         assert(ScaleExponent > 0);
 
-        std::unordered_map<cgltf_image*, img> TextureCache = CreateTextureCache(Data->images, Data->images_count);
+        tex_cache TexCache = CreateImageCache(Data->images, Data->images_count);
 
         tri_buffer* TriangleData = LoadMeshTriangles(Data, Min);
 
@@ -811,7 +812,7 @@ ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
                            OccupancyIndex,
                            NormalIndex,
                            ColourIndex,
-                           TextureCache);
+                           TexCache);
 
 
         const morton_map* const NormalsPtr = &NormalIndex;
@@ -832,7 +833,7 @@ ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
         free(TriangleData);
         cgltf_free(Data);
 
-        DeleteTextureCache(TextureCache);
+        DeleteImageCache(TexCache);
         return Svo;
     }
     else
