@@ -1,4 +1,4 @@
-#Sabre: A Sparse Voxel Octree Renderer
+# Sabre: A Sparse Voxel Octree Renderer
 
 ![Gallery Scene](misc/screenshot.jpg "Gallery Scene")
 
