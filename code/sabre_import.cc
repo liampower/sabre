@@ -1,24 +1,22 @@
-#include "sabre.h"
-#include "sabre_svo.h"
-#include "vecmath.h"
-
 #include <stdio.h>
-#include <vector>
 #include <assert.h>
 #include <math.h>
-#include <unordered_set>
-#include <set>
-#include <unordered_map>
-#include <stack>
-#include <deque>
 #include <xmmintrin.h>
 #include <smmintrin.h>
+#include <set>
+#include <unordered_map>
+#include <deque>
+#include <vector>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
 #define CGLTF_IMPLEMENTATION
 #include <cgltf.h>
+
+#include "sabre.h"
+#include "sabre_svo.h"
+#include "vecmath.h"
 
 using namespace vm;
 
