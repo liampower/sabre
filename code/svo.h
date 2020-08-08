@@ -4,7 +4,6 @@
 #include <vector>
 
 #include "sabre.h"
-
 #include "vecmath.h"
 
 static constexpr u32 SBR_NODES_PER_BLK = 16384;
