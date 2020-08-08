@@ -15,7 +15,7 @@
 #include <cgltf.h>
 
 #include "sabre.h"
-#include "sabre_svo.h"
+#include "svo.h"
 #include "vecmath.h"
 
 using namespace vm;

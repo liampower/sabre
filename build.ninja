@@ -1,10 +1,10 @@
-Compiler = clang
+Compiler = clang++
 DisabledWarnings = -Wno-unused-parameter -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-gnu-anonymous-struct -Wno-old-style-cast -Wno-unused-function
-NonErrorWarnings = -Wno-error=unused-variable -Wno-error=missing-prototypes
-Optimisation = -O3
-#Optimisation = -fsanitize=undefined,integer -g -gcodeview
+NonErrorWarnings = -Wno-error=unused-variable -Wno-error=missing-prototypes -Wno-error=deprecated-declarations
+#Optimisation = -O3
+Optimisation = -fsanitize=undefined,integer -g -gcodeview
 CompilerFlags = -isystem include -Wall -Wextra -pedantic -Weverything -Wpadded -Werror $NonErrorWarnings -std=c++14 -mavx $Optimisation -fno-omit-frame-pointer -fno-exceptions -fno-rtti -fdeclspec -ffast-math $DisabledWarnings
-Linker = link -nologo
+Linker = lld-link -nologo
 Libs = imgui.lib glad.lib glfw3.lib opengl32.lib kernel32.lib user32.lib gdi32.lib shell32.lib
 LinkerFlags = -incremental:no -debug -entry:mainCRTStartup -libpath:libs -machine:x64 -nodefaultlib:libcmt $Libs -natvis:misc/svo.natvis
 #LinkerFlags = -incremental:no -release -opt:ref -entry:mainCRTStartup -libpath:libs -machine:x64 -nodefaultlib:libcmt $Libs -natvis:misc/svo.natvis
@@ -30,12 +30,12 @@ rule make_tags
 
 build tags: make_tags ./code
 build sabre.o: compile code/sabre.cc
-build sabre_svo.o: compile code/sabre_svo.cc
-build sabre_data.o: compile code/sabre_data.cc
-build sabre_import.o: compile code/sabre_import.cc
-build sabre_render.o: compile code/sabre_render.cc
+build svo.o: compile code/svo.cc
+build shaders.o: compile code/shaders.cc
+build import.o: compile code/import.cc
+build render.o: compile code/render.cc
 
-build sabre.exe: link sabre.o sabre_svo.o sabre_data.o sabre_import.o sabre_render.o | tags
+build sabre.exe: link sabre.o svo.o shaders.o import.o render.o | tags
 
 build run phony: run_this sabre.exe
 

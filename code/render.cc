@@ -5,9 +5,9 @@
 #include <vector>
 
 #include "sabre.h"
-#include "sabre_svo.h"
-#include "sabre_render.h"
-#include "sabre_data.h"
+#include "svo.h"
+#include "render.h"
+#include "shaders.h"
 #include "vecmath.h"
 
 using namespace vm;

@@ -11,16 +11,18 @@
 #include <assert.h>
 #include <vector>
 #include <string>
+#include <nanoprofile.h>
 
 #include <glad/glad.h>
 #include <glfw/glfw3.h>
 
 #include "sabre.h"
-#include "sabre_svo.h"
-#include "sabre_data.h"
-#include "sabre_render.h"
+#include "svo.h"
+#include "render.h"
 
 using namespace vm;
+
+static int g = 18;
 
 static constexpr u32 DEMO_MAX_TREE_DEPTH = 12;
 static constexpr u32 DEMO_SCALE_EXPONENT = 5;
@@ -188,6 +190,12 @@ HandleGLFWError(int, const char* const ErrorMsg)
 extern int
 main(int ArgCount, const char** const Args)
 {
+    np_profile Prof;
+    np_event* EvtStorage = (np_event*)malloc(1000*sizeof(np_event));
+    NP_InitProfile(EvtStorage, 1000, &Prof);
+
+    NP_PushTraceEvent(&Prof, "Init");
+    NP_PushTraceEvent(&Prof, "Init GLFW");
     glfwSetErrorCallback(HandleGLFWError);
     if (GLFW_FALSE == glfwInit())
     {
@@ -206,7 +214,9 @@ main(int ArgCount, const char** const Args)
     glfwMakeContextCurrent(Window);
     glfwSetWindowPos(Window, 100, 100);
     glfwSwapInterval(1);
+    NP_PopTraceEvent(&Prof);
 
+    NP_PushTraceEvent(&Prof, "Init GLAD");
     if (0 == gladLoadGL())
     {
         fprintf(stderr, "Failed to initialise GLAD\n");
@@ -214,9 +224,11 @@ main(int ArgCount, const char** const Args)
         glfwTerminate();
         return EXIT_FAILURE;
     }
+    NP_PopTraceEvent(&Prof);
 
     OutputGraphicsDeviceInfo();
 
+    NP_PushTraceEvent(&Prof, "Init ImGUI");
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
@@ -224,6 +236,7 @@ main(int ArgCount, const char** const Args)
     // Setup Platform/Renderer bindings
     ImGui_ImplGlfw_InitForOpenGL(Window, true);
     ImGui_ImplOpenGL3_Init("#version 430 core");
+    NP_PopTraceEvent(&Prof);
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_DEPTH_CLAMP);
@@ -271,6 +284,7 @@ main(int ArgCount, const char** const Args)
     bool ShowMenu = true;
     int Lod = 0;
     u64 GPUTime = 0;
+    NP_PopTraceEvent(&Prof); // Init
     while (GLFW_FALSE == glfwWindowShouldClose(Window))
     {
         FrameStartTime = glfwGetTime();
@@ -484,7 +498,9 @@ main(int ArgCount, const char** const Args)
     ImGui::DestroyContext();
 
     glfwTerminate();
+    NP_WriteJSONTrace(&Prof, nullptr, 0);
 
+    free(EvtStorage);
     return EXIT_SUCCESS;
 }
 
