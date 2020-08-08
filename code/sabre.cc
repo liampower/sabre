@@ -22,14 +22,12 @@
 
 using namespace vm;
 
-static int g = 18;
-
 static constexpr u32 DEMO_MAX_TREE_DEPTH = 12;
 static constexpr u32 DEMO_SCALE_EXPONENT = 5;
 
-static constexpr u32 DisplayWidth = 1280;
-static constexpr u32 DisplayHeight = 720;
-static constexpr const char* const DisplayTitle = "Sabre";
+static constexpr u32 DISPLAY_WIDTH = 1280;
+static constexpr u32 DISPLAY_HEIGHT = 720;
+static constexpr const char* const DISPLAY_TITLE = "Sabre";
 
 // NOTE(Liam): Forces use of nVidia GPU on hybrid graphics systems.
 extern "C" {
@@ -210,7 +208,11 @@ main(int ArgCount, const char** const Args)
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
     
-    GLFWwindow* Window = glfwCreateWindow(DisplayWidth, DisplayHeight, DisplayTitle, nullptr, nullptr);
+    GLFWwindow* Window = glfwCreateWindow(DISPLAY_WIDTH,
+                                          DISPLAY_HEIGHT,
+                                          DISPLAY_TITLE,
+                                          nullptr,
+                                          nullptr);
     glfwMakeContextCurrent(Window);
     glfwSetWindowPos(Window, 100, 100);
     glfwSwapInterval(1);
