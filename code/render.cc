@@ -15,8 +15,7 @@ using namespace vm;
 static constexpr uint WORK_SIZE_X = 512U;
 static constexpr uint WORK_SIZE_Y = 512U;
 
-// Maximum size (in bytes) of the SVO SSBO GPU memory
-// buffer.
+// Maximum size (in bytes) of the SVO SSBO GPU memory buffer
 static constexpr usize MAX_SVO_SSBO_SIZE = 1024ULL*1024ULL*128ULL;
 
 // The actual memory used for the hashmap buffer is
@@ -24,17 +23,20 @@ static constexpr usize MAX_SVO_SSBO_SIZE = 1024ULL*1024ULL*128ULL;
 // 8 bytes. 
 static constexpr usize HTABLE_SLOT_COUNT = 1024ULL*1024ULL*256ULL;
 
+// Byte pattern used to indicate the hashtable null (aka empty) key.
+// Since this is used as an argument to memset, only the unsigned char
+// conversion of this value is used, so don't try changing it!
+static constexpr int HTABLE_NULL_KEY_BYTE = 0xFF;
+
 typedef GLuint gl_uint;
 typedef GLint  gl_int;
 typedef GLsizei gl_sizei;
 typedef GLenum gl_enum;
-typedef GLuint64 gl_u64;
 
 
 enum cs_bindings
 {
     BIND_RENDER_TEX = 0,
-    BIND_NORMALS_TEX = 1
 };
 
 enum htable_cs_bindings
@@ -162,7 +164,7 @@ CreateLeafDataHashTable(render_data* RenderData, const attrib_data* const Data, 
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, DataBuffers[1]);
     glBufferData(GL_SHADER_STORAGE_BUFFER, HTableDataSize, nullptr, GL_DYNAMIC_COPY);
     attrib_data* GPUHTableBuffer = (attrib_data*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
-    memset(GPUHTableBuffer, 0xFF, HTableDataSize);
+    memset(GPUHTableBuffer, HTABLE_NULL_KEY_BYTE, HTableDataSize);
     glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 
     glUseProgram(RenderData->HTableBuilderShader);
