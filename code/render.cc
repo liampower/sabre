@@ -32,6 +32,7 @@ typedef GLuint gl_uint;
 typedef GLint  gl_int;
 typedef GLsizei gl_sizei;
 typedef GLenum gl_enum;
+typedef GLuint64 gl_u64;
 
 
 enum cs_bindings
