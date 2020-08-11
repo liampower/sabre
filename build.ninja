@@ -2,12 +2,11 @@ Compiler = clang++
 DisabledWarnings = -Wno-unused-parameter -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-gnu-anonymous-struct -Wno-old-style-cast -Wno-unused-function
 NonErrorWarnings = -Wno-error=unused-variable -Wno-error=missing-prototypes -Wno-error=deprecated-declarations
 #Optimisation = -O3
-Optimisation = -fsanitize=undefined,integer -g -gcodeview
+Optimisation = -fsanitize=address -fsanitize=undefined,integer -g -gcodeview
 CompilerFlags = -isystem include -Wall -Wextra -pedantic -Weverything -Wpadded -Werror $NonErrorWarnings -std=c++14 -mavx $Optimisation -fno-omit-frame-pointer -fno-exceptions -fno-rtti -fdeclspec -ffast-math $DisabledWarnings
-Linker = lld-link -nologo
-Libs = imgui.lib glad.lib glfw3.lib opengl32.lib kernel32.lib user32.lib gdi32.lib shell32.lib
-LinkerFlags = -incremental:no -debug -entry:mainCRTStartup -libpath:libs -machine:x64 -nodefaultlib:libcmt $Libs -natvis:misc/svo.natvis
-#LinkerFlags = -incremental:no -release -opt:ref -entry:mainCRTStartup -libpath:libs -machine:x64 -nodefaultlib:libcmt $Libs -natvis:misc/svo.natvis
+Linker = clang++ 
+Libs = -Llibs -limgui.lib -lglad.lib -lglfw3.lib -lopengl32.lib -lkernel32.lib -luser32.lib -lgdi32.lib -lshell32.lib
+LinkerFlags = -fsanitize=address -fsanitize=undefined,integer $Libs
 
 rule compile
   command = $Compiler $CompilerFlags -c $in -o $out
@@ -15,7 +14,7 @@ rule compile
   pool = console
 
 rule link
-  command = $Linker $LinkerFlags $in -out:$out
+  command = $Linker $LinkerFlags $in -o$out
   description = Link $out
   pool = console
 
