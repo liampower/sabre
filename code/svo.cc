@@ -26,7 +26,6 @@ enum svo_oct
     OCT_C111 = 7
 };
 
-
 enum voxel_type
 {
     VOXEL_PARENT,
@@ -519,7 +518,7 @@ BuildSubOctreeRecursive(svo_node* Parent,
                 vec3 Normal = NormalSampler->SamplerFn(OctCentre, Tree, NormalSampler->UserData);
                 vec3 Colour = ColourSampler->SamplerFn(OctCentre, Tree, ColourSampler->UserData);
                 
-                Tree->AttribData.push_back(attrib_data{ HashVec3(uvec3(OctCentre)), PackVec3ToSnorm3(Normal),  PackVec3ToSnorm3(Colour) });
+                Tree->AttribData.emplace_back(HashVec3(uvec3(OctCentre)), PackVec3ToSnorm3(Normal),  PackVec3ToSnorm3(Colour));
             }
         }
     }
@@ -542,7 +541,7 @@ BuildSubOctreeRecursive(svo_node* Parent,
 }
 
 extern "C" svo*
-CreateScene(u32 ScaleExponent,
+CreateScene(u32 ScaleExp,
             u32 MaxDepth,
             shape_sampler* ShapeSampler,
             data_sampler* NormalSampler,
@@ -553,7 +552,7 @@ CreateScene(u32 ScaleExponent,
     
     if (Tree)
     {
-        Tree->ScaleExponent = ScaleExponent;
+        Tree->ScaleExponent = ScaleExp;
         Tree->MaxDepth = MaxDepth;
 
         // TODO(Liam): Check failure
@@ -571,9 +570,9 @@ CreateScene(u32 ScaleExponent,
         ++RootBlk->NextFreeSlot;
         
         // Begin building tree
-        u32 RootScale = (1U << ScaleExponent);
+        u32 RootScale = (1U << ScaleExp);
         
-        Tree->Bias = ComputeScaleBias(MaxDepth, ScaleExponent);
+        Tree->Bias = ComputeScaleBias(MaxDepth, ScaleExp);
         Tree->AttribData = std::vector<attrib_data>();
 
         // Scale up by the bias
@@ -1232,31 +1231,35 @@ BoxFrustumIntersection(const frustum3* const F, vec3 Min, vec3 Max)
     for( int Plane = 0; Plane < 6; Plane++ )
     {
         int Out = 0;
-        Out += ((Dot( F->Planes[Plane], vec3(Min.X, Min.Y, Min.Z) ) < 0.0f)?1:0);
-        Out += ((Dot( F->Planes[Plane], vec3(Max.X, Min.Y, Min.Z) ) < 0.0f)?1:0);
-        Out += ((Dot( F->Planes[Plane], vec3(Min.X, Max.Y, Min.Z) ) < 0.0f)?1:0);
-        Out += ((Dot( F->Planes[Plane], vec3(Max.X, Max.Y, Min.Z) ) < 0.0f)?1:0);
-        Out += ((Dot( F->Planes[Plane], vec3(Min.X, Min.Y, Max.Z) ) < 0.0f)?1:0);
-        Out += ((Dot( F->Planes[Plane], vec3(Max.X, Min.Y, Max.Z) ) < 0.0f)?1:0);
-        Out += ((Dot( F->Planes[Plane], vec3(Min.X, Max.Y, Max.Z) ) < 0.0f)?1:0);
-        Out += ((Dot( F->Planes[Plane], vec3(Max.X, Max.Y, Max.Z) ) < 0.0f)?1:0);
-        if( Out==8 ) return false;
+        Out += ((Dot(F->Planes[Plane], vec3(Min.X, Min.Y, Min.Z)) < 0.0f)?1:0);
+        Out += ((Dot(F->Planes[Plane], vec3(Max.X, Min.Y, Min.Z)) < 0.0f)?1:0);
+        Out += ((Dot(F->Planes[Plane], vec3(Min.X, Max.Y, Min.Z)) < 0.0f)?1:0);
+        Out += ((Dot(F->Planes[Plane], vec3(Max.X, Max.Y, Min.Z)) < 0.0f)?1:0);
+        Out += ((Dot(F->Planes[Plane], vec3(Min.X, Min.Y, Max.Z)) < 0.0f)?1:0);
+        Out += ((Dot(F->Planes[Plane], vec3(Max.X, Min.Y, Max.Z)) < 0.0f)?1:0);
+        Out += ((Dot(F->Planes[Plane], vec3(Min.X, Max.Y, Max.Z)) < 0.0f)?1:0);
+        Out += ((Dot(F->Planes[Plane], vec3(Max.X, Max.Y, Max.Z)) < 0.0f)?1:0);
+        if(8 == Out) return false;
     }
 
     return true;
 }
 
+#if 0
 static inline void
-ComputeFrustumFromEyeAndDir(vec3 Eye, vec3 Dir, const frustum3* const FOut)
+ComputeFrustumFromEyeAndDir(vec3 Eye, vec3 Dir, frustum3* const FOut)
 {
-//    vec3 TopRightNear = vec3(Eye.X, Eye.Y + 256,  
+    vec3 TopRightNear = vec3(Eye.X + 256, Eye.Y + 256, 
 }
+#endif
 
+#if 0
 extern "C" void
-GetHighestVisibleAncestor(const svo* const Svo, vec3 EyePos, vec3 EyeDir)
+HighestVisibleAncestor(const svo* const Svo, vec3 EyePos, vec3 EyeDir)
 {
     frustum3 ViewFrustum;
     ComputeFrustumFromEyeAndDir(EyePos, EyeDir, &ViewFrustum);
 }
+#endif
 
 
