@@ -1,8 +1,8 @@
+#include <cassert>
+#include <cstdlib>
+#include <cstdio>
+
 #include <glad/glad.h>
-#include <assert.h>
-#include <map>
-#include <unordered_map>
-#include <vector>
 
 #include "sabre.h"
 #include "svo.h"
@@ -38,6 +38,7 @@ typedef GLuint64 gl_u64;
 enum cs_bindings
 {
     BIND_RENDER_TEX = 0,
+    BIND_BEAM_TEX = 1,
 };
 
 enum htable_cs_bindings
@@ -71,6 +72,7 @@ struct render_data
     gl_uint FarPtrBuffer; // Buffer for the SVO far-ptr data
     gl_uint RenderShader; // Shader ID of the raycaster CS
     gl_uint RenderImage;  // GL texture ID of the render output image
+    gl_uint BeamImage;    // Texture holding coarse distance image for beam optimisation
 
     gl_int ViewMatUniformLocation; // Location of view matrix uniform
     gl_int ViewPosUniformLocation; // Location of view position uniform
@@ -83,10 +85,10 @@ struct render_data
 };
 
 
-struct svo_buffers
+struct buffer_pair
 {
-    union { gl_uint SvoBuffer, VAO; };
-    union { gl_uint FarPtrBuffer, VBO; };
+    union { gl_uint SvoBuffer, VAO, InputBuffer; };
+    union { gl_uint FarPtrBuffer, VBO, OutputBuffer; };
 };
 
 
@@ -146,8 +148,8 @@ EndTimerQuery(const gl_timer* const Timer)
     glEndQuery(GL_TIME_ELAPSED);
 }
 
-static gl_uint
-CreateLeafDataHashTable(render_data* RenderData, const attrib_data* const Data, usize Count)
+static buffer_pair
+CreateLeafDataHashTable(const render_data* const RenderData, const attrib_data* const Data, usize Count)
 {
     gl_uint DataBuffers[2] = { 0 };
     const usize HTableDataSize = (HTABLE_SLOT_COUNT * sizeof(attrib_data));
@@ -159,13 +161,15 @@ CreateLeafDataHashTable(render_data* RenderData, const attrib_data* const Data, 
     glBufferData(GL_SHADER_STORAGE_BUFFER, Count*sizeof(attrib_data), nullptr, GL_DYNAMIC_COPY);
     attrib_data* GPUDataBuffer = (attrib_data*)glMapBuffer(GL_SHADER_STORAGE_BUFFER,
                                                            GL_WRITE_ONLY);
-    memcpy(GPUDataBuffer, Data, Count*sizeof(attrib_data));
+    assert(GPUDataBuffer);
+    std::memcpy(GPUDataBuffer, Data, Count*sizeof(attrib_data));
     glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, DataBuffers[1]);
     glBufferData(GL_SHADER_STORAGE_BUFFER, HTableDataSize, nullptr, GL_DYNAMIC_COPY);
     attrib_data* GPUHTableBuffer = (attrib_data*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
-    memset(GPUHTableBuffer, HTABLE_NULL_KEY_BYTE, HTableDataSize);
+    assert(GPUDataBuffer);
+    std::memset(GPUHTableBuffer, HTABLE_NULL_KEY_BYTE, HTableDataSize);
     glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 
     glUseProgram(RenderData->HTableBuilderShader);
@@ -173,7 +177,7 @@ CreateLeafDataHashTable(render_data* RenderData, const attrib_data* const Data, 
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, HTableInputBufferBinding, DataBuffers[0]);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, HTableOutputBufferBinding, DataBuffers[1]);
 
-    printf("BEGINNING HASH BUILD...\n");
+    std::printf("BEGINNING HASH BUILD...\n");
 
     Count = Minimum(Count, HTABLE_SLOT_COUNT);
     usize Remaining = Count;
@@ -188,18 +192,14 @@ CreateLeafDataHashTable(render_data* RenderData, const attrib_data* const Data, 
         Remaining -= WorkGroupCount;
     }
 
-    RenderData->HTableInputBuffer = DataBuffers[0];
-    RenderData->HTableOutputBuffer = DataBuffers[1];
-
-
-    return 0;
+    return buffer_pair{ {DataBuffers[0]}, {DataBuffers[1]} };
 }
 
 
-static svo_buffers
+static buffer_pair
 UploadCanvasVertices(void)
 {
-    svo_buffers Result = { };
+    buffer_pair Result = { };
     gl_uint VAO, VBO;
 
     glGenBuffers(1, &VBO);
@@ -225,10 +225,10 @@ UploadCanvasVertices(void)
 }
 
 
-static svo_buffers
+static buffer_pair
 UploadSvoBlockData(const svo* const Svo)
 {
-    svo_buffers Buffers = { };
+    buffer_pair Buffers = { };
     usize NodeBlkSize = (SBR_NODES_PER_BLK * sizeof(svo_node));
     usize FarPtrBlkSize = (SBR_FAR_PTRS_PER_BLK * sizeof(far_ptr));
     usize BlkSize = NodeBlkSize + FarPtrBlkSize;
@@ -238,7 +238,7 @@ UploadSvoBlockData(const svo* const Svo)
 
     if (ViewableBlkCount < static_cast<usize>(Svo->UsedBlockCount))
     {
-        fprintf(stderr, "[WARNING] SVO block data exceeds max GPU buffer size\n");
+        std::fprintf(stderr, "[WARNING] SVO block data exceeds max GPU buffer size\n");
     }
 
     usize NodeBufferSize = NodeBlkSize * ViewableBlkCount;
@@ -267,10 +267,10 @@ UploadSvoBlockData(const svo* const Svo)
 
         for (usize BlkIndex = 0; BlkIndex < ViewableBlkCount; ++BlkIndex)
         {
-            memcpy(GPUNodeBuffer + NextSvoDataOffset, CurrentBlk->Entries, CurrentBlk->NextFreeSlot * sizeof(svo_node));
+            std::memcpy(GPUNodeBuffer + NextSvoDataOffset, CurrentBlk->Entries, CurrentBlk->NextFreeSlot * sizeof(svo_node));
             NextSvoDataOffset += CurrentBlk->NextFreeSlot;
 
-            memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SBR_FAR_PTRS_PER_BLK * sizeof(far_ptr)); 
+            std::memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SBR_FAR_PTRS_PER_BLK * sizeof(far_ptr)); 
             NextFarPtrDataOffset += SBR_FAR_PTRS_PER_BLK;
 
             if (CurrentBlk->Next)
@@ -317,7 +317,7 @@ CompileComputeShader(const char* const ComputeShaderCode)
     {
         char Log[512] = { 0 };
         glGetShaderInfoLog(ShaderID, 512, nullptr, Log);
-        fprintf(stdout, "Failed to compile compute shader\nLog is: %s\n", Log);
+        std::fprintf(stdout, "Failed to compile compute shader\nLog is: %s\n", Log);
 
         return 0;
     }
@@ -330,7 +330,7 @@ CompileComputeShader(const char* const ComputeShaderCode)
 
     if (0 == Success)
     {
-        fprintf(stderr, "Failed to link compute shader program\n");
+        std::fprintf(stderr, "Failed to link compute shader program\n");
         return 0;
     }
 
@@ -357,7 +357,7 @@ CompileShader(const char* VertSrc, const char* FragSrc)
     {
         char Log[512] = { 0 };
         glGetShaderInfoLog(VertShader, 512, nullptr, Log);
-        fprintf(stderr, "Failed to compile vertex shader\n%s", Log);
+        std::fprintf(stderr, "Failed to compile vertex shader\n%s", Log);
         return 0;
     }
 
@@ -371,7 +371,7 @@ CompileShader(const char* VertSrc, const char* FragSrc)
     {
         char Log[512] = { 0 };
         glGetShaderInfoLog(FragShader, 512, nullptr, Log);
-        fprintf(stderr, "Failed to compile fragment shader\n%s", Log);
+        std::fprintf(stderr, "Failed to compile fragment shader\n%s", Log);
         return 0;
     }
 
@@ -384,7 +384,7 @@ CompileShader(const char* VertSrc, const char* FragSrc)
 
     if (0 == Success)
     {
-        fprintf(stderr, "Failed to link shader program\n");
+        std::fprintf(stderr, "Failed to link shader program\n");
         return 0;
     }
 
@@ -436,11 +436,29 @@ CreateRenderImage(int ImgWidth, int ImgHeight)
     return OutputTexture;
 }
 
+static inline gl_uint
+CreateBeamDistanceImage(int RenderWidth, int RenderHeight)
+{
+    gl_uint Texture;
+    glGenTextures(1, &Texture);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, Texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, RenderWidth/8, RenderHeight/8, 0, GL_R, GL_FLOAT, nullptr);
 
-static svo_buffers
+    glBindImageTexture(BIND_RENDER_TEX, Texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+
+    return Texture;
+}
+
+
+static buffer_pair
 UploadOctreeBlockData(const svo* const Svo)
 {
-    svo_buffers RenderData = { };
+    buffer_pair RenderData = { };
     gl_uint SvoBuffer, FarPtrBuffer;
 
     // TODO(Liam): Look into combining these allocations
@@ -483,10 +501,10 @@ UploadOctreeBlockData(const svo* const Svo)
         {
             assert(NextSvoDataOffset + (CurrentBlk->NextFreeSlot*sizeof(svo_node)) <= MaxSvoDataSize);
 
-            memcpy(GPUSvoBuffer + NextSvoDataOffset, CurrentBlk->Entries, CurrentBlk->NextFreeSlot * sizeof(svo_node));
+            std::memcpy(GPUSvoBuffer + NextSvoDataOffset, CurrentBlk->Entries, CurrentBlk->NextFreeSlot * sizeof(svo_node));
             NextSvoDataOffset += CurrentBlk->NextFreeSlot;
 
-            memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SBR_FAR_PTRS_PER_BLK * sizeof(far_ptr)); 
+            std::memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SBR_FAR_PTRS_PER_BLK * sizeof(far_ptr)); 
             NextFarPtrDataOffset += SBR_FAR_PTRS_PER_BLK;
 
             CurrentBlk = CurrentBlk->Next;
@@ -539,17 +557,17 @@ DrawScene(const render_data* const RenderData, const view_data* const ViewData)
 extern "C" render_data*
 CreateRenderData(const svo* const Svo, const view_data* const ViewData)
 {
-    render_data* RenderData = (render_data*) calloc(1, sizeof(render_data));
+    render_data* RenderData = (render_data*)std::calloc(1, sizeof(render_data));
     if (nullptr == RenderData)
     {
-        fprintf(stderr, "Failed to allocate render data\n");
+        std::fprintf(stderr, "Failed to allocate render data\n");
         return nullptr;
     }
 
     RenderData->RenderShader = CompileComputeShader(RaycasterComputeKernel);
     if (0 == RenderData->RenderShader)
     {
-        fprintf(stderr, "Failed to compile compute shader\n");
+        std::fprintf(stderr, "Failed to compile compute shader\n");
 
         DeleteRenderData(RenderData);
         return nullptr;
@@ -558,7 +576,7 @@ CreateRenderData(const svo* const Svo, const view_data* const ViewData)
     RenderData->CanvasShader = CompileShader(MainVertexCode, MainFragmentCode);
     if (0 == RenderData->CanvasShader)
     {
-        fprintf(stderr, "Failed to compile canvas shader\n");
+        std::fprintf(stderr, "Failed to compile canvas shader\n");
 
         DeleteRenderData(RenderData);
         return nullptr;
@@ -567,22 +585,25 @@ CreateRenderData(const svo* const Svo, const view_data* const ViewData)
     RenderData->HTableBuilderShader = CompileComputeShader(HasherComputeKernel);
     if (0 == RenderData->HTableBuilderShader)
     {
-        fprintf(stderr, "Failed to compile hashtable builder compute shader\n");
+        std::fprintf(stderr, "Failed to compile hashtable builder compute shader\n");
         DeleteRenderData(RenderData);
 
         return nullptr;
     }
 
-    CreateLeafDataHashTable(RenderData, Svo->AttribData.data(), Svo->AttribData.size());
+    CreateLeafDataHashTable(RenderData,
+                            Svo->AttribData.data(),
+                            Svo->AttribData.size());
 
 
     RenderData->RenderImage = CreateRenderImage(ViewData->ScreenWidth, ViewData->ScreenHeight);
+    RenderData->BeamImage = CreateBeamDistanceImage(ViewData->ScreenWidth, ViewData->ScreenHeight);
     SetUniformData(Svo, RenderData);
 
-    svo_buffers CanvasBuffers = UploadCanvasVertices();
+    buffer_pair CanvasBuffers = UploadCanvasVertices();
     if (0 == CanvasBuffers.VAO || 0 == CanvasBuffers.VBO)
     {
-        fprintf(stderr, "Failed to upload canvas vertices\n");
+        std::fprintf(stderr, "Failed to upload canvas vertices\n");
 
         DeleteRenderData(RenderData);
         return nullptr;
@@ -591,7 +612,7 @@ CreateRenderData(const svo* const Svo, const view_data* const ViewData)
     RenderData->CanvasVAO = CanvasBuffers.VAO;
     RenderData->CanvasVBO = CanvasBuffers.VBO;
 
-    svo_buffers SvoBuffers = UploadSvoBlockData(Svo);
+    buffer_pair SvoBuffers = UploadSvoBlockData(Svo);
     if (0 == SvoBuffers.SvoBuffer || 0 == SvoBuffers.FarPtrBuffer)
     {
         DeleteRenderData(RenderData);
@@ -679,10 +700,10 @@ UpdateRenderData(const svo* const Svo, render_data* const RenderDataOut)
     {
         assert(NextSvoDataOffset + (CurrentBlk->NextFreeSlot*sizeof(svo_node)) <= MaxSvoDataSize);
 
-        memcpy(GPUSvoBuffer + NextSvoDataOffset, CurrentBlk->Entries, CurrentBlk->NextFreeSlot * sizeof(svo_node));
+        std::memcpy(GPUSvoBuffer + NextSvoDataOffset, CurrentBlk->Entries, CurrentBlk->NextFreeSlot * sizeof(svo_node));
         NextSvoDataOffset += CurrentBlk->NextFreeSlot;
 
-        memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SBR_FAR_PTRS_PER_BLK * sizeof(far_ptr)); 
+        std::memcpy(GPUFarPtrBuffer + NextFarPtrDataOffset, CurrentBlk->FarPtrs, SBR_FAR_PTRS_PER_BLK * sizeof(far_ptr)); 
         NextFarPtrDataOffset += SBR_FAR_PTRS_PER_BLK;
 
         CurrentBlk = CurrentBlk->Next;
@@ -705,12 +726,12 @@ DEBUGOutputRenderShaderAssembly(const render_data* const RenderData, FILE* OutFi
     gl_int AsmLength = 0;
 
     glGetProgramiv(RenderData->RenderShader, GL_PROGRAM_BINARY_LENGTH, &AsmLength);
-    byte* ShaderAssembly = (byte*)malloc((usize)AsmLength);
+    byte* ShaderAssembly = (byte*)std::malloc((usize)AsmLength);
     glGetProgramBinary(RenderData->RenderShader, AsmLength, &DataLength, BinFormats, ShaderAssembly);
 
-    fwrite(ShaderAssembly, sizeof(byte), (usize)DataLength, OutFile);
+    std::fwrite(ShaderAssembly, sizeof(byte), (usize)DataLength, OutFile);
 
-    free(ShaderAssembly);
+    std::free(ShaderAssembly);
 
     // TODO(Liam): Error checking
     return true;
