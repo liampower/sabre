@@ -174,6 +174,7 @@ UnprojectViewDirection(const camera& Cam)
     return R;
 }
 
+
 static void
 InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, svo* const Svo)
 {
@@ -182,7 +183,6 @@ InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, svo* const Sv
     DEBUGPrintVec3(VoxelPos);
     InsertVoxel(Svo, VoxelPos);
 }
-
 
 
 static void
@@ -214,8 +214,12 @@ main(int ArgCount, const char** const Args)
     if (GLFW_FALSE == glfwInit())
     {
         fprintf(stderr, "Failed to initialise GLFW\n");
-        MessageBox(nullptr, "Failed to initialise GLFW\n", "Error", MB_ICONWARNING);
+        MessageBox(nullptr,
+                   "Failed to initialise GLFW\n",
+                   "Error",
+                   MB_ICONWARNING);
 
+        free(EvtStorage);
         return EXIT_FAILURE;
     }
 
@@ -238,7 +242,12 @@ main(int ArgCount, const char** const Args)
     if (0 == gladLoadGL())
     {
         fprintf(stderr, "Failed to initialise GLAD\n");
-        MessageBox(nullptr, "Failed to initialise OpenGL context, make sure you are running this application with up-to-date graphics drivers", "Error", MB_ICONWARNING);
+        MessageBox(nullptr,
+                   "Failed to initialise OpenGL context, make sure you are running this application with up-to-date graphics drivers",
+                   "Error",
+                   MB_ICONWARNING);
+
+        free(EvtStorage);
         glfwTerminate();
         return EXIT_FAILURE;
     }
@@ -348,9 +357,13 @@ main(int ArgCount, const char** const Args)
                 if (nullptr == RenderData)
                 {
                     fprintf(stderr, "Failed to initialise render data\n");
-                    MessageBox(nullptr, "Failed to initialise render data\n", "Error", MB_ICONWARNING);
+                    MessageBox(nullptr, 
+                               "Failed to initialise render data\n",
+                               "Error",
+                               MB_ICONWARNING);
 
                     DeleteScene(WorldSvo);
+                    free(EvtStorage);
                     glfwTerminate();
                     return EXIT_FAILURE;
                 }
@@ -363,9 +376,13 @@ main(int ArgCount, const char** const Args)
             if (nullptr == WorldSvo)
             {
                 fprintf(stderr, "Failed to initialise SVO data\n");
-                MessageBox(nullptr, "Failed to initialise SVO data\n", "Error", MB_ICONWARNING);
+                MessageBox(nullptr,
+                           "Failed to initialise SVO data\n",
+                           "Error",
+                           MB_ICONWARNING);
 
                 DeleteScene(WorldSvo);
+                free(EvtStorage);
                 glfwTerminate();
                 return EXIT_FAILURE;
             }
