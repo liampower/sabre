@@ -331,7 +331,7 @@ main(int ArgCount, const char** const Args)
             ImGui::TextUnformatted("Higher levels will take longer to generate");
             ImGui::Separator();
 
-            for (usize SceneIndex = 0; SceneIndex < 9; ++SceneIndex)
+            for (usize SceneIndex = 0; SceneIndex < ArrayCount(GlobalSceneTable); ++SceneIndex)
             {
                 const scene& Scene = GlobalSceneTable[SceneIndex];
                 if (ImGui::Button(Scene.Name))
