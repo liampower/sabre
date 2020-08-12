@@ -29,6 +29,24 @@ static constexpr u32 DISPLAY_WIDTH = 1280;
 static constexpr u32 DISPLAY_HEIGHT = 720;
 static constexpr const char* const DISPLAY_TITLE = "Sabre";
 
+struct scene
+{
+    const char* const Name;
+    const char* const Path;
+};
+
+static const scene GlobalSceneTable[] = {
+    { "Sibenik", "data/Showcase/sib2.glb" },
+    { "UV Cube", "data/Showcase/tex_cube.glb" },
+    { "Fireplace Room", "data/Showcase/fireplace_room.glb" },
+    { "Gallery", "data/Showcase/gallery.glb" },
+    { "Dragon", "data/Showcase/dragon.glb" },
+    { "Bunny", "data/Showcase/bunny.glb" },
+    { "Buddha", "data/Showcase/buddha.glb" },
+    { "Serapis", "data/Showcase/serapis.glb" },
+    { "Indonesian", "data/Showcase/Indonesian.glb" },
+};
+
 // NOTE(Liam): Forces use of nVidia GPU on hybrid graphics systems.
 extern "C" {
     __declspec(dllexport) unsigned int NvOptimusEnablement = 0x00000001;
@@ -49,7 +67,6 @@ struct sphere
     vec3 Centre;
     float Radius;
 };
-
 
 static void
 HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei Length, const GLchar* Msg, const void*)
@@ -104,7 +121,6 @@ static inline vec3
 SphereNormal(vec3 C, const svo* const, const void* const UserData)
 {
     const vec3 S = vec3(16);
-    const vec3 SphereCentre = ((const sphere* const)UserData)->Centre;
 
     return Normalize(C - S);
 }
@@ -315,55 +331,14 @@ main(int ArgCount, const char** const Args)
             ImGui::TextUnformatted("Higher levels will take longer to generate");
             ImGui::Separator();
 
-            if (ImGui::Button("Load Sibenik"))
+            for (usize SceneIndex = 0; SceneIndex < 9; ++SceneIndex)
             {
-                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/sib2.glb");
-                ShowMenu = false;
-            }
-            else if (ImGui::Button("Load Test Cube"))
-            {
-                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/tex_cube.glb");
-                ShowMenu = false;
-            }
-            else if (ImGui::Button("Load Fireplace Room"))
-            {
-                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/fireplace_room.glb");
-                ShowMenu = false;
-            }
-            else if (ImGui::Button("Load Gallery"))
-            {
-                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/gallery.glb");
-                ShowMenu = false;
-            }
-            else if (ImGui::Button("Load Dragon"))
-            {
-                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/dragon.glb");
-                ShowMenu = false;
-            }
-            else if (ImGui::Button("Load Bunny"))
-            {
-                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/bunny.glb");
-                ShowMenu = false;
-            }
-            else if (ImGui::Button("Load Buddha"))
-            {
-                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/buddha.glb");
-                ShowMenu = false;
-            }
-            else if (ImGui::Button("Load Serapis"))
-            {
-                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/serapis.glb");
-                ShowMenu = false;
-            }
-            else if (ImGui::Button("Load Indonesian"))
-            {
-                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/indonesian.glb");
-                ShowMenu = false;
-            }
-            else if (ImGui::Button("Load Sphere"))
-            {
-                WorldSvo = CreateCubeSphereTestScene(SafeIntToU32(Lod));
-                ShowMenu = false;
+                const scene& Scene = GlobalSceneTable[SceneIndex];
+                if (ImGui::Button(Scene.Name))
+                {
+                    WorldSvo = ImportGLBFile(SafeIntToU32(Lod), Scene.Path);
+                    ShowMenu = false;
+                }
             }
 
             if (false == ShowMenu)
@@ -407,11 +382,6 @@ main(int ArgCount, const char** const Args)
                                  GetSvoDepth(WorldSvo),
                                  WorldSvo->AttribData.size());
                     ImGui::EndMainMenuBar();
-                }
-
-                if (glfwGetKey(Window, GLFW_KEY_Q))
-                {
-                    glfwSetWindowShouldClose(Window, GLFW_TRUE);
                 }
 
                 if (glfwGetKey(Window, GLFW_KEY_W)) Cam.Position += Cam.Forward * Cam.Velocity;
