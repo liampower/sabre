@@ -10,6 +10,12 @@
 #include "shaders.h"
 #include "vecmath.h"
 
+using gl_uint = GLuint;
+using gl_int = GLint;
+using gl_sizei = GLsizei;
+using gl_enum = GLenum;
+using gl_u64 = GLuint64;
+
 using namespace vm;
 
 static constexpr uint WORK_SIZE_X = 512U;
@@ -27,12 +33,6 @@ static constexpr usize HTABLE_SLOT_COUNT = 1024ULL*1024ULL*256ULL;
 // Since this is used as an argument to memset, only the unsigned char
 // conversion of this value is used, so don't try changing it!
 static constexpr int HTABLE_NULL_KEY_BYTE = 0xFF;
-
-typedef GLuint gl_uint;
-typedef GLint  gl_int;
-typedef GLsizei gl_sizei;
-typedef GLenum gl_enum;
-typedef GLuint64 gl_u64;
 
 
 enum cs_bindings
