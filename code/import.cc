@@ -354,8 +354,8 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
     // p2_3 = e0y.v2x - e0x.v2y
 
     // p0 = e0z*v0y - e0y*v0z
-	// p0 = e0x*v0z - e0z*v0x
-	// p0 = e0y*v1x - e0x*v1y
+    // p0 = e0x*v0z - e0z*v0x
+    // p0 = e0y*v1x - e0x*v1y
 
     m128 E0_ZXYW = _mm_shuffle_ps(E0, E0, _MM_SHUFFLE(3, 1, 0, 2));
     m128 E0_YZXW = _mm_shuffle_ps(E0, E0, _MM_SHUFFLE(3, 0, 2, 1));
@@ -769,15 +769,17 @@ IntersectorFunction(vec3 vMin, vec3 vMax, const svo* const Tree, const void* con
 extern "C" svo*
 ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
 {
-	cgltf_options Options = { };
+    cgltf_options Options = { };
     cgltf_data* Data = nullptr;
 
-	cgltf_result Result = cgltf_parse_file(&Options, GLTFPath, &Data);
+    cgltf_result Result = cgltf_parse_file(&Options, GLTFPath, &Data);
+    assert(cgltf_result_success == Result);
 
     Result = cgltf_load_buffers(&Options, Data, nullptr);
-    Result = cgltf_validate(Data);
+    assert(cgltf_result_success == Result);
 
-	if (cgltf_result_success == Result)
+    Result = cgltf_validate(Data);
+    if (cgltf_result_success == Result)
     {
         vec3 Min, Max;
         MeshMinMaxDimensions(&Data->meshes[0], Min, Max);
