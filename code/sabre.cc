@@ -19,6 +19,7 @@
 #include "sabre.h"
 #include "svo.h"
 #include "render.h"
+#include "noise_gen.h"
 
 using namespace vm;
 
@@ -98,7 +99,7 @@ OutputGraphicsDeviceInfo(void)
 static bool
 CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const, const void* const UserData)
 {
-    const vec3 S = ((const sphere*const)UserData)->Centre;//vec3(16);
+    const vec3 S = ((const sphere* const)UserData)->Centre;//vec3(16);
     const f32 R = ((const sphere* const)UserData)->Radius;//8;
 
     f32 DistanceSqToCube = R * R;
@@ -348,6 +349,12 @@ main(int ArgCount, const char** const Args)
                     WorldSvo = ImportGLBFile(SafeIntToU32(Lod), Scene.Path);
                     ShowMenu = false;
                 }
+            }
+
+            if (ImGui::Button("Noise"))
+            {
+                WorldSvo = BuildNoiseSvo(SafeIntToU32(Lod), 5);
+                ShowMenu = false;
             }
 
             if (false == ShowMenu)
