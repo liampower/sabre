@@ -2,6 +2,7 @@
 #define VECMATH_H
 
 #include <cmath>
+#include <cfloat>
 
 namespace vm
 {
