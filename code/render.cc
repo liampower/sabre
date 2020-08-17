@@ -156,40 +156,44 @@ CreateLeafDataHashTable(const render_data* const RenderData, const attrib_data* 
 
     glGenBuffers(2, DataBuffers);
 
-    // Upload the input leaf data key-value pairs into the leaf buffer
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, DataBuffers[0]);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, Count*sizeof(attrib_data), nullptr, GL_DYNAMIC_COPY);
-    attrib_data* GPUDataBuffer = (attrib_data*)glMapBuffer(GL_SHADER_STORAGE_BUFFER,
-                                                           GL_WRITE_ONLY);
-    assert(GPUDataBuffer);
-    std::memcpy(GPUDataBuffer, Data, Count*sizeof(attrib_data));
-    glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
-
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, DataBuffers[1]);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, HTableDataSize, nullptr, GL_DYNAMIC_COPY);
-    attrib_data* GPUHTableBuffer = (attrib_data*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
-    assert(GPUDataBuffer);
-    std::memset(GPUHTableBuffer, HTABLE_NULL_KEY_BYTE, HTableDataSize);
-    glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
-
-    glUseProgram(RenderData->HTableBuilderShader);
-    glUniform1ui(HTableUniformTableSize, HTABLE_SLOT_COUNT);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, HTableInputBufferBinding, DataBuffers[0]);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, HTableOutputBufferBinding, DataBuffers[1]);
-
-    std::printf("BEGINNING HASH BUILD...\n");
-
-    Count = Minimum(Count, HTABLE_SLOT_COUNT);
-    usize Remaining = Count;
-    while (Remaining > 0)
+    if (Count > 0 && nullptr != Data)
     {
-        usize WorkGroupCount = Minimum(65535ULL, Remaining);
 
-        glUniform1ui(HTableUniformOffset, Count - Remaining);
-        glDispatchCompute(WorkGroupCount, 1, 1);
-        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        // Upload the input leaf data key-value pairs into the leaf buffer
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, DataBuffers[0]);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, Count*sizeof(attrib_data), nullptr, GL_DYNAMIC_COPY);
+        attrib_data* GPUDataBuffer = (attrib_data*)glMapBuffer(GL_SHADER_STORAGE_BUFFER,
+                                                               GL_WRITE_ONLY);
+        assert(GPUDataBuffer);
+        std::memcpy(GPUDataBuffer, Data, Count*sizeof(attrib_data));
+        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 
-        Remaining -= WorkGroupCount;
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, DataBuffers[1]);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, HTableDataSize, nullptr, GL_DYNAMIC_COPY);
+        attrib_data* GPUHTableBuffer = (attrib_data*) glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY);
+        assert(GPUDataBuffer);
+        std::memset(GPUHTableBuffer, HTABLE_NULL_KEY_BYTE, HTableDataSize);
+        glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+
+        glUseProgram(RenderData->HTableBuilderShader);
+        glUniform1ui(HTableUniformTableSize, HTABLE_SLOT_COUNT);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, HTableInputBufferBinding, DataBuffers[0]);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, HTableOutputBufferBinding, DataBuffers[1]);
+
+        std::printf("BEGINNING HASH BUILD...\n");
+
+        Count = Minimum(Count, HTABLE_SLOT_COUNT);
+        usize Remaining = Count;
+        while (Remaining > 0)
+        {
+            usize WorkGroupCount = Minimum(65535ULL, Remaining);
+
+            glUniform1ui(HTableUniformOffset, Count - Remaining);
+            glDispatchCompute(WorkGroupCount, 1, 1);
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+            Remaining -= WorkGroupCount;
+        }
     }
 
     return buffer_pair{ {DataBuffers[0]}, {DataBuffers[1]} };
@@ -447,9 +451,9 @@ CreateBeamDistanceImage(int RenderWidth, int RenderHeight)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, RenderWidth/8, RenderHeight/8, 0, GL_R, GL_FLOAT, nullptr);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, RenderWidth/8, RenderHeight/8, 0, GL_RED, GL_FLOAT, nullptr);
 
-    glBindImageTexture(BIND_RENDER_TEX, Texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+    glBindImageTexture(BIND_BEAM_TEX, Texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 
     return Texture;
 }
@@ -591,13 +595,17 @@ CreateRenderData(const svo* const Svo, const view_data* const ViewData)
         return nullptr;
     }
 
-    CreateLeafDataHashTable(RenderData,
-                            Svo->AttribData.data(),
-                            Svo->AttribData.size());
+    buffer_pair HTableBuffers = CreateLeafDataHashTable(RenderData,
+                                                        Svo->AttribData.data(),
+                                                        Svo->AttribData.size());
+
+    RenderData->HTableInputBuffer = HTableBuffers.InputBuffer;
+    RenderData->HTableOutputBuffer = HTableBuffers.OutputBuffer;
 
 
-    RenderData->RenderImage = CreateRenderImage(ViewData->ScreenWidth, ViewData->ScreenHeight);
     RenderData->BeamImage = CreateBeamDistanceImage(ViewData->ScreenWidth, ViewData->ScreenHeight);
+    RenderData->RenderImage = CreateRenderImage(ViewData->ScreenWidth, ViewData->ScreenHeight);
+    assert(RenderData->BeamImage);
     SetUniformData(Svo, RenderData);
 
     buffer_pair CanvasBuffers = UploadCanvasVertices();
