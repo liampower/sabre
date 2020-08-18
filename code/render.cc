@@ -76,6 +76,7 @@ struct render_data
 
     gl_int ViewMatUniformLocation; // Location of view matrix uniform
     gl_int ViewPosUniformLocation; // Location of view position uniform
+    gl_int IsCoarsePassUniformLocation;
 
     gl_uint HTableBuilderShader; // Compute shader to construct the leaf hashtable
     gl_uint HTableInputBuffer;
@@ -453,7 +454,7 @@ CreateBeamDistanceImage(int RenderWidth, int RenderHeight)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, RenderWidth/8, RenderHeight/8, 0, GL_RED, GL_FLOAT, nullptr);
 
-    glBindImageTexture(BIND_BEAM_TEX, Texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+    glBindImageTexture(BIND_BEAM_TEX, Texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
 
     return Texture;
 }
@@ -540,8 +541,14 @@ DrawScene(const render_data* const RenderData, const view_data* const ViewData)
     glUseProgram(RenderData->RenderShader);
     glUniformMatrix3fv(RenderData->ViewMatUniformLocation, 1, GL_TRUE, ViewData->CamTransform);
     glUniform3fv(RenderData->ViewPosUniformLocation, 1, ViewData->CamPos);
+
+    glUniform1ui(RenderData->IsCoarsePassUniformLocation, 1);
     glDispatchCompute(WORK_SIZE_X/8, WORK_SIZE_Y/8, 1);
 
+    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+    glUniform1ui(RenderData->IsCoarsePassUniformLocation, 0);
+    glDispatchCompute(WORK_SIZE_X/8, WORK_SIZE_Y / 8, 1);
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
     // Draw the canvas
@@ -633,6 +640,7 @@ CreateRenderData(const svo* const Svo, const view_data* const ViewData)
 
     RenderData->ViewMatUniformLocation = glGetUniformLocation(RenderData->RenderShader, "ViewMatrixUniform");
     RenderData->ViewPosUniformLocation = glGetUniformLocation(RenderData->RenderShader, "ViewPosUniform");
+    RenderData->IsCoarsePassUniformLocation = glGetUniformLocation(RenderData->RenderShader, "IsCoarsePassUniform");
 
 
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, RenderData->SvoBuffer);
