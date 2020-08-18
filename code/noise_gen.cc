@@ -273,11 +273,11 @@ Perlin3(vec3 P, vec3 Min, vec3 Max)
     vec3 Diff = (Max - Min) * 0.5f;
     vec3 MaxDN = Abs(vec3(Smoothstep1(0.5f))*CS)*Diff; // Maximum variance of noise
 
-    vec3 MaxVal = vec3(N) + MaxDN;
-    vec3 MinVal = vec3(N) - MaxDN;
+    float MaxVal = N + HorzMin(MaxDN);
+    float MinVal = N - HorzMax(MaxDN);
 
     // Min <= T <= Max
-    if (Any(GreaterThan(vec3(NOISE_THRESHOLD), MinVal) && LessThan(vec3(NOISE_THRESHOLD), MaxVal)))
+    if (MaxVal >= NOISE_THRESHOLD)
     {
         return true;
     }
@@ -306,7 +306,7 @@ DummySampler(vec3 C, const svo* const, const void* const)
     vec3 Tan{1, N.X, 0};
     vec3 BiTan{0, N.Z, 1};
 
-    return Normalize(N);
+    return Normalize(vec3{-N.X, -N.Y, 1});
 }
 
 

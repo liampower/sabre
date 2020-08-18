@@ -1,12 +1,13 @@
 Compiler = clang++
 DisabledWarnings = -Wno-unused-parameter -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-gnu-anonymous-struct -Wno-old-style-cast -Wno-unused-function
 NonErrorWarnings = -Wno-error=unused-variable -Wno-error=missing-prototypes -Wno-error=deprecated-declarations
-#Optimisation = -O3
-Optimisation = -fsanitize=address -fsanitize=undefined,integer -g -gcodeview
-CompilerFlags = -isystem include -Wall -Wextra -pedantic -Weverything -Wpadded -Werror $NonErrorWarnings -std=c++14 -mavx $Optimisation -fno-omit-frame-pointer -fno-exceptions -fno-rtti -fdeclspec -ffast-math $DisabledWarnings
+Optimisation = -O3
+#Optimisation =  -fsanitize=undefined,integer -g -gcodeview
+CompilerFlags = -isystem include -Wall -Wextra -Wmove -pedantic -Weverything -Wpadded  $NonErrorWarnings -std=c++14 -mavx $Optimisation -fno-omit-frame-pointer -fno-exceptions -fno-rtti -fdeclspec -ffast-math $DisabledWarnings
 Linker = clang++ 
 Libs = -Llibs -limgui.lib -lglad.lib -lglfw3.lib -lopengl32.lib -lkernel32.lib -luser32.lib -lgdi32.lib -lshell32.lib
-LinkerFlags = -fsanitize=address -fsanitize=undefined,integer $Libs
+#LinkerFlags = --for-linker=-nodefaultlib:libcmt -fsanitize=undefined,integer $Libs --for-linker=-debug
+LinkerFlags = --for-linker=-nodefaultlib:libcmt  $Libs --for-linker=-opt:ref
 
 rule compile
   command = $Compiler $CompilerFlags -c $in -o $out
@@ -33,8 +34,9 @@ build svo.o: compile code/svo.cc
 build shaders.o: compile code/shaders.cc
 build import.o: compile code/import.cc
 build render.o: compile code/render.cc
+build noise_gen.o: compile code/noise_gen.cc
 
-build sabre.exe: link sabre.o svo.o shaders.o import.o render.o | tags
+build sabre.exe: link sabre.o svo.o shaders.o import.o render.o noise_gen.o | tags
 
 build run phony: run_this sabre.exe
 
