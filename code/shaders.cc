@@ -160,15 +160,6 @@ struct ray
     vec3 InvDir;
 };
 
-struct stack_frame
-{
-    uint Oct;
-    uint Depth;
-    uint Scale;
-    uint Node;
-    vec3 Centre;
-};
-
 struct ray_intersection
 {
     float tMin;
@@ -192,8 +183,8 @@ struct hmap_entry
 
 layout (local_size_x = 8, local_size_y = 8) in;
 
-layout (rgba32f, binding = 0) uniform image2D OutputImgUniform;
-layout (r32f, binding = 1) uniform image2D BeamImgUniform;
+layout (rgba8, binding = 0) writeonly restrict uniform image2D OutputImgUniform;
+layout (r32f, binding = 1) restrict uniform image2D BeamImgUniform;
 
 uniform uint MaxDepthUniform;
 uniform uint BlockCountUniform;
@@ -246,9 +237,9 @@ uint MaxComponentU(uvec3 V)
 
 uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
 {
-    uint ChildPtr = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
-    uint OccBits = (ParentNode & SVO_NODE_OCCUPIED_MASK) >> 8; 
-    uint LeafBits = (ParentNode & SVO_NODE_LEAF_MASK);
+    uint ChildPtr = bitfieldExtract(ParentNode, 16, 16);
+    uint OccBits = bitfieldExtract(ParentNode, 8, 8);
+    uint LeafBits = bitfieldExtract(ParentNode, 0, 8);
     uint OccupiedNonLeafOcts = OccBits & (~LeafBits);
     uint SetBitsBehindOctIdx = (1 << Oct) - 1;
 
@@ -266,7 +257,7 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
         // Find the far ptr associated with this node. To do this, we need to compute
         // the byte offset for this block, then index into that block's far ptr
         // list for this node.
-        uint FarPtrIndex = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
+        uint FarPtrIndex = bitfieldExtract(ParentNode, 16, 16);
         uint FarPtrBlkStart = ParentBlkIndex*FarPtrsPerBlockUniform;
         far_ptr FarPtr = SvoFarPtrBuffer.FarPtrs[FarPtrBlkStart + FarPtrIndex];
 
@@ -329,7 +320,8 @@ uint GetOctant(in vec3 P, in vec3 ParentCentreP)
     // It is likely that a DP is actually *not* faster
     // here because the GLSL `dot` function can only return floats,
     // so we would need to convert this back into a uint. 
-    return G.x + G.y*2 + G.z*4;
+    G *= OCT_BITS;
+    return G.x + G.y + G.z;
 }
 
 bool IsOctantOccupied(in uint Node, in uint Oct)
@@ -350,7 +342,6 @@ vec3 Oct2Cr(in uint Oct)
 struct st_frame
 {
     uint Node;
-    uint Scale;
     vec3 ParentCentre;
     uint BlkIndex;
 };
@@ -462,7 +453,6 @@ float RaycastDst(in ray R)
 
 
         Stack[CurrentDepth] = st_frame(ParentNode, 
-                                       Scale,
                                        ParentCentre,
                                        BlkIndex);
 
@@ -499,7 +489,6 @@ float RaycastDst(in ray R)
                         // NOTE(Liam): BlkIndex (potentially) updated here
 
                         Stack[CurrentDepth] = st_frame(ParentNode,
-                                                   Scale,
                                                    ParentCentre,
                                                    BlkIndex);
 
@@ -541,7 +530,7 @@ float RaycastDst(in ray R)
                     if (NextDepth < CurrentDepth)
                     {
                         CurrentDepth = NextDepth;
-                        Scale = Stack[CurrentDepth].Scale;
+                        Scale = 1 << M;;
                         ParentCentre = Stack[CurrentDepth].ParentCentre;
                         ParentNode = Stack[CurrentDepth].Node;
                         BlkIndex = Stack[CurrentDepth].BlkIndex;
@@ -564,7 +553,7 @@ float RaycastDst(in ray R)
     return RaySpan.tMin;
 }
 
-vec3 Raycast(in vec2 PixelCoords, in ray R)
+vec3 Raycast(in ivec2 BeamCoords, in ray R)
 {
     // Scale up by the tree bias.
     uint Scale = (1U << ScaleExponentUniform) << BiasUniform;
@@ -588,14 +577,14 @@ vec3 Raycast(in vec2 PixelCoords, in ray R)
     {
         // Ray enters octree --- begin processing
 
-        ivec2 Offsets[4] = { ivec2(0, 0), ivec2(1, 0), ivec2(0, 1), ivec2(1, 1) };
-        float MinDst = min(min(
-                imageLoad(BeamImgUniform, ivec2(PixelCoords/8) + Offsets[0]).x,
-                imageLoad(BeamImgUniform, ivec2(PixelCoords/8) + Offsets[1]).x),
-                min(imageLoad(BeamImgUniform, ivec2(PixelCoords/8) + Offsets[2]).x,
-                imageLoad(BeamImgUniform, ivec2(PixelCoords/8) + Offsets[3]).x)
-                ) - 0.1;
         vec3 RayP = (RaySpan.tMin >= 0.0) ? R.Origin + (RaySpan.tMin * R.Dir) : R.Origin;
+        const ivec2 Offsets[4] = { ivec2(0, 0), ivec2(1, 0), ivec2(0, 1), ivec2(1, 1) };
+        float MinDst = min(min(
+                imageLoad(BeamImgUniform, BeamCoords + Offsets[0]).x,
+                imageLoad(BeamImgUniform, BeamCoords + Offsets[1]).x),
+                min(imageLoad(BeamImgUniform, BeamCoords + Offsets[2]).x,
+                imageLoad(BeamImgUniform, BeamCoords + Offsets[3]).x)
+                ) - 0.1;
         RayP = R.Origin + MinDst*R.Dir;
         vec3 ParentCentre = vec3(Scale >> 1);
 
@@ -616,7 +605,7 @@ vec3 Raycast(in vec2 PixelCoords, in ray R)
 
 
         Stack[CurrentDepth] = st_frame(ParentNode, 
-                                       Scale,
+                                       //Scale,
                                        ParentCentre,
                                        BlkIndex);
 
@@ -646,13 +635,14 @@ vec3 Raycast(in vec2 PixelCoords, in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
-                        vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(ViewPosUniform));
+                        return vec3(1, 0, 0);
+                        /*vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(ViewPosUniform));
 
                         vec3 N, C;
                         LookupLeafVoxelData(uvec3(NodeCentre), N, C);
 
                         float A =  (float(Step) / MAX_STEPS);
-                        return mix(max(vec3(dot(Ldir, N)), vec3(0.25))*C, vec3(1, 0,1), A);
+                        return mix(max(vec3(dot(Ldir, N)), vec3(0.25))*C, vec3(1, 0,1), A);*/
 
                     }
                     else
@@ -661,7 +651,7 @@ vec3 Raycast(in vec2 PixelCoords, in ray R)
                         // NOTE(Liam): BlkIndex (potentially) updated here
 
                         Stack[CurrentDepth] = st_frame(ParentNode,
-                                                   Scale,
+                                                   //Scale,
                                                    ParentCentre,
                                                    BlkIndex);
 
@@ -703,7 +693,7 @@ vec3 Raycast(in vec2 PixelCoords, in ray R)
                     if (NextDepth < CurrentDepth)
                     {
                         CurrentDepth = NextDepth;
-                        Scale = Stack[CurrentDepth].Scale;
+                        Scale = 1 << M;;
                         ParentCentre = Stack[CurrentDepth].ParentCentre;
                         ParentNode = Stack[CurrentDepth].Node;
                         BlkIndex = Stack[CurrentDepth].BlkIndex;
@@ -727,7 +717,7 @@ vec3 Raycast(in vec2 PixelCoords, in ray R)
 }
 
 
-#line 570
+#line 730
 void main()
 {
     // Ray XY coordinates of the screen pixels; goes from 0-512
@@ -749,13 +739,12 @@ void main()
 
     if (! IsBeam)
     {
-        vec3 OutCr = Raycast(vec2(PixelCoords), R);
+        vec3 OutCr = Raycast(PixelCoords >> 3, R);
         imageStore(OutputImgUniform, ivec2(PixelCoords), vec4(OutCr, IsBeam));
     }
     else
     {
         float MinDst = RaycastDst(R); 
-        // BeamDstImg[X,Y] = Min(BeamDstImg[X,Y], MinDst);
         imageStore(BeamImgUniform, PixelCoords/8, vec4(MinDst, 0, 0, 0));
     }
 }
