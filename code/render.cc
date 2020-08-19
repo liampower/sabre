@@ -413,8 +413,6 @@ SetUniformData(const svo* const Tree, render_data* const RenderData)
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "FarPtrsPerBlockUniform"), SBR_FAR_PTRS_PER_BLK);
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "BiasUniform"), Tree->Bias.Scale);
     glUniform1f(glGetUniformLocation(RenderData->RenderShader, "InvBiasUniform"), Tree->Bias.InvScale);
-    glUniform1i(glGetUniformLocation(RenderData->RenderShader, "MapDataUniform"), 1);
-    glUniform1i(glGetUniformLocation(RenderData->RenderShader, "ColourDataUniform"), 0);
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "TableSizeUniform"), HTABLE_SLOT_COUNT);
 
     printf("Inv Bias: %f\n", (f64)Tree->Bias.InvScale);
@@ -434,9 +432,9 @@ CreateRenderImage(int ImgWidth, int ImgHeight)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, ImgWidth, ImgHeight, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, ImgWidth, ImgHeight, 0, GL_BGRA, GL_UNSIGNED_BYTE, nullptr);
 
-    glBindImageTexture(BIND_RENDER_TEX, OutputTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+    glBindImageTexture(BIND_RENDER_TEX, OutputTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA8);
     
     return OutputTexture;
 }
@@ -550,6 +548,7 @@ DrawScene(const render_data* const RenderData, const view_data* const ViewData)
     glUniform1ui(RenderData->IsCoarsePassUniformLocation, 0);
     glDispatchCompute(WORK_SIZE_X/8, WORK_SIZE_Y / 8, 1);
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+    EndTimerQuery(&RenderData->Timer);
 
     // Draw the canvas
     glUseProgram(RenderData->CanvasShader);
@@ -559,7 +558,6 @@ DrawScene(const render_data* const RenderData, const view_data* const ViewData)
 
     glBindBuffer(GL_ARRAY_BUFFER, RenderData->CanvasVBO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
-    EndTimerQuery(&RenderData->Timer);
 
     return (u64)GetGPUTimeElapsed(const_cast<gl_timer*>(&RenderData->Timer));
 }
