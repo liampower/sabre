@@ -356,6 +356,12 @@ main(int ArgCount, const char** const Args)
                 WorldSvo = BuildNoiseSvo(SafeIntToU32(Lod), 5);
                 ShowMenu = false;
             }
+        
+            if (ImGui::Button("Sphere"))
+            {
+                WorldSvo = CreateCubeSphereTestScene(SafeIntToU32(Lod));
+                ShowMenu = false;
+            }
 
             if (false == ShowMenu)
             {
