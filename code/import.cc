@@ -6,6 +6,7 @@
 #include <set>
 #include <unordered_map>
 #include <deque>
+#include <stack>
 #include <vector>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -682,7 +683,8 @@ BuildTriangleIndex(u32 MaxDepth,
         vec3 ParentCentre;
     };
 
-    std::deque<st_ctx> Stack;
+    //std::deque<st_ctx> Stack;
+    std::stack<st_ctx> Stack;
 
     svo_bias Bias = ComputeScaleBias(MaxDepth, ScaleExponent);
 
@@ -704,7 +706,7 @@ BuildTriangleIndex(u32 MaxDepth,
         tri3 T = Tris->Triangles[TriIndex].T;
 
         // For every triangle, check if it is enclosed in a bounding box
-        Stack.push_front(RootCtx);
+        Stack.push(RootCtx);
 
         alignas(16) m128 TriVerts[3];
         TriVerts[0] = _mm_set_ps(0.0f, T.V0.Z, T.V0.Y, T.V0.X);
@@ -713,8 +715,8 @@ BuildTriangleIndex(u32 MaxDepth,
 
         while (false == Stack.empty())
         {
-            st_ctx CurrentCtx = Stack.front();
-            Stack.pop_front();
+            st_ctx CurrentCtx = Stack.top();
+            Stack.pop();
 
             vec3 Radius = vec3(CurrentCtx.Scale >> 1U) * Bias.InvScale;
             alignas(16) m128 RadiusM = _mm_set_ps(0.0f, Radius.Z, Radius.Y, Radius.X);
@@ -744,7 +746,7 @@ BuildTriangleIndex(u32 MaxDepth,
                         NewCtx.Depth = CurrentCtx.Depth + 1;
                         NewCtx.Scale = CurrentCtx.Scale >> 1U;
                         NewCtx.ParentCentre = Centre;
-                        Stack.push_front(NewCtx);
+                        Stack.push(NewCtx);
                     }
                 }
             }
