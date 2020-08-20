@@ -116,8 +116,8 @@ luma SampleLuma(vec2 UV)
 
 void main()
 {
-    //FragCr = texture(OutputTextureUniform, UV);
-    luma L = SampleLuma(UV);
+    FragCr = texture(OutputTextureUniform, UV);
+    /*luma L = SampleLuma(UV);
     float Blend = ComputeBlendFactor(L);
     edge E = ComputeEdge(L);
 
@@ -131,7 +131,7 @@ void main()
     
 
     FragCr = vec4(textureLod(OutputTextureUniform, UV2, 0).rgb, L.M);
-    //FragCr = texture(OutputTextureUniform, UV);
+    //FragCr = texture(OutputTextureUniform, UV);*/
 }
 
 )GLSL";
@@ -237,7 +237,7 @@ uint MaxComponentU(uvec3 V)
 
 uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
 {
-    uint ChildPtr = bitfieldExtract(ParentNode, 16, 16);
+    uint ChildPtr = bitfieldExtract(ParentNode, 16, 15);
     uint OccBits = bitfieldExtract(ParentNode, 8, 8);
     uint LeafBits = bitfieldExtract(ParentNode, 0, 8);
     uint OccupiedNonLeafOcts = OccBits & (~LeafBits);
@@ -245,10 +245,10 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
 
     uint ChildOffset = bitCount(OccupiedNonLeafOcts & SetBitsBehindOctIdx); 
 
-    if (! bool(ParentNode & SVO_FAR_PTR_BIT_MASK))
+    if ((ParentNode & SVO_FAR_PTR_BIT_MASK) == 0)
     {
         uint ChildIndex = ParentBlkIndex*EntriesPerBlockUniform + ChildPtr + ChildOffset;
-        ParentBlkIndex += (ChildPtr + ChildOffset) / (EntriesPerBlockUniform);
+        ParentBlkIndex += (ChildPtr + ChildOffset) >> 14;
 
         return SvoInputBuffer.Nodes[ChildIndex];
     }
@@ -257,16 +257,15 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
         // Find the far ptr associated with this node. To do this, we need to compute
         // the byte offset for this block, then index into that block's far ptr
         // list for this node.
-        uint FarPtrIndex = bitfieldExtract(ParentNode, 16, 16);
         uint FarPtrBlkStart = ParentBlkIndex*FarPtrsPerBlockUniform;
-        far_ptr FarPtr = SvoFarPtrBuffer.FarPtrs[FarPtrBlkStart + FarPtrIndex];
+        far_ptr FarPtr = SvoFarPtrBuffer.FarPtrs[FarPtrBlkStart + ChildPtr];
 
         // Skip to the block containing the first child
         ParentBlkIndex = FarPtr.BlkIndex;
         uint ChildBlkStart = ParentBlkIndex * EntriesPerBlockUniform;
 
         // Skip any blocks required to get to the actual child node
-        ParentBlkIndex += (FarPtr.NodeOffset + ChildOffset) / EntriesPerBlockUniform;
+        ParentBlkIndex += (FarPtr.NodeOffset + ChildOffset) >> 14;
 
         uint ChildIndex = ChildBlkStart + FarPtr.NodeOffset + ChildOffset;
 
@@ -360,7 +359,8 @@ struct st_frame
 
 uint HashVec3(uvec3 V)
 {
-    return (V.x*73856093U) ^ (V.y*19349663U) ^ (V.z*83492791U);
+    V *= uvec3(73856093, 19349663, 83492791);
+    return V.x ^ V.y ^ V.z;
 }
 
 
@@ -614,7 +614,8 @@ vec3 Raycast(in ivec2 BeamCoords, in ray R)
         for (Step = 0; Step < MAX_STEPS; ++Step)
         {
             // Radius of the current octant's cube (half the current scale);
-            vec3 Rad = vec3(Scale >> 1);
+            //vec3 Rad = vec3(Scale >> 1);
+            float Rad = float(Scale >> 1);
 
             // Get the centre position of this octant
             vec3 OctSgn = mix(vec3(-1), vec3(1), bvec3(CurrentOct & OCT_BITS));
@@ -635,14 +636,13 @@ vec3 Raycast(in ivec2 BeamCoords, in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
-                        return vec3(1, 0, 0);
-                        /*vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(ViewPosUniform));
+                        vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(ViewPosUniform));
 
                         vec3 N, C;
                         LookupLeafVoxelData(uvec3(NodeCentre), N, C);
 
                         float A =  (float(Step) / MAX_STEPS);
-                        return mix(max(vec3(dot(Ldir, N)), vec3(0.25))*C, vec3(1, 0,1), A);*/
+                        return mix(max(vec3(dot(Ldir, N)), vec3(0.25))*C, vec3(1, 0,1), A);
 
                     }
                     else
@@ -651,9 +651,8 @@ vec3 Raycast(in ivec2 BeamCoords, in ray R)
                         // NOTE(Liam): BlkIndex (potentially) updated here
 
                         Stack[CurrentDepth] = st_frame(ParentNode,
-                                                   //Scale,
-                                                   ParentCentre,
-                                                   BlkIndex);
+                                                       ParentCentre,
+                                                       BlkIndex);
 
                         ParentNode = GetNodeChild(ParentNode, CurrentOct, BlkIndex /*out*/);
                         CurrentOct = GetOctant(RayP, NodeCentre*InvBiasUniform);
@@ -693,7 +692,7 @@ vec3 Raycast(in ivec2 BeamCoords, in ray R)
                     if (NextDepth < CurrentDepth)
                     {
                         CurrentDepth = NextDepth;
-                        Scale = 1 << M;;
+                        Scale = 1 << M;
                         ParentCentre = Stack[CurrentDepth].ParentCentre;
                         ParentNode = Stack[CurrentDepth].Node;
                         BlkIndex = Stack[CurrentDepth].BlkIndex;
@@ -740,12 +739,12 @@ void main()
     if (! IsBeam)
     {
         vec3 OutCr = Raycast(PixelCoords >> 3, R);
-        imageStore(OutputImgUniform, ivec2(PixelCoords), vec4(OutCr, IsBeam));
+        imageStore(OutputImgUniform, PixelCoords, vec4(OutCr, 1.0));
     }
     else
     {
         float MinDst = RaycastDst(R); 
-        imageStore(BeamImgUniform, PixelCoords/8, vec4(MinDst, 0, 0, 0));
+        imageStore(BeamImgUniform, PixelCoords >> 3, vec4(MinDst, 0, 0, 0));
     }
 }
 )GLSL";
