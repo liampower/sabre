@@ -273,19 +273,14 @@ Perlin3(vec3 P, vec3 Min, vec3 Max)
     vec3 Diff = (Max - Min) * 0.5f;
     vec3 MaxDN = Abs(vec3(Smoothstep1(0.5f))*CS)*Diff; // Maximum variance of noise
 
-    float MaxVal = N + HorzMin(MaxDN);
-    float MinVal = N - HorzMax(MaxDN);
+    /*float MaxVal = N + HorzMin(MaxDN);
+    float MinVal = N - HorzMax(MaxDN);*/
+
+    vec3 MaxVal = vec3(N) + MaxDN;
+    vec3 MinVal = vec3(N) - MaxDN;
 
     // Min <= T <= Max
-    if (MaxVal >= NOISE_THRESHOLD)
-    {
-        return true;
-    }
-    else
-    {
-        return false;
-    }
-
+    return Any(GreaterThan(vec3(NOISE_THRESHOLD), MinVal) && LessThan(vec3(NOISE_THRESHOLD), MaxVal));
 }
 
 static inline bool
@@ -303,9 +298,6 @@ static inline vec3
 DummySampler(vec3 C, const svo* const, const void* const)
 {
     vec3 N = Perlin3Deriv(C);
-    vec3 Tan{1, N.X, 0};
-    vec3 BiTan{0, N.Z, 1};
-
     return Normalize(vec3{-N.X, -N.Y, 1});
 }
 
@@ -316,7 +308,7 @@ BuildNoiseSvo(u32 MaxDepth, u32 ScaleExp)
     shape_sampler S{ nullptr, &ShapeSamplerFn };
     data_sampler D{ nullptr, &DummySampler };
 
-    svo* Svo = CreateScene(ScaleExp, MaxDepth, &S, &D, &D);
+    svo* Svo = CreateScene(6, MaxDepth, &S, &D, &D);
 
 
     return Svo;
