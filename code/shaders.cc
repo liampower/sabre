@@ -235,7 +235,7 @@ uint MaxComponentU(uvec3 V)
     return max(max(V.x, V.y), V.z);
 }
 
-uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
+/*uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
 {
     uint ChildPtr = bitfieldExtract(ParentNode, 16, 15);
     uint OccBits = bitfieldExtract(ParentNode, 8, 8);
@@ -271,6 +271,28 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
 
         return SvoInputBuffer.Nodes[ChildIndex];
     }
+}*/
+
+uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
+{
+    uint ChildPtr = bitfieldExtract(ParentNode, 16, 15);
+    uint OccBits = bitfieldExtract(ParentNode, 8, 8);
+    uint LeafBits = bitfieldExtract(ParentNode, 0, 8);
+    uint OccupiedNonLeafOcts = OccBits & (~LeafBits);
+    uint SetBitsBehindOctIdx = (1 << Oct) - 1;
+
+    uint ChildOffset = bitCount(OccupiedNonLeafOcts & SetBitsBehindOctIdx);
+    bool Far = bool(ParentNode & SVO_FAR_PTR_BIT_MASK);
+
+    uint FarPtrIndex = (Far) ? (ParentBlkIndex*FarPtrsPerBlockUniform) + ChildPtr : 0U;
+    far_ptr FarPtr = SvoFarPtrBuffer.FarPtrs[FarPtrIndex];
+    ParentBlkIndex = (Far) ? (FarPtr.BlkIndex) : ParentBlkIndex;
+    uint NodeOffset = (Far) ? (FarPtr.NodeOffset) : ChildPtr;
+
+    uint ChildIndex = (ParentBlkIndex*EntriesPerBlockUniform) + NodeOffset + ChildOffset;
+    ParentBlkIndex += (NodeOffset + ChildOffset) >> 14U;
+
+    return SvoInputBuffer.Nodes[ChildIndex];
 }
 
 ray_intersection ComputeRayBoxIntersection(in ray R, in vec3 vMin, in vec3 vMax)
@@ -643,6 +665,7 @@ vec3 Raycast(in ivec2 BeamCoords, in ray R)
 
                         float A =  (float(Step) / MAX_STEPS);
                         return mix(max(vec3(dot(Ldir, N)), vec3(0.25))*C, vec3(1, 0,1), A);
+                        return max(vec3(dot(Ldir, N)), vec3(0.25))*C;
 
                     }
                     else
@@ -702,12 +725,14 @@ vec3 Raycast(in ivec2 BeamCoords, in ray R)
                     else
                     {
                         return (float(Step) / MAX_STEPS) * vec3(1, 0, 1);
+                        return vec3(0.16);
                     }
                 }
             }
             else
             {
                 return (float(Step) / MAX_STEPS) * vec3(1, 0, 1);
+                return vec3(0.16);
             }
         }
     }
@@ -722,9 +747,9 @@ void main()
     // Ray XY coordinates of the screen pixels; goes from 0-512
     // in each dimension.
     ivec2 PixelCoords = ivec2(gl_GlobalInvocationID.xy);
-    bool IsBeam = all(equal(PixelCoords & 0x07, ivec2(0))) && IsCoarsePassUniform;
     vec3 K = vec3(256, 256, 512);
     vec3 ScreenOrigin = ViewPosUniform - K;
+    if (IsCoarsePassUniform) PixelCoords *= 8;
 
     vec3 ScreenCoord = ScreenOrigin + vec3(PixelCoords, 0);
     ScreenCoord.x *= 1280.0/720.0;
@@ -736,15 +761,16 @@ void main()
 
     ray R = { RayP, RayD, 1.0 / RayD };
 
-    if (! IsBeam)
-    {
-        vec3 OutCr = Raycast(PixelCoords >> 3, R);
-        imageStore(OutputImgUniform, PixelCoords, vec4(OutCr, 1.0));
-    }
-    else
+    // NOTE(Liam): Branch is fine here because all pixels will take the branch.
+    if (IsCoarsePassUniform)
     {
         float MinDst = RaycastDst(R); 
         imageStore(BeamImgUniform, PixelCoords >> 3, vec4(MinDst, 0, 0, 0));
+    }
+    else
+    {
+        vec3 OutCr = Raycast(PixelCoords >> 3, R);
+        imageStore(OutputImgUniform, PixelCoords, vec4(OutCr, 1.0));
     }
 }
 )GLSL";
