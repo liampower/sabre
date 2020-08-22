@@ -541,7 +541,7 @@ DrawScene(const render_data* const RenderData, const view_data* const ViewData)
     glUniform3fv(RenderData->ViewPosUniformLocation, 1, ViewData->CamPos);
 
     glUniform1ui(RenderData->IsCoarsePassUniformLocation, 1);
-    glDispatchCompute(WORK_SIZE_X/8, WORK_SIZE_Y/8, 1);
+    glDispatchCompute(WORK_SIZE_X/64, WORK_SIZE_Y/64, 1);
 
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
