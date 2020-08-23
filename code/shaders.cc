@@ -235,43 +235,6 @@ uint MaxComponentU(uvec3 V)
     return max(max(V.x, V.y), V.z);
 }
 
-/*uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
-{
-    uint ChildPtr = bitfieldExtract(ParentNode, 16, 15);
-    uint OccBits = bitfieldExtract(ParentNode, 8, 8);
-    uint LeafBits = bitfieldExtract(ParentNode, 0, 8);
-    uint OccupiedNonLeafOcts = OccBits & (~LeafBits);
-    uint SetBitsBehindOctIdx = (1 << Oct) - 1;
-
-    uint ChildOffset = bitCount(OccupiedNonLeafOcts & SetBitsBehindOctIdx); 
-
-    if ((ParentNode & SVO_FAR_PTR_BIT_MASK) == 0)
-    {
-        uint ChildIndex = ParentBlkIndex*EntriesPerBlockUniform + ChildPtr + ChildOffset;
-        ParentBlkIndex += (ChildPtr + ChildOffset) >> 14;
-
-        return SvoInputBuffer.Nodes[ChildIndex];
-    }
-    else
-    {
-        // Find the far ptr associated with this node. To do this, we need to compute
-        // the byte offset for this block, then index into that block's far ptr
-        // list for this node.
-        uint FarPtrBlkStart = ParentBlkIndex*FarPtrsPerBlockUniform;
-        far_ptr FarPtr = SvoFarPtrBuffer.FarPtrs[FarPtrBlkStart + ChildPtr];
-
-        // Skip to the block containing the first child
-        ParentBlkIndex = FarPtr.BlkIndex;
-        uint ChildBlkStart = ParentBlkIndex * EntriesPerBlockUniform;
-
-        // Skip any blocks required to get to the actual child node
-        ParentBlkIndex += (FarPtr.NodeOffset + ChildOffset) >> 14;
-
-        uint ChildIndex = ChildBlkStart + FarPtr.NodeOffset + ChildOffset;
-
-        return SvoInputBuffer.Nodes[ChildIndex];
-    }
-}*/
 
 uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
 {
