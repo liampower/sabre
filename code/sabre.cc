@@ -19,6 +19,7 @@
 #include "sabre.h"
 #include "svo.h"
 #include "render.h"
+#include "noise_gen.h"
 
 using namespace vm;
 
@@ -28,6 +29,24 @@ static constexpr u32 DEMO_SCALE_EXPONENT = 5;
 static constexpr u32 DISPLAY_WIDTH = 1280;
 static constexpr u32 DISPLAY_HEIGHT = 720;
 static constexpr const char* const DISPLAY_TITLE = "Sabre";
+
+struct scene
+{
+    const char* const Name;
+    const char* const Path;
+};
+
+static const scene GlobalSceneTable[] = {
+    { "Sibenik", "data/Showcase/sib2.glb" },
+    { "UV Cube", "data/Showcase/tex_cube.glb" },
+    { "Fireplace Room", "data/Showcase/fireplace_room.glb" },
+    { "Gallery", "data/Showcase/gallery.glb" },
+    { "Dragon", "data/Showcase/dragon.glb" },
+    { "Bunny", "data/Showcase/bunny.glb" },
+    { "Buddha", "data/Showcase/buddha.glb" },
+    { "Serapis", "data/Showcase/serapis.glb" },
+    { "Indonesian", "data/Showcase/Indonesian.glb" },
+};
 
 // NOTE(Liam): Forces use of nVidia GPU on hybrid graphics systems.
 extern "C" {
@@ -49,7 +68,6 @@ struct sphere
     vec3 Centre;
     float Radius;
 };
-
 
 static void
 HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei Length, const GLchar* Msg, const void*)
@@ -81,7 +99,7 @@ OutputGraphicsDeviceInfo(void)
 static bool
 CubeSphereIntersection(vec3 Min, vec3 Max, const svo* const, const void* const UserData)
 {
-    const vec3 S = ((const sphere*const)UserData)->Centre;//vec3(16);
+    const vec3 S = ((const sphere* const)UserData)->Centre;//vec3(16);
     const f32 R = ((const sphere* const)UserData)->Radius;//8;
 
     f32 DistanceSqToCube = R * R;
@@ -104,7 +122,6 @@ static inline vec3
 SphereNormal(vec3 C, const svo* const, const void* const UserData)
 {
     const vec3 S = vec3(16);
-    const vec3 SphereCentre = ((const sphere* const)UserData)->Centre;
 
     return Normalize(C - S);
 }
@@ -158,6 +175,7 @@ UnprojectViewDirection(const camera& Cam)
     return R;
 }
 
+
 static void
 InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, svo* const Svo)
 {
@@ -166,7 +184,6 @@ InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, svo* const Sv
     DEBUGPrintVec3(VoxelPos);
     InsertVoxel(Svo, VoxelPos);
 }
-
 
 
 static void
@@ -198,8 +215,12 @@ main(int ArgCount, const char** const Args)
     if (GLFW_FALSE == glfwInit())
     {
         fprintf(stderr, "Failed to initialise GLFW\n");
-        MessageBox(nullptr, "Failed to initialise GLFW\n", "Error", MB_ICONWARNING);
+        MessageBox(nullptr,
+                   "Failed to initialise GLFW\n",
+                   "Error",
+                   MB_ICONWARNING);
 
+        free(EvtStorage);
         return EXIT_FAILURE;
     }
 
@@ -222,7 +243,12 @@ main(int ArgCount, const char** const Args)
     if (0 == gladLoadGL())
     {
         fprintf(stderr, "Failed to initialise GLAD\n");
-        MessageBox(nullptr, "Failed to initialise OpenGL context, make sure you are running this application with up-to-date graphics drivers", "Error", MB_ICONWARNING);
+        MessageBox(nullptr,
+                   "Failed to initialise OpenGL context, make sure you are running this application with up-to-date graphics drivers",
+                   "Error",
+                   MB_ICONWARNING);
+
+        free(EvtStorage);
         glfwTerminate();
         return EXIT_FAILURE;
     }
@@ -315,52 +341,23 @@ main(int ArgCount, const char** const Args)
             ImGui::TextUnformatted("Higher levels will take longer to generate");
             ImGui::Separator();
 
-            if (ImGui::Button("Load Sibenik"))
+            for (usize SceneIndex = 0; SceneIndex < ArrayCount(GlobalSceneTable); ++SceneIndex)
             {
-                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/sib2.glb");
+                const scene& Scene = GlobalSceneTable[SceneIndex];
+                if (ImGui::Button(Scene.Name))
+                {
+                    WorldSvo = ImportGLBFile(SafeIntToU32(Lod), Scene.Path);
+                    ShowMenu = false;
+                }
+            }
+
+            if (ImGui::Button("Noise"))
+            {
+                WorldSvo = BuildNoiseSvo(SafeIntToU32(Lod), 5);
                 ShowMenu = false;
             }
-            else if (ImGui::Button("Load Test Cube"))
-            {
-                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/tex_cube.glb");
-                ShowMenu = false;
-            }
-            else if (ImGui::Button("Load Fireplace Room"))
-            {
-                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/fireplace_room.glb");
-                ShowMenu = false;
-            }
-            else if (ImGui::Button("Load Gallery"))
-            {
-                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/gallery.glb");
-                ShowMenu = false;
-            }
-            else if (ImGui::Button("Load Dragon"))
-            {
-                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/dragon.glb");
-                ShowMenu = false;
-            }
-            else if (ImGui::Button("Load Bunny"))
-            {
-                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/bunny.glb");
-                ShowMenu = false;
-            }
-            else if (ImGui::Button("Load Buddha"))
-            {
-                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/buddha.glb");
-                ShowMenu = false;
-            }
-            else if (ImGui::Button("Load Serapis"))
-            {
-                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/serapis.glb");
-                ShowMenu = false;
-            }
-            else if (ImGui::Button("Load Indonesian"))
-            {
-                WorldSvo = ImportGLBFile(SafeIntToU32(Lod), "data/Showcase/indonesian.glb");
-                ShowMenu = false;
-            }
-            else if (ImGui::Button("Load Sphere"))
+        
+            if (ImGui::Button("Sphere"))
             {
                 WorldSvo = CreateCubeSphereTestScene(SafeIntToU32(Lod));
                 ShowMenu = false;
@@ -373,9 +370,13 @@ main(int ArgCount, const char** const Args)
                 if (nullptr == RenderData)
                 {
                     fprintf(stderr, "Failed to initialise render data\n");
-                    MessageBox(nullptr, "Failed to initialise render data\n", "Error", MB_ICONWARNING);
+                    MessageBox(nullptr, 
+                               "Failed to initialise render data\n",
+                               "Error",
+                               MB_ICONWARNING);
 
                     DeleteScene(WorldSvo);
+                    free(EvtStorage);
                     glfwTerminate();
                     return EXIT_FAILURE;
                 }
@@ -388,9 +389,13 @@ main(int ArgCount, const char** const Args)
             if (nullptr == WorldSvo)
             {
                 fprintf(stderr, "Failed to initialise SVO data\n");
-                MessageBox(nullptr, "Failed to initialise SVO data\n", "Error", MB_ICONWARNING);
+                MessageBox(nullptr,
+                           "Failed to initialise SVO data\n",
+                           "Error",
+                           MB_ICONWARNING);
 
                 DeleteScene(WorldSvo);
+                free(EvtStorage);
                 glfwTerminate();
                 return EXIT_FAILURE;
             }
@@ -407,11 +412,6 @@ main(int ArgCount, const char** const Args)
                                  GetSvoDepth(WorldSvo),
                                  WorldSvo->AttribData.size());
                     ImGui::EndMainMenuBar();
-                }
-
-                if (glfwGetKey(Window, GLFW_KEY_Q))
-                {
-                    glfwSetWindowShouldClose(Window, GLFW_TRUE);
                 }
 
                 if (glfwGetKey(Window, GLFW_KEY_W)) Cam.Position += Cam.Forward * Cam.Velocity;

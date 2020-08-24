@@ -6,6 +6,7 @@
 #include <set>
 #include <unordered_map>
 #include <deque>
+#include <stack>
 #include <vector>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -354,8 +355,8 @@ TriangleAABBIntersection(m128 Centre, m128 Radius, m128 Tri[3])
     // p2_3 = e0y.v2x - e0x.v2y
 
     // p0 = e0z*v0y - e0y*v0z
-	// p0 = e0x*v0z - e0z*v0x
-	// p0 = e0y*v1x - e0x*v1y
+    // p0 = e0x*v0z - e0z*v0x
+    // p0 = e0y*v1x - e0x*v1y
 
     m128 E0_ZXYW = _mm_shuffle_ps(E0, E0, _MM_SHUFFLE(3, 1, 0, 2));
     m128 E0_YZXW = _mm_shuffle_ps(E0, E0, _MM_SHUFFLE(3, 0, 2, 1));
@@ -682,7 +683,8 @@ BuildTriangleIndex(u32 MaxDepth,
         vec3 ParentCentre;
     };
 
-    std::deque<st_ctx> Stack;
+    //std::deque<st_ctx> Stack;
+    std::stack<st_ctx> Stack;
 
     svo_bias Bias = ComputeScaleBias(MaxDepth, ScaleExponent);
 
@@ -704,7 +706,7 @@ BuildTriangleIndex(u32 MaxDepth,
         tri3 T = Tris->Triangles[TriIndex].T;
 
         // For every triangle, check if it is enclosed in a bounding box
-        Stack.push_front(RootCtx);
+        Stack.push(RootCtx);
 
         alignas(16) m128 TriVerts[3];
         TriVerts[0] = _mm_set_ps(0.0f, T.V0.Z, T.V0.Y, T.V0.X);
@@ -713,8 +715,8 @@ BuildTriangleIndex(u32 MaxDepth,
 
         while (false == Stack.empty())
         {
-            st_ctx CurrentCtx = Stack.front();
-            Stack.pop_front();
+            st_ctx CurrentCtx = Stack.top();
+            Stack.pop();
 
             vec3 Radius = vec3(CurrentCtx.Scale >> 1U) * Bias.InvScale;
             alignas(16) m128 RadiusM = _mm_set_ps(0.0f, Radius.Z, Radius.Y, Radius.X);
@@ -744,7 +746,7 @@ BuildTriangleIndex(u32 MaxDepth,
                         NewCtx.Depth = CurrentCtx.Depth + 1;
                         NewCtx.Scale = CurrentCtx.Scale >> 1U;
                         NewCtx.ParentCentre = Centre;
-                        Stack.push_front(NewCtx);
+                        Stack.push(NewCtx);
                     }
                 }
             }
@@ -769,15 +771,17 @@ IntersectorFunction(vec3 vMin, vec3 vMax, const svo* const Tree, const void* con
 extern "C" svo*
 ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
 {
-	cgltf_options Options = { };
+    cgltf_options Options = { };
     cgltf_data* Data = nullptr;
 
-	cgltf_result Result = cgltf_parse_file(&Options, GLTFPath, &Data);
+    cgltf_result Result = cgltf_parse_file(&Options, GLTFPath, &Data);
+    assert(cgltf_result_success == Result);
 
     Result = cgltf_load_buffers(&Options, Data, nullptr);
-    Result = cgltf_validate(Data);
+    assert(cgltf_result_success == Result);
 
-	if (cgltf_result_success == Result)
+    Result = cgltf_validate(Data);
+    if (cgltf_result_success == Result)
     {
         vec3 Min, Max;
         MeshMinMaxDimensions(&Data->meshes[0], Min, Max);

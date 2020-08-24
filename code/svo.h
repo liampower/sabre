@@ -4,7 +4,6 @@
 #include <vector>
 
 #include "sabre.h"
-
 #include "vecmath.h"
 
 static constexpr u32 SBR_NODES_PER_BLK = 16384;
@@ -56,6 +55,9 @@ struct attrib_data
     u32 VoxelKey;
     packed_snorm3 PackedNormal;
     packed_snorm3 PackedColour;
+
+    // Annoying, but we need the attrib data to have a constructor for emplace_back
+    constexpr inline attrib_data(u32 K, packed_snorm3 PN, packed_snorm3 PC) : VoxelKey(K), PackedNormal(PN), PackedColour(PC) {}
 };
 
 enum svo_blk_flags
@@ -131,10 +133,10 @@ struct svo
 };
 
 extern vm::vec3
-GetNearestFreeSlot(vm::vec3 Pos, vm::vec3 Dir, const svo* const Tree);
+GetNearestFreeSlot(vm::vec3 RayOrigin, vm::vec3 Dir, const svo* const Tree);
 
 extern vm::vec3
-GetNearestLeafSlot(vm::vec3 Pos, vm::vec3 Dir, const svo* const Tree);
+GetNearestLeafSlot(vm::vec3 RayOrigin, vm::vec3 Dir, const svo* const Tree);
 
 extern "C" void
 InsertVoxel(svo* Tree, vm::vec3 P);

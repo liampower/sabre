@@ -1,9 +1,7 @@
 #ifndef SABRE_H
 #define SABRE_H
 
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdint>
 
 typedef unsigned  uint;
 typedef size_t    usize;
@@ -23,6 +21,12 @@ typedef float    f32;
 typedef double   f64;
 
 #define packed_data __attribute__((packed))
+
+template<typename t, size_t n> constexpr inline size_t
+ArrayCount(t (&A)[n])
+{
+    return sizeof(A) / sizeof(A[0]);
+}
 
 extern "C" {
     __declspec(dllexport) extern unsigned int NvOptimusEnablement;

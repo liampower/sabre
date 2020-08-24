@@ -1,5 +1,6 @@
 #include "shaders.h"
 
+// {{{ MainVertexCode
 extern const char* const MainVertexCode = R"GLSL(
 #version 450 core
 
@@ -14,7 +15,9 @@ void main()
 }
 
 )GLSL";
+// }}}
 
+// {{{ MainFragmentCode
 extern const char* const MainFragmentCode = R"GLSL(
 #version 450 core
 
@@ -67,11 +70,11 @@ edge ComputeEdge(in luma L)
     E.Horz = HorzContrast >= VertContrast;
     E.StepSize = E.Horz ? 1/512.0 : 1/512.0;
     float pLuminance = E.Horz ? L.N : L.E;
-	float nLuminance = E.Horz ? L.S : L.W;
+    float nLuminance = E.Horz ? L.S : L.W;
     float pGradient = abs(pLuminance - L.M);
     float nGradient = abs(nLuminance - L.M);
 
-	if (pGradient < nGradient) {
+    if (pGradient < nGradient) {
         E.StepSize = -E.StepSize;
     }
 
@@ -111,12 +114,10 @@ luma SampleLuma(vec2 UV)
     return luma(N, S, E, W, M, Min, Max, Contrast, NE, NW, SE, SW);
 }
 
-
-
 void main()
 {
-    //FragCr = texture(OutputTextureUniform, UV);
-    luma L = SampleLuma(UV);
+    FragCr = texture(OutputTextureUniform, UV);
+    /*luma L = SampleLuma(UV);
     float Blend = ComputeBlendFactor(L);
     edge E = ComputeEdge(L);
 
@@ -130,15 +131,17 @@ void main()
     
 
     FragCr = vec4(textureLod(OutputTextureUniform, UV2, 0).rgb, L.M);
-    //FragCr = texture(OutputTextureUniform, UV);
+    //FragCr = texture(OutputTextureUniform, UV);*/
 }
 
 )GLSL";
+// }}}
 
-// TODO(Liam): Theoretical f32 ops we can do in 16ms on a 620M: 3840000000 
+// {{{ RaycasterComputeKernel
 extern const char* const RaycasterComputeKernel = R"GLSL(
 #version 450 core
 
+// TODO(Liam): Theoretical f32 ops we can do in 16ms on a 620M: 3840000000 
 #define SVO_NODE_OCCUPIED_MASK  0x0000FF00U
 #define SVO_NODE_LEAF_MASK      0x000000FFU
 #define SVO_NODE_CHILD_PTR_MASK 0x7FFF0000U
@@ -155,15 +158,6 @@ struct ray
     vec3 Origin;
     vec3 Dir;
     vec3 InvDir;
-};
-
-struct stack_frame
-{
-    uint Oct;
-    uint Depth;
-    uint Scale;
-    uint Node;
-    vec3 Centre;
 };
 
 struct ray_intersection
@@ -189,7 +183,8 @@ struct hmap_entry
 
 layout (local_size_x = 8, local_size_y = 8) in;
 
-layout (rgba32f, binding = 0) uniform image2D OutputImgUniform;
+layout (rgba8, binding = 0) writeonly restrict uniform image2D OutputImgUniform;
+layout (r32f, binding = 1) restrict uniform image2D BeamImgUniform;
 
 uniform uint MaxDepthUniform;
 uniform uint BlockCountUniform;
@@ -203,6 +198,7 @@ uniform float InvBiasUniform;
 
 uniform vec3 ViewPosUniform;
 uniform mat3 ViewMatrixUniform;
+uniform bool IsCoarsePassUniform;
 
 
 const uvec3 OCT_BITS = uvec3(1, 2, 4);
@@ -239,43 +235,27 @@ uint MaxComponentU(uvec3 V)
     return max(max(V.x, V.y), V.z);
 }
 
+
 uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
 {
-    uint ChildPtr = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
-    uint OccBits = (ParentNode & SVO_NODE_OCCUPIED_MASK) >> 8; 
-    uint LeafBits = (ParentNode & SVO_NODE_LEAF_MASK);
+    uint ChildPtr = bitfieldExtract(ParentNode, 16, 15);
+    uint OccBits = bitfieldExtract(ParentNode, 8, 8);
+    uint LeafBits = bitfieldExtract(ParentNode, 0, 8);
     uint OccupiedNonLeafOcts = OccBits & (~LeafBits);
     uint SetBitsBehindOctIdx = (1 << Oct) - 1;
 
-    uint ChildOffset = bitCount(OccupiedNonLeafOcts & SetBitsBehindOctIdx); 
+    uint ChildOffset = bitCount(OccupiedNonLeafOcts & SetBitsBehindOctIdx);
+    bool Far = bool(ParentNode & SVO_FAR_PTR_BIT_MASK);
 
-    if (! bool(ParentNode & SVO_FAR_PTR_BIT_MASK))
-    {
-        uint ChildIndex = ParentBlkIndex*EntriesPerBlockUniform + ChildPtr + ChildOffset;
-        ParentBlkIndex += (ChildPtr + ChildOffset) / (EntriesPerBlockUniform);
+    uint FarPtrIndex = (Far) ? (ParentBlkIndex*FarPtrsPerBlockUniform) + ChildPtr : 0U;
+    far_ptr FarPtr = SvoFarPtrBuffer.FarPtrs[FarPtrIndex];
+    ParentBlkIndex = (Far) ? (FarPtr.BlkIndex) : ParentBlkIndex;
+    uint NodeOffset = (Far) ? (FarPtr.NodeOffset) : ChildPtr;
 
-        return SvoInputBuffer.Nodes[ChildIndex];
-    }
-    else
-    {
-        // Find the far ptr associated with this node. To do this, we need to compute
-        // the byte offset for this block, then index into that block's far ptr
-        // list for this node.
-        uint FarPtrIndex = (ParentNode & SVO_NODE_CHILD_PTR_MASK) >> 16;
-        uint FarPtrBlkStart = ParentBlkIndex*FarPtrsPerBlockUniform;
-        far_ptr FarPtr = SvoFarPtrBuffer.FarPtrs[FarPtrBlkStart + FarPtrIndex];
+    uint ChildIndex = (ParentBlkIndex*EntriesPerBlockUniform) + NodeOffset + ChildOffset;
+    ParentBlkIndex += (NodeOffset + ChildOffset) >> 14U;
 
-        // Skip to the block containing the first child
-        ParentBlkIndex = FarPtr.BlkIndex;
-        uint ChildBlkStart = ParentBlkIndex * EntriesPerBlockUniform;
-
-        // Skip any blocks required to get to the actual child node
-        ParentBlkIndex += (FarPtr.NodeOffset + ChildOffset) / EntriesPerBlockUniform;
-
-        uint ChildIndex = ChildBlkStart + FarPtr.NodeOffset + ChildOffset;
-
-        return SvoInputBuffer.Nodes[ChildIndex];
-    }
+    return SvoInputBuffer.Nodes[ChildIndex];
 }
 
 ray_intersection ComputeRayBoxIntersection(in ray R, in vec3 vMin, in vec3 vMax)
@@ -324,7 +304,8 @@ uint GetOctant(in vec3 P, in vec3 ParentCentreP)
     // It is likely that a DP is actually *not* faster
     // here because the GLSL `dot` function can only return floats,
     // so we would need to convert this back into a uint. 
-    return G.x + G.y*2 + G.z*4;
+    G *= OCT_BITS;
+    return G.x + G.y + G.z;
 }
 
 bool IsOctantOccupied(in uint Node, in uint Oct)
@@ -345,7 +326,6 @@ vec3 Oct2Cr(in uint Oct)
 struct st_frame
 {
     uint Node;
-    uint Scale;
     vec3 ParentCentre;
     uint BlkIndex;
 };
@@ -364,7 +344,8 @@ struct st_frame
 
 uint HashVec3(uvec3 V)
 {
-    return (V.x*73856093U) ^ (V.y*19349663U) ^ (V.z*83492791U);
+    V *= uvec3(73856093, 19349663, 83492791);
+    return V.x ^ V.y ^ V.z;
 }
 
 
@@ -413,7 +394,7 @@ void LookupLeafVoxelData(uvec3 Pos, out vec3 NormalOut, out vec3 ColourOut)
     }
 }
 
-vec3 Raycast(in ray R)
+float RaycastDst(in ray R)
 {
     // Scale up by the tree bias.
     uint Scale = (1 << ScaleExponentUniform) << BiasUniform;
@@ -457,7 +438,6 @@ vec3 Raycast(in ray R)
 
 
         Stack[CurrentDepth] = st_frame(ParentNode, 
-                                       Scale,
                                        ParentCentre,
                                        BlkIndex);
 
@@ -486,13 +466,7 @@ vec3 Raycast(in ray R)
                     // Octant is occupied, check if leaf
                     if (IsOctantLeaf(ParentNode, CurrentOct))
                     {
-                        vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(ViewPosUniform));
-
-                        vec3 N, C;
-                        LookupLeafVoxelData(uvec3(NodeCentre), N, C);
-
-                        return max(vec3(dot(Ldir, N)), vec3(0.25))*C;
-
+                        return RaySpan.tMin;
                     }
                     else
                     {
@@ -500,7 +474,6 @@ vec3 Raycast(in ray R)
                         // NOTE(Liam): BlkIndex (potentially) updated here
 
                         Stack[CurrentDepth] = st_frame(ParentNode,
-                                                   Scale,
                                                    ParentCentre,
                                                    BlkIndex);
 
@@ -542,7 +515,7 @@ vec3 Raycast(in ray R)
                     if (NextDepth < CurrentDepth)
                     {
                         CurrentDepth = NextDepth;
-                        Scale = Stack[CurrentDepth].Scale;
+                        Scale = 1 << M;;
                         ParentCentre = Stack[CurrentDepth].ParentCentre;
                         ParentNode = Stack[CurrentDepth].Node;
                         BlkIndex = Stack[CurrentDepth].BlkIndex;
@@ -551,12 +524,177 @@ vec3 Raycast(in ray R)
                     }
                     else
                     {
+                        return RaySpan.tMin;
+                    }
+                }
+            }
+            else
+            {
+                return RaySpan.tMin;
+            }
+        }
+    }
+
+    return RaySpan.tMin;
+}
+
+vec3 Raycast(in ivec2 BeamCoords, in ray R)
+{
+    // Scale up by the tree bias.
+    uint Scale = (1U << ScaleExponentUniform) << BiasUniform;
+
+    const float BiasScale = (1.0 / InvBiasUniform);
+
+    uint BlkIndex = 0;
+    
+    vec3 RootMin = vec3(0);
+    vec3 RootMax = vec3(Scale) * InvBiasUniform;
+    vec3 RaySgn = sign(R.Dir);
+
+    // Intersection of the ray with the root cube (i.e. entire tree)
+    ray_intersection RaySpan = ComputeRayBoxIntersection(R, RootMin, RootMax);
+
+    uint CurrentOct;
+    uint CurrentDepth;
+
+    // Check if the ray is within the octree at all
+    if (RaySpan.tMin <= RaySpan.tMax && RaySpan.tMax > 0)
+    {
+        // Ray enters octree --- begin processing
+
+        vec3 RayP = (RaySpan.tMin >= 0.0) ? R.Origin + (RaySpan.tMin * R.Dir) : R.Origin;
+        const ivec2 Offsets[4] = { ivec2(0, 0), ivec2(1, 0), ivec2(0, 1), ivec2(1, 1) };
+        float MinDst = min(min(
+                imageLoad(BeamImgUniform, BeamCoords + Offsets[0]).x,
+                imageLoad(BeamImgUniform, BeamCoords + Offsets[1]).x),
+                min(imageLoad(BeamImgUniform, BeamCoords + Offsets[2]).x,
+                imageLoad(BeamImgUniform, BeamCoords + Offsets[3]).x)
+                ) - 0.1;
+        RayP = R.Origin + MinDst*R.Dir;
+        vec3 ParentCentre = vec3(Scale >> 1);
+
+        // Current octant the ray is in (confirmed good)
+        CurrentOct = GetOctant(RayP, ParentCentre*InvBiasUniform);
+
+        uint ParentNode = SvoInputBuffer.Nodes[0];
+        
+        // Initialise depth to 1
+        CurrentDepth = 1;
+
+        // Stack of previous voxels
+        st_frame Stack[MAX_STEPS + 1];
+
+        // Drop down one scale value to the initial children of the
+        // root node.
+        Scale >>= 1;
+
+
+        Stack[CurrentDepth] = st_frame(ParentNode, 
+                                       //Scale,
+                                       ParentCentre,
+                                       BlkIndex);
+
+        int Step;
+        // Begin stepping along the ray
+        for (Step = 0; Step < MAX_STEPS; ++Step)
+        {
+            // Radius of the current octant's cube (half the current scale);
+            //vec3 Rad = vec3(Scale >> 1);
+            float Rad = float(Scale >> 1);
+
+            // Get the centre position of this octant
+            vec3 OctSgn = mix(vec3(-1), vec3(1), bvec3(CurrentOct & OCT_BITS));
+            vec3 NodeCentre = ParentCentre + (OctSgn * Rad);
+
+            vec3 NodeMin = (NodeCentre - Rad) * InvBiasUniform;
+            vec3 NodeMax = (NodeCentre + Rad) * InvBiasUniform;
+
+            RaySpan = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
+
+            if (RaySpan.tMin <= RaySpan.tMax && RaySpan.tMax > 0)
+            {
+                // Ray hit this voxel
+                
+                // Check if voxel occupied
+                if (IsOctantOccupied(ParentNode, CurrentOct))
+                {
+                    // Octant is occupied, check if leaf
+                    if (IsOctantLeaf(ParentNode, CurrentOct))
+                    {
+                        vec3 Ldir = normalize((NodeCentre*InvBiasUniform) - vec3(ViewPosUniform));
+
+                        vec3 N, C;
+                        LookupLeafVoxelData(uvec3(NodeCentre), N, C);
+
+                        float A =  (float(Step) / MAX_STEPS);
+                        return mix(max(vec3(dot(Ldir, N)), vec3(0.25))*C, vec3(1, 0,1), A);
+                        return max(vec3(dot(Ldir, N)), vec3(0.25))*C;
+
+                    }
+                    else
+                    {
+                        // Voxel has children --- execute push
+                        // NOTE(Liam): BlkIndex (potentially) updated here
+
+                        Stack[CurrentDepth] = st_frame(ParentNode,
+                                                       ParentCentre,
+                                                       BlkIndex);
+
+                        ParentNode = GetNodeChild(ParentNode, CurrentOct, BlkIndex /*out*/);
+                        CurrentOct = GetOctant(RayP, NodeCentre*InvBiasUniform);
+                        ParentCentre = NodeCentre;
+                        Scale >>= 1;
+                        ++CurrentDepth;
+
+                        continue;
+                    }
+                }
+
+                // Octant not occupied, need to handle advance/pop
+                uint NextOct = GetNextOctant(RaySpan.tMax, RaySpan.tMaxV, CurrentOct);
+                RayP = R.Origin + (RaySpan.tMax + 0.001765625) * R.Dir;
+
+                if (IsAdvanceValid(NextOct, CurrentOct, RaySgn))
+                {
+                    CurrentOct = NextOct;
+                }
+                else
+                {
+                    // Determined that NodeCentre is never < 0
+                    uvec3 NodeCentreBits = uvec3(NodeCentre);
+                    uvec3 RayPBits = uvec3(RayP * BiasScale);
+
+
+                    // NOTE(Liam): It is **okay** to have negative values here
+                    // because the HDB will end up being equal to ScaleExponentUniform.
+                    //
+                    // Find the highest differing bit
+                    uvec3 HDB = findMSB(NodeCentreBits ^ RayPBits);
+
+                    uint M = MaxComponentU(mix(uvec3(0), HDB, lessThan(HDB, uvec3(ScaleExponentUniform + BiasUniform))));
+
+                    uint NextDepth = ((ScaleExponentUniform + BiasUniform) - M);
+
+                    if (NextDepth < CurrentDepth)
+                    {
+                        CurrentDepth = NextDepth;
+                        Scale = 1 << M;
+                        ParentCentre = Stack[CurrentDepth].ParentCentre;
+                        ParentNode = Stack[CurrentDepth].Node;
+                        BlkIndex = Stack[CurrentDepth].BlkIndex;
+
+                        CurrentOct = GetOctant(RayP, ParentCentre*InvBiasUniform);
+                    }
+                    else
+                    {
+                        return (float(Step) / MAX_STEPS) * vec3(1, 0, 1);
                         return vec3(0.16);
                     }
                 }
             }
             else
             {
+                return (float(Step) / MAX_STEPS) * vec3(1, 0, 1);
                 return vec3(0.16);
             }
         }
@@ -566,15 +704,17 @@ vec3 Raycast(in ray R)
 }
 
 
+#line 730
 void main()
 {
     // Ray XY coordinates of the screen pixels; goes from 0-512
     // in each dimension.
-    vec2 PixelCoords = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 PixelCoords = ivec2(gl_GlobalInvocationID.xy);
     vec3 K = vec3(256, 256, 512);
     vec3 ScreenOrigin = ViewPosUniform - K;
+    if (IsCoarsePassUniform) PixelCoords *= 8;
 
-	vec3 ScreenCoord = ScreenOrigin + vec3(PixelCoords, 0);
+    vec3 ScreenCoord = ScreenOrigin + vec3(PixelCoords, 0);
     ScreenCoord.x *= 1280.0/720.0;
 
     vec3 RayP = ViewPosUniform;
@@ -584,19 +724,29 @@ void main()
 
     ray R = { RayP, RayD, 1.0 / RayD };
 
-    vec3 OutCr = Raycast(R);
-
-    imageStore(OutputImgUniform, ivec2(PixelCoords), vec4(OutCr, 1.0));
+    // NOTE(Liam): Branch is fine here because all pixels will take the branch.
+    if (IsCoarsePassUniform)
+    {
+        float MinDst = RaycastDst(R); 
+        imageStore(BeamImgUniform, PixelCoords >> 3, vec4(MinDst, 0, 0, 0));
+    }
+    else
+    {
+        vec3 OutCr = Raycast(PixelCoords >> 3, R);
+        imageStore(OutputImgUniform, PixelCoords, vec4(OutCr, 1.0));
+    }
 }
 )GLSL";
+// }}}
 
+// {{{ HasherComputeKernel
 extern const char* const HasherComputeKernel = R"GLSL(
 #version 450 core
 
 layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
 #define EMPTY_KEY 0xFFFFFFFF
-#define MAX_STEPS 1024
+#define MAX_STEPS 16
 
 struct entry
 {
@@ -605,7 +755,7 @@ struct entry
     uint PackedColour;
 };
 
-layout (std430, binding = 0) coherent restrict buffer htable_out
+layout (std430, binding = 0) restrict buffer htable_out
 {
     entry Entries[];
 } HTableOutBuffer;
@@ -641,27 +791,31 @@ void main()
     uint ThreadID = gl_GlobalInvocationID.x;
     entry InputPair = DataInputBuffer.Entries[OffsetUniform + ThreadID];
 
-    uint Slot0 = ComputeHashes(InputPair.Key).x;
+    uint Slot = ComputeHashes(InputPair.Key).x;
 
     int Step;
     for (Step = 0; Step < MAX_STEPS; ++Step)
     {
-        InputPair.Key = atomicExchange(HTableOutBuffer.Entries[Slot0].Key, InputPair.Key); 
-        InputPair.PackedNormal = atomicExchange(HTableOutBuffer.Entries[Slot0].PackedNormal, InputPair.PackedNormal); 
-        InputPair.PackedColour = atomicExchange(HTableOutBuffer.Entries[Slot0].PackedColour, InputPair.PackedColour); 
+        InputPair.Key = atomicExchange(HTableOutBuffer.Entries[Slot].Key, InputPair.Key);
+        InputPair.PackedNormal = atomicExchange(HTableOutBuffer.Entries[Slot].PackedNormal, InputPair.PackedNormal);
+        InputPair.PackedColour = atomicExchange(HTableOutBuffer.Entries[Slot].PackedColour, InputPair.PackedColour);
         if (EMPTY_KEY != InputPair.Key)
         {
             uvec4 Hashes = ComputeHashes(InputPair.Key);
 
-            bvec4 Msk = equal(Hashes, uvec4(Slot0));
-            Slot0 = uint(dot(mix(uvec4(0), Hashes.yzwx, Msk), uvec4(1)));
+            if (Slot == Hashes.x) Slot = Hashes.y;
+            else if (Slot == Hashes.y) Slot = Hashes.z;
+            else if (Slot == Hashes.z) Slot = Hashes.w;
+            else if (Slot == Hashes.w) Slot = Hashes.x;
         }
         else
         {
             break;
         }
     }
+
 }
 
 )GLSL";
+// }}}
 
