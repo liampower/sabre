@@ -746,7 +746,7 @@ extern const char* const HasherComputeKernel = R"GLSL(
 layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
 #define EMPTY_KEY 0xFFFFFFFF
-#define MAX_STEPS 1024
+#define MAX_STEPS 16
 
 struct entry
 {
@@ -755,7 +755,7 @@ struct entry
     uint PackedColour;
 };
 
-layout (std430, binding = 0) coherent restrict buffer htable_out
+layout (std430, binding = 0) restrict buffer htable_out
 {
     entry Entries[];
 } HTableOutBuffer;
@@ -791,26 +791,29 @@ void main()
     uint ThreadID = gl_GlobalInvocationID.x;
     entry InputPair = DataInputBuffer.Entries[OffsetUniform + ThreadID];
 
-    uint Slot0 = ComputeHashes(InputPair.Key).x;
+    uint Slot = ComputeHashes(InputPair.Key).x;
 
     int Step;
     for (Step = 0; Step < MAX_STEPS; ++Step)
     {
-        InputPair.Key = atomicExchange(HTableOutBuffer.Entries[Slot0].Key, InputPair.Key); 
-        InputPair.PackedNormal = atomicExchange(HTableOutBuffer.Entries[Slot0].PackedNormal, InputPair.PackedNormal); 
-        InputPair.PackedColour = atomicExchange(HTableOutBuffer.Entries[Slot0].PackedColour, InputPair.PackedColour); 
+        InputPair.Key = atomicExchange(HTableOutBuffer.Entries[Slot].Key, InputPair.Key);
+        InputPair.PackedNormal = atomicExchange(HTableOutBuffer.Entries[Slot].PackedNormal, InputPair.PackedNormal);
+        InputPair.PackedColour = atomicExchange(HTableOutBuffer.Entries[Slot].PackedColour, InputPair.PackedColour);
         if (EMPTY_KEY != InputPair.Key)
         {
             uvec4 Hashes = ComputeHashes(InputPair.Key);
 
-            bvec4 Msk = equal(Hashes, uvec4(Slot0));
-            Slot0 = uint(dot(mix(uvec4(0), Hashes.yzwx, Msk), uvec4(1)));
+            if (Slot == Hashes.x) Slot = Hashes.y;
+            else if (Slot == Hashes.y) Slot = Hashes.z;
+            else if (Slot == Hashes.z) Slot = Hashes.w;
+            else if (Slot == Hashes.w) Slot = Hashes.x;
         }
         else
         {
             break;
         }
     }
+
 }
 
 )GLSL";
