@@ -34,6 +34,9 @@ static constexpr usize HTABLE_SLOT_COUNT = 1024ULL*1024ULL*256ULL;
 // conversion of this value is used, so don't try changing it!
 static constexpr int HTABLE_NULL_KEY_BYTE = 0xFF;
 
+// Maximum size of compute shader workgroup as defined by the OpenGL spec.
+static constexpr usize MAX_WORK_GROUP_SIZE = 65535ULL;
+
 
 enum cs_bindings
 {
@@ -150,7 +153,9 @@ EndTimerQuery(const gl_timer* const Timer)
 }
 
 static buffer_pair
-CreateLeafDataHashTable(const render_data* const RenderData, const attrib_data* const Data, usize Count)
+CreateLeafDataHashTable(const render_data* const RenderData, 
+                        const attrib_data* const Data,
+                        usize Count)
 {
     gl_uint DataBuffers[2] = { 0 };
     const usize HTableDataSize = (HTABLE_SLOT_COUNT * sizeof(attrib_data));
@@ -187,7 +192,7 @@ CreateLeafDataHashTable(const render_data* const RenderData, const attrib_data* 
         usize Remaining = Count;
         while (Remaining > 0)
         {
-            usize WorkGroupCount = Minimum(65535ULL, Remaining);
+            usize WorkGroupCount = Minimum(MAX_WORK_GROUP_SIZE, Remaining);
 
             glUniform1ui(HTableUniformOffset, Count - Remaining);
             glDispatchCompute(WorkGroupCount, 1, 1);
@@ -594,7 +599,7 @@ CreateRenderData(const svo* const Svo, const view_data* const ViewData)
     RenderData->HTableBuilderShader = CompileComputeShader(HasherComputeKernel);
     if (0 == RenderData->HTableBuilderShader)
     {
-        std::fprintf(stderr, "Failed to compile hashtable builder compute shader\n");
+        std::fprintf(stderr, "Failed to compile hashtable builder shader\n");
         DeleteRenderData(RenderData);
 
         return nullptr;
