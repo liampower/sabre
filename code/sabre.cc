@@ -46,6 +46,7 @@ static const scene GlobalSceneTable[] = {
     { "Buddha", "data/Showcase/buddha.glb" },
     { "Serapis", "data/Showcase/serapis.glb" },
     { "Indonesian", "data/Showcase/Indonesian.glb" },
+    { "Face", "data/Showcase/face.glb" },
 };
 
 // NOTE(Liam): Forces use of nVidia GPU on hybrid graphics systems.
@@ -66,7 +67,7 @@ struct camera
 struct sphere
 {
     vec3 Centre;
-    float Radius;
+    f32  Radius;
 };
 
 static void
@@ -313,6 +314,7 @@ main(int ArgCount, const char** const Args)
     int Lod = 0;
     u64 GPUTime = 0;
     NP_PopTraceEvent(&Prof); // Init
+
     while (GLFW_FALSE == glfwWindowShouldClose(Window))
     {
         FrameStartTime = glfwGetTime();
@@ -452,8 +454,8 @@ main(int ArgCount, const char** const Args)
                         LastMouseLTime = CurrentTime;
                     }
 
-                    const f32 DX = (f32)(MouseX - LastMouseX);
-                    const f32 DY = (f32)(MouseY - LastMouseY);
+                    const f32 DX = static_cast<f32>(MouseX - LastMouseX);
+                    const f32 DY = static_cast<f32>(MouseY - LastMouseY);
 
                     LastMouseX = MouseX;
                     LastMouseY = MouseY;
@@ -474,7 +476,7 @@ main(int ArgCount, const char** const Args)
                 };
 
                 f32 F[3] = { Cam.Position.X, Cam.Position.Y, Cam.Position.Z };
-                ViewData.CamTransform = (float*)CameraMatrix;
+                ViewData.CamTransform = (f32*)CameraMatrix;
                 ViewData.CamPos = F;
 
                 GPUTime = DrawScene(RenderData, &ViewData);
@@ -492,15 +494,20 @@ main(int ArgCount, const char** const Args)
         DeltaTime = FrameEndTime - FrameStartTime;
     }
 
+    printf("Deleting SVO\n");
     DeleteScene(WorldSvo);
+    printf("Deleting Render Data\n");
     DeleteRenderData(RenderData);
 
+    printf("Shutting down IMGUI\n");
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
+    printf("Shutting down GLFW\n");
     glfwTerminate();
-    NP_WriteJSONTrace(&Prof, nullptr, 0);
+    printf("Writing JSON trace\n");
+    //NP_WriteJSONTrace(&Prof, nullptr, 0);
 
     free(EvtStorage);
     return EXIT_SUCCESS;

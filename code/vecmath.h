@@ -119,6 +119,18 @@ Clamp(t X, t Lo, t Hi)
     else        return X;
 }
 
+inline float
+SelectNearestElem(vec3 V, float U)
+{
+    float D0 = std::abs(V.X - U);
+    float D1 = std::abs(V.Y - U);
+    float D2 = std::abs(V.Z - U);
+
+    if (D0 < D1 && D0 < D2) return V.X;
+    if (D1 < D0 && D1 < D2) return V.Y;
+    else                    return V.Z;
+}
+
 constexpr inline float
 Sign(float X)
 {
@@ -163,6 +175,8 @@ Rads(float Degrees)
 {
     return (Degrees*PI_OVER_180_DG);
 }
+
+
 
 // Min/Max for vectors are always component-wise
 //
@@ -1060,6 +1074,24 @@ Length(vec4 V)
     return std::sqrtf(V.X*V.X + V.Y*V.Y + V.Z*V.Z + V.W*V.W);
 }
 
+inline float
+LengthSq(vec2 V)
+{
+    return (V.X*V.X + V.Y*V.Y);
+}
+
+inline float
+LengthSq(vec3 V)
+{
+    return (V.X*V.X + V.Y*V.Y + V.Z*V.Z);
+}
+
+inline float
+LengthSq(vec4 V)
+{
+    return (V.X*V.X + V.Y*V.Y + V.Z*V.Z + V.W*V.W);
+}
+
 inline vec2
 Normalize(vec2 V)
 {
@@ -1401,6 +1433,21 @@ EncodeMorton3(uvec3 V)
 
 
 // }}}
+
+
+inline bool
+IsInsideSphericalRegion(vec3 P, vec3 Centre, float Radius)
+{
+    return (Length(Centre - P) <= Radius);
+}
+
+template <typename t> constexpr inline t
+Remap01(t X)
+{
+    return ((X + 1.0f) / 2.0f);
+}
+
+
 
 }
 

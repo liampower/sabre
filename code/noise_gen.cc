@@ -5,13 +5,12 @@
 
 using namespace vm;
 
-// Threshold for noise value to be considered "solid"
-static constexpr float NOISE_THRESHOLD = 0.4f;
-
-static constexpr float SCALE_FACTOR = 256.0f;
+// Noise values >= this constant are considered to be "solid"
+static constexpr f32 NOISE_THRESHOLD = 0.6f;
+static constexpr f32 SCALE_FACTOR = 1.0f/257.0f;
 
 // Randomly distributed permutation of numbers 0-255
-static const unsigned char Pt[512] = {
+static constexpr u8 Pt[512] = {
     151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,
     225,140,36,103,30,69,142,8,99,37,240,21,10,23,190, 
     6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,
@@ -51,14 +50,14 @@ static const unsigned char Pt[512] = {
 };
 
 
-static constexpr inline float
-Smootherstep(float X)
+static constexpr inline f32
+Smootherstep(f32 X)
 {
     return X*X*X * (X*(X*6.0f - 15.0f) + 10.0f);
 }
 
-static constexpr inline float
-Smootherstep1(float X)
+static constexpr inline f32
+Smootherstep1(f32 X)
 {
     // First order derivative of the smootherstep function
     // S'(x) = 30x^4 - 60x^3 - 30x^2
@@ -66,26 +65,26 @@ Smootherstep1(float X)
 }
 
 
-static constexpr inline float
-Smoothstep(float X)
+static constexpr inline f32
+Smoothstep(f32 X)
 {
   return X * X * (3 - 2 * X);
 }
 
-static constexpr inline float
-Smoothstep1(float X)
+static constexpr inline f32
+Smoothstep1(f32 X)
 {
     return 6*X*(1 - X);
 }
 
-static constexpr inline float
-Lerp(float Edge0, float Edge1, float X)
+static constexpr inline f32
+Lerp(f32 Edge0, f32 Edge1, f32 X)
 {
     return Edge0 + ((Edge1 - Edge0)*X);
 }
 
-static inline float
-GradDotDst(int Hash, float X, float Y, float Z)
+static inline f32
+GradDotDst(int Hash, f32 X, f32 Y, f32 Z)
 {
     switch (Hash & 0xF)
     {
@@ -109,19 +108,19 @@ GradDotDst(int Hash, float X, float Y, float Z)
     }
 }
 
-static constexpr inline float
-Fastfloor(float X)
+static constexpr inline f32
+Fastfloor(f32 X)
 {
-    return float(int(X));
+    return f32(int(X));
 }
 
 
 static inline vec3
 Perlin3Deriv(vec3 P)
 {
-    float X = P.X / SCALE_FACTOR;
-    float Y = P.Y / SCALE_FACTOR;
-    float Z = P.Z / SCALE_FACTOR;
+    f32 X = P.X * SCALE_FACTOR;
+    f32 Y = P.Y * SCALE_FACTOR;
+    f32 Z = P.Z * SCALE_FACTOR;
 
     // Unit cube Left-Bottom-Back coordinates
     int Xi = (int(X) & 255);
@@ -129,20 +128,20 @@ Perlin3Deriv(vec3 P)
     int Zi = (int(Z) & 255);
 
     // Coords of our point inside its unit cube.
-    float Xf = X - Fastfloor(X);
-    float Yf = Y - Fastfloor(Y);
-    float Zf = Z - Fastfloor(Z);
+    f32 Xf = X - Fastfloor(X);
+    f32 Yf = Y - Fastfloor(Y);
+    f32 Zf = Z - Fastfloor(Z);
 
     // Smooth point coords towards integral values.
     // This produces smoother noise output.
-    float U = Smoothstep(Xf);
-    float V = Smoothstep(Yf);
-    float W = Smoothstep(Zf);
+    f32 U = Smoothstep(Xf);
+    f32 V = Smoothstep(Yf);
+    f32 W = Smoothstep(Zf);
 
     // Derivative smootherstep values
-    float Du = Smoothstep1(Xf);
-    float Dv = Smoothstep1(Yf);
-    float Dw = Smoothstep1(Zf);
+    f32 Du = Smoothstep1(Xf);
+    f32 Dv = Smoothstep1(Yf);
+    f32 Dw = Smoothstep1(Zf);
 
     // Hash values for the corners of the unit cube.
     // Named according to their positions - assume we start
@@ -160,37 +159,38 @@ Perlin3Deriv(vec3 P)
     C101 = Pt[Pt[Pt[Xi + 1] + Yi] + Zi + 1];
     C111 = Pt[Pt[Pt[Xi + 1] + Yi + 1] + Zi + 1];
 
-    float A = GradDotDst(C000, Xf, Yf, Zf);
-    float B = GradDotDst(C100, Xf - 1.0f, Yf, Zf);
-    float C = GradDotDst(C010, Xf, Yf - 1.0f, Zf);
-    float D = GradDotDst(C110, Xf - 1.0f, Yf - 1.0f, Zf);
-    float E = GradDotDst(C001, Xf, Yf, Zf - 1.0f);
-    float F = GradDotDst(C101, Xf - 1.0f, Yf, Zf - 1.0f);
-    float G = GradDotDst(C011, Xf, Yf - 1.0f, Zf - 1.0f);
-    float H = GradDotDst(C111, Xf - 1.0f, Yf - 1.0f, Zf - 1.0f);
+    f32 A = GradDotDst(C000, Xf, Yf, Zf);
+    f32 B = GradDotDst(C100, Xf - 1.0f, Yf, Zf);
+    f32 C = GradDotDst(C010, Xf, Yf - 1.0f, Zf);
+    f32 D = GradDotDst(C110, Xf - 1.0f, Yf - 1.0f, Zf);
+    f32 E = GradDotDst(C001, Xf, Yf, Zf - 1.0f);
+    f32 F = GradDotDst(C101, Xf - 1.0f, Yf, Zf - 1.0f);
+    f32 G = GradDotDst(C011, Xf, Yf - 1.0f, Zf - 1.0f);
+    f32 H = GradDotDst(C111, Xf - 1.0f, Yf - 1.0f, Zf - 1.0f);
 
-    float K0 = (B - A);
-    float K1 = (C - A);
-    float K2 = (E - A);
-    float K3 = (A + D - B - C);
-    float K4 = (A + F - B - E);
-    float K5 = (A + G - C - E);
-    float K6 = (B + C + E + H - A - D - F - G);
+    f32 K0 = (B - A);
+    f32 K1 = (C - A);
+    f32 K2 = (E - A);
+    f32 K3 = (A + D - B - C);
+    f32 K4 = (A + F - B - E);
+    f32 K5 = (A + G - C - E);
+    f32 K6 = (B + C + E + H - A - D - F - G);
 
     // Noise partial derivatives in X, Y, Z directions
-    float Dx = Du * (K0 + V*K3 + W*K4 + V*W*K6);
-    float Dy = Dv * (K1 + U*K3 + W*K5 + U*W*K6);
-    float Dz = Dw * (K2 + U*K4 + V*K5 + U*V*K6);
+    f32 Dx = Du * (K0 + V*K3 + W*K4 + V*W*K6);
+    f32 Dy = Dv * (K1 + U*K3 + W*K5 + U*W*K6);
+    f32 Dz = Dw * (K2 + U*K4 + V*K5 + U*V*K6);
 
     return vec3(Dx, Dy, Dz);
 }
 
+
 static inline bool
 Perlin3(vec3 P, vec3 Min, vec3 Max)
 {
-    float X = P.X / SCALE_FACTOR;
-    float Y = P.Y / SCALE_FACTOR;
-    float Z = P.Z / SCALE_FACTOR;
+    f32 X = P.X * SCALE_FACTOR;
+    f32 Y = P.Y * SCALE_FACTOR;
+    f32 Z = P.Z * SCALE_FACTOR;
 
     // Unit cube Left-Bottom-Back coordinates
     int Xi = (int(X) & 255);
@@ -198,20 +198,15 @@ Perlin3(vec3 P, vec3 Min, vec3 Max)
     int Zi = (int(Z) & 255);
 
     // Coords of our point inside its unit cube.
-    float Xf = X - Fastfloor(X);
-    float Yf = Y - Fastfloor(Y);
-    float Zf = Z - Fastfloor(Z);
+    f32 Xf = X - Fastfloor(X);
+    f32 Yf = Y - Fastfloor(Y);
+    f32 Zf = Z - Fastfloor(Z);
 
     // Smooth point coords towards integral values.
     // This produces smoother noise output.
-    float U = Smoothstep(Xf);
-    float V = Smoothstep(Yf);
-    float W = Smoothstep(Zf);
-
-    // Derivative smootherstep values
-    float Du = Smoothstep1(Xf);
-    float Dv = Smoothstep1(Yf);
-    float Dw = Smoothstep1(Zf);
+    f32 U = Smoothstep(Xf);
+    f32 V = Smoothstep(Yf);
+    f32 W = Smoothstep(Zf);
 
     // Hash values for the corners of the unit cube.
     // Named according to their positions - assume we start
@@ -229,65 +224,38 @@ Perlin3(vec3 P, vec3 Min, vec3 Max)
     C101 = Pt[Pt[Pt[Xi + 1] + Yi] + Zi + 1];
     C111 = Pt[Pt[Pt[Xi + 1] + Yi + 1] + Zi + 1];
 
-    float A = GradDotDst(C000, Xf, Yf, Zf);
-    float B = GradDotDst(C100, Xf - 1.0f, Yf, Zf);
-    float C = GradDotDst(C010, Xf, Yf - 1.0f, Zf);
-    float D = GradDotDst(C110, Xf - 1.0f, Yf - 1.0f, Zf);
-    float E = GradDotDst(C001, Xf, Yf, Zf - 1.0f);
-    float F = GradDotDst(C101, Xf - 1.0f, Yf, Zf - 1.0f);
-    float G = GradDotDst(C011, Xf, Yf - 1.0f, Zf - 1.0f);
-    float H = GradDotDst(C111, Xf - 1.0f, Yf - 1.0f, Zf - 1.0f);
+    f32 A = GradDotDst(C000, Xf, Yf, Zf);
+    f32 B = GradDotDst(C100, Xf - 1.0f, Yf, Zf);
+    f32 C = GradDotDst(C010, Xf, Yf - 1.0f, Zf);
+    f32 D = GradDotDst(C110, Xf - 1.0f, Yf - 1.0f, Zf);
+    f32 E = GradDotDst(C001, Xf, Yf, Zf - 1.0f);
+    f32 F = GradDotDst(C101, Xf - 1.0f, Yf, Zf - 1.0f);
+    f32 G = GradDotDst(C011, Xf, Yf - 1.0f, Zf - 1.0f);
+    f32 H = GradDotDst(C111, Xf - 1.0f, Yf - 1.0f, Zf - 1.0f);
 
-    float K0 = (B - A);
-    float K1 = (C - A);
-    float K2 = (E - A);
-    float K3 = (A + D - B - C);
-    float K4 = (A + F - B - E);
-    float K5 = (A + G - C - E);
-    float K6 = (B + C + E + H - A - D - F - G);
+    f32 K0 = (B - A);
+    f32 K1 = (C - A);
+    f32 K2 = (E - A);
+    f32 K3 = D - C - K0;
+    f32 K4 = F - E - K0;
+    f32 K5 = G - E - K1;
+    f32 K6 = (H - G) - (F - E) - K3;//(B + C + E + H - A - D - F - G);
 
-    // Noise partial derivatives in X, Y, Z directions
-    float Dx = Du * (K0 + V*K3 + W*K4 + V*W*K6);
-    float Dy = Dv * (K1 + U*K3 + W*K5 + U*W*K6);
-    float Dz = Dw * (K2 + U*K4 + V*K5 + U*V*K6);
+    f32 N = A + U * K0 + V * K1 + W * K2 + U * V * K3 + U * W * K4 + V * W * K5 + U * V * W * K6; 
+    N = ((N + 1.0f) / 2.0f);
 
-    float N = A + U * K0 + V * K1 + W * K2 + U * V * K3 + U * W * K4 + V * W * K5 + U * V * W * K6; 
+    vec3 Diff = Abs(Max - Min);
+    vec3 MaxDN = vec3(0.009884f)*1.5f*Diff;
+    vec3 MaxVal = (vec3(N) + MaxDN);
 
-    /*float X1, X2, Y1, Y2;
-    X1 = Lerp(GradDotDst(C000, Xf, Yf, Zf), GradDotDst(C100, Xf - 1.0f, Yf, Zf), U);
-    X2 = Lerp(GradDotDst(C010, Xf, Yf - 1.0f, Zf), GradDotDst(C110, Xf - 1.0f, Yf - 1.0f, Zf), U);
-    Y1 = Lerp(X1, X2, V);
-
-    X1 = Lerp(GradDotDst(C001, Xf, Yf, Zf - 1.0f), GradDotDst(C101, Xf - 1.0f, Yf, Zf - 1.0f), U);
-    X2 = Lerp(GradDotDst(C011, Xf, Yf - 1.0f, Zf - 1.0f), GradDotDst(C111, Xf -1.0f, Yf - 1.0f, Zf - 1.0f), U);
-    Y2 = Lerp(X1, X2, V);
-
-    return (Lerp(Y1, Y2, W) + 1) / 2.0f;*/
-
-
-    vec3 CS = vec3((K0 + V*K3 + W*K4 + V*W*K6),
-                   (K1 + U*K3 + W*K5 + U*W*K6),
-                   (K2 + U*K4 + V*K5 + U*V*K6));
-
-
-    vec3 Diff = (Max - Min) * 0.5f;
-    vec3 MaxDN = Abs(vec3(Smoothstep1(0.5f))*CS)*Diff; // Maximum variance of noise
-
-    /*float MaxVal = N + HorzMin(MaxDN);
-    float MinVal = N - HorzMax(MaxDN);*/
-
-    vec3 MaxVal = vec3(N) + MaxDN;
-    vec3 MinVal = vec3(N) - MaxDN;
-
-    // Min <= T <= Max
-    return Any(GreaterThan(vec3(NOISE_THRESHOLD), MinVal) && LessThan(vec3(NOISE_THRESHOLD), MaxVal));
+    return Any(LessThan(vec3(NOISE_THRESHOLD), MaxVal));
 }
 
 static inline bool
 ShapeSamplerFn(vec3 Min, vec3 Max, const svo* const Tree, const void* const)
 {
     vec3 H = (Max - Min) * 0.5f;
-    vec3 C = ((Min + H) * f32(1 << Tree->Bias.Scale));
+    vec3 C = ((Min + H) * f32(1U << Tree->Bias.Scale));
     //return Perlin3(C, Min, Max);
 
     return Perlin3(C, Min, Max);

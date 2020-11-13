@@ -330,7 +330,7 @@ static inline void
 LinkParentAndChildNodes(node_ref ParentRef, node_ref ChildRef)
 {
     // Compute the child offset from the start of the block
-    u16 ChildOffset = (u16)(ChildRef.Node - ChildRef.Blk->Entries);
+    u16 ChildOffset = static_cast<u16>(ChildRef.Node - ChildRef.Blk->Entries);
 
     // Extract first 15 bits
     u16 ChildPtrBits = ChildOffset & CHILD_PTR_MSK;
