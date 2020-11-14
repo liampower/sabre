@@ -1,7 +1,7 @@
 #ifndef NOISE_GEN_H
 #define NOISE_GEN_H
 
-#include "vecmath.h"
+#include "vecmath.hh"
 
 struct noise_sample
 {

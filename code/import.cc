@@ -15,9 +15,9 @@
 #define CGLTF_IMPLEMENTATION
 #include <cgltf.h>
 
-#include "sabre.h"
-#include "svo.h"
-#include "vecmath.h"
+#include "sabre.hh"
+#include "svo.hh"
+#include "vecmath.hh"
 
 using namespace vm;
 

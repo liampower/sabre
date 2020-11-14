@@ -4,11 +4,11 @@
 
 #include <glad/glad.h>
 
-#include "sabre.h"
-#include "svo.h"
-#include "render.h"
-#include "shaders.h"
-#include "vecmath.h"
+#include "sabre.hh"
+#include "svo.hh"
+#include "render.hh"
+#include "shaders.hh"
+#include "vecmath.hh"
 
 using gl_uint = GLuint;
 using gl_int = GLint;
@@ -17,16 +17,19 @@ using gl_enum = GLenum;
 using gl_u64 = GLuint64;
 
 using namespace vm;
+using namespace shaders;
 
 static constexpr uint WORK_SIZE_X = 512U;
 static constexpr uint WORK_SIZE_Y = 512U;
+
+static constexpr int BEAM_WIDTH_PX = 8;
+static constexpr int BEAM_HEIGHT_PX = 8;
 
 // Maximum size (in bytes) of the SVO SSBO GPU memory buffer
 static constexpr usize MAX_SVO_SSBO_SIZE = 1024ULL*1024ULL*128ULL;
 
 // The actual memory used for the hashmap buffer is
-// HTABLE_SLOT_COUNT * sizeof(htable_entry). This is usually
-// 8 bytes. 
+// HTABLE_SLOT_COUNT * sizeof(htable_entry). This is usually 8 bytes.
 static constexpr usize HTABLE_SLOT_COUNT = 1024ULL*1024ULL*256ULL;
 
 // Byte pattern used to indicate the hashtable null (aka empty) key.
@@ -63,8 +66,7 @@ struct gl_timer
     gl_uint Q[2];
 };
 
-// Holds the contextual data required to render a SVO voxel
-// scene with OpenGL.
+// Holds the contextual data required to render a SVO voxel scene with OpenGL
 struct render_data
 {
     gl_uint CanvasShader; // Shader program ID for canvas
@@ -127,7 +129,7 @@ DeleteGPUTimer(gl_timer* Timer)
     glDeleteQueries(2, Timer->Q);
 }
 
-static inline gl_u64
+static inline u64
 GetGPUTimeElapsed(gl_timer* Timer)
 {
     gl_u64 Time = 0;
@@ -136,7 +138,7 @@ GetGPUTimeElapsed(gl_timer* Timer)
     // Swap active query (0 -> 1, 1 -> 0)
     Timer->Front ^= 1;
 
-    return Time;
+    return static_cast<u64>(Time);
 }
 
 
@@ -221,7 +223,10 @@ UploadCanvasVertices(void)
     glBindVertexArray(VAO);
 
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, 12*sizeof(f32), GlobalCanvasVerts, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER,
+                 12*sizeof(f32),
+                 GlobalCanvasVerts,
+                 GL_STATIC_DRAW);
 
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
     glEnableVertexAttribArray(0);
@@ -260,7 +265,10 @@ UploadSvoBlockData(const svo* const Svo)
     glGenBuffers(2, BlkBuffers);
 
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, BlkBuffers[1]);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, FarPtrBufferSize, nullptr, GL_DYNAMIC_COPY);
+    glBufferData(GL_SHADER_STORAGE_BUFFER,
+                 FarPtrBufferSize,
+                 nullptr,
+                 GL_DYNAMIC_COPY);
     far_ptr* GPUFarPtrBuffer = (far_ptr*)glMapBuffer(GL_SHADER_STORAGE_BUFFER,
                                                      GL_WRITE_ONLY);
 
@@ -412,7 +420,7 @@ SetUniformData(const svo* const Tree, render_data* const RenderData)
 
     glUniform1i(glGetUniformLocation(RenderData->RenderShader, "OuputImgUniform"), RenderData->RenderImage);
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "MaxDepthUniform"), Tree->MaxDepth);
-    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "ScaleExponentUniform"), Tree->ScaleExponent);
+    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "ScaleExpUniform"), Tree->ScaleExponent);
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "BlockCountUniform"), Tree->UsedBlockCount);
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "EntriesPerBlockUniform"), SBR_NODES_PER_BLK);
     glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "FarPtrsPerBlockUniform"), SBR_FAR_PTRS_PER_BLK);
@@ -437,9 +445,23 @@ CreateRenderImage(int ImgWidth, int ImgHeight)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, ImgWidth, ImgHeight, 0, GL_BGRA, GL_UNSIGNED_BYTE, nullptr);
+    glTexImage2D(GL_TEXTURE_2D, 
+                 0,
+                 GL_RGBA8,
+                 ImgWidth,
+                 ImgHeight,
+                 0,
+                 GL_BGRA,
+                 GL_UNSIGNED_BYTE,
+                 nullptr);
 
-    glBindImageTexture(BIND_RENDER_TEX, OutputTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA8);
+    glBindImageTexture(BIND_RENDER_TEX,
+                       OutputTexture,
+                       0,
+                       GL_FALSE,
+                       0,
+                       GL_WRITE_ONLY,
+                       GL_RGBA8);
     
     return OutputTexture;
 }
@@ -455,9 +477,23 @@ CreateBeamDistanceImage(int RenderWidth, int RenderHeight)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, RenderWidth/8, RenderHeight/8, 0, GL_RED, GL_FLOAT, nullptr);
+    glTexImage2D(GL_TEXTURE_2D,
+                 0,
+                 GL_R32F,
+                 RenderWidth/BEAM_WIDTH_PX,
+                 RenderHeight/BEAM_HEIGHT_PX,
+                 0,
+                 GL_RED,
+                 GL_FLOAT,
+                 nullptr);
 
-    glBindImageTexture(BIND_BEAM_TEX, Texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+    glBindImageTexture(BIND_BEAM_TEX,
+                       Texture,
+                       0,
+                       GL_FALSE,
+                       0,
+                       GL_WRITE_ONLY,
+                       GL_R32F);
 
     return Texture;
 }
@@ -537,12 +573,15 @@ UploadOctreeBlockData(const svo* const Svo)
 }
 
 
-extern "C" u64
+extern u64
 DrawScene(const render_data* const RenderData, const view_data* const ViewData)
 {
     BeginTimerQuery(&RenderData->Timer);
     glUseProgram(RenderData->RenderShader);
-    glUniformMatrix3fv(RenderData->ViewMatUniformLocation, 1, GL_TRUE, ViewData->CamTransform);
+    glUniformMatrix3fv(RenderData->ViewMatUniformLocation,
+                       1,
+                       GL_TRUE,
+                       ViewData->CamTransform);
     glUniform3fv(RenderData->ViewPosUniformLocation, 1, ViewData->CamPos);
 
     glUniform1ui(RenderData->IsCoarsePassUniformLocation, 1);
@@ -564,11 +603,11 @@ DrawScene(const render_data* const RenderData, const view_data* const ViewData)
     glBindBuffer(GL_ARRAY_BUFFER, RenderData->CanvasVBO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
-    return (u64)GetGPUTimeElapsed(const_cast<gl_timer*>(&RenderData->Timer));
+    return GetGPUTimeElapsed(const_cast<gl_timer*>(&RenderData->Timer));
 }
 
 
-extern "C" render_data*
+extern render_data*
 CreateRenderData(const svo* const Svo, const view_data* const ViewData)
 {
     render_data* RenderData = (render_data*)std::calloc(1, sizeof(render_data));
@@ -578,7 +617,7 @@ CreateRenderData(const svo* const Svo, const view_data* const ViewData)
         return nullptr;
     }
 
-    RenderData->RenderShader = CompileComputeShader(RaycasterComputeKernel);
+    RenderData->RenderShader = CompileComputeShader(RenderKernelCode);
     if (0 == RenderData->RenderShader)
     {
         std::fprintf(stderr, "Failed to compile compute shader\n");
@@ -587,7 +626,8 @@ CreateRenderData(const svo* const Svo, const view_data* const ViewData)
         return nullptr;
     }
 
-    RenderData->CanvasShader = CompileShader(MainVertexCode, MainFragmentCode);
+    RenderData->CanvasShader = CompileShader(RenderVertexCode,
+                                             RenderFragmentCode);
     if (0 == RenderData->CanvasShader)
     {
         std::fprintf(stderr, "Failed to compile canvas shader\n");
@@ -596,7 +636,7 @@ CreateRenderData(const svo* const Svo, const view_data* const ViewData)
         return nullptr;
     }
 
-    RenderData->HTableBuilderShader = CompileComputeShader(HasherComputeKernel);
+    RenderData->HTableBuilderShader = CompileComputeShader(HasherKernelCode);
     if (0 == RenderData->HTableBuilderShader)
     {
         std::fprintf(stderr, "Failed to compile hashtable builder shader\n");
@@ -661,7 +701,7 @@ CreateRenderData(const svo* const Svo, const view_data* const ViewData)
 }
 
 
-extern "C" void
+extern void
 DeleteRenderData(render_data* RenderData)
 {
     if (RenderData)
@@ -681,13 +721,13 @@ DeleteRenderData(render_data* RenderData)
         glBindTexture(GL_TEXTURE_3D, 0);
 
         DeleteGPUTimer(&RenderData->Timer);
-
-        free(RenderData);
     }
+
+    std::free(RenderData);
 }
 
 
-extern "C" void
+extern void
 UpdateRenderData(const svo* const Svo, render_data* const RenderDataOut)
 {
     usize SvoBlockDataSize = sizeof(svo_node) * SBR_NODES_PER_BLK;
@@ -737,7 +777,7 @@ UpdateRenderData(const svo* const Svo, render_data* const RenderDataOut)
 }
 
 
-extern "C" bool
+extern bool
 DEBUGOutputRenderShaderAssembly(const render_data* const RenderData, FILE* OutFile)
 {
     gl_sizei DataLength = 0;
