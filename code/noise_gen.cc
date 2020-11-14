@@ -1,7 +1,7 @@
-#include "sabre.h"
-#include "vecmath.h"
-#include "svo.h"
-#include "noise_gen.h"
+#include "sabre.hh"
+#include "vecmath.hh"
+#include "svo.hh"
+#include "noise_gen.hh"
 
 using namespace vm;
 

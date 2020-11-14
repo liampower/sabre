@@ -1,7 +1,10 @@
-#include "shaders.h"
+#include "shaders.hh"
+
+namespace shaders
+{
 
 // {{{ MainVertexCode
-extern const char* const MainVertexCode = R"GLSL(
+extern const char* const RenderVertexCode = R"GLSL(
 #version 450 core
 
 layout (location = 0) in vec2 Position;
@@ -18,7 +21,7 @@ void main()
 // }}}
 
 // {{{ MainFragmentCode
-extern const char* const MainFragmentCode = R"GLSL(
+extern const char* const RenderFragmentCode = R"GLSL(
 #version 450 core
 
 out vec4 FragCr;
@@ -138,7 +141,7 @@ void main()
 // }}}
 
 // {{{ RaycasterComputeKernel
-extern const char* const RaycasterComputeKernel = R"GLSL(
+extern const char* const RenderKernelCode = R"GLSL(
 #version 450 core
 
 // TODO(Liam): Theoretical f32 ops we can do in 16ms on a 620M: 3840000000 
@@ -150,6 +153,8 @@ extern const char* const RaycasterComputeKernel = R"GLSL(
 #define MAX_STEPS 256
 #define SCREEN_DIM 512
 #define EMPTY_KEY 0xFFFFFFFF
+#define F32_MAX 3.402823e+38
+#define STEP_EPS 0.001765625
 
 #define ASSERT(Expr) if (! (Expr)) { return vec3(1); }
 
@@ -188,7 +193,7 @@ layout (r32f, binding = 1) restrict uniform image2D BeamImgUniform;
 
 uniform uint MaxDepthUniform;
 uniform uint BlockCountUniform;
-uniform uint ScaleExponentUniform;
+uniform uint ScaleExpUniform;
 uniform uint EntriesPerBlockUniform;
 uniform uint FarPtrsPerBlockUniform;
 
@@ -258,7 +263,7 @@ uint GetNodeChild(in uint ParentNode, in uint Oct, inout uint ParentBlkIndex)
     return SvoInputBuffer.Nodes[ChildIndex];
 }
 
-ray_intersection ComputeRayBoxIntersection(in ray R, in vec3 vMin, in vec3 vMax)
+ray_intersection RayBoxIntersection(in ray R, in vec3 vMin, in vec3 vMax)
 {
     vec3 t0 = (vMin - R.Origin) * R.InvDir; // Distance along ray to vmin planes
     vec3 t1 = (vMax - R.Origin) * R.InvDir; // Distance along ray to vmax planes
@@ -397,7 +402,7 @@ void LookupLeafVoxelData(uvec3 Pos, out vec3 NormalOut, out vec3 ColourOut)
 float RaycastDst(in ray R)
 {
     // Scale up by the tree bias.
-    uint Scale = (1 << ScaleExponentUniform) << BiasUniform;
+    uint Scale = (1 << ScaleExpUniform) << BiasUniform;
 
     const float BiasScale = (1.0 / InvBiasUniform);
 
@@ -408,7 +413,7 @@ float RaycastDst(in ray R)
     vec3 RaySgn = sign(R.Dir);
 
     // Intersection of the ray with the root cube (i.e. entire tree)
-    ray_intersection RaySpan = ComputeRayBoxIntersection(R, RootMin, RootMax);
+    ray_intersection RaySpan = RayBoxIntersection(R, RootMin, RootMax);
 
     uint CurrentOct;
     uint CurrentDepth;
@@ -445,7 +450,7 @@ float RaycastDst(in ray R)
         for (int Step = 0; Step < MAX_STEPS; ++Step)
         {
             // Radius of the current octant's cube (half the current scale);
-            vec3 Rad = vec3(Scale >> 1);
+            float Rad = float(Scale >> 1);
 
             // Get the centre position of this octant
             vec3 OctSgn = mix(vec3(-1), vec3(1), bvec3(CurrentOct & OCT_BITS));
@@ -454,7 +459,7 @@ float RaycastDst(in ray R)
             vec3 NodeMin = (NodeCentre - Rad) * InvBiasUniform;
             vec3 NodeMax = (NodeCentre + Rad) * InvBiasUniform;
 
-            RaySpan = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
+            RaySpan = RayBoxIntersection(R, NodeMin, NodeMax);
 
             if (RaySpan.tMin <= RaySpan.tMax && RaySpan.tMax > 0)
             {
@@ -489,7 +494,7 @@ float RaycastDst(in ray R)
 
                 // Octant not occupied, need to handle advance/pop
                 uint NextOct = GetNextOctant(RaySpan.tMax, RaySpan.tMaxV, CurrentOct);
-                RayP = R.Origin + (RaySpan.tMax + 0.001765625) * R.Dir;
+                RayP = R.Origin + (RaySpan.tMax + STEP_EPS) * R.Dir;
 
                 if (IsAdvanceValid(NextOct, CurrentOct, RaySgn))
                 {
@@ -503,14 +508,14 @@ float RaycastDst(in ray R)
 
 
                     // NOTE(Liam): It is **okay** to have negative values here
-                    // because the HDB will end up being equal to ScaleExponentUniform.
+                    // because the HDB will end up being equal to ScaleExp.
                     //
                     // Find the highest differing bit
                     uvec3 HDB = findMSB(NodeCentreBits ^ RayPBits);
 
-                    uint M = MaxComponentU(mix(uvec3(0), HDB, lessThan(HDB, uvec3(ScaleExponentUniform + BiasUniform))));
+                    uint M = MaxComponentU(mix(uvec3(0), HDB, lessThan(HDB, uvec3(ScaleExpUniform + BiasUniform))));
 
-                    uint NextDepth = ((ScaleExponentUniform + BiasUniform) - M);
+                    uint NextDepth = ((ScaleExpUniform + BiasUniform) - M);
 
                     if (NextDepth < CurrentDepth)
                     {
@@ -524,35 +529,35 @@ float RaycastDst(in ray R)
                     }
                     else
                     {
-                        return RaySpan.tMin;
+                        return F32_MAX;
                     }
                 }
             }
             else
             {
-                return RaySpan.tMin;
+                return F32_MAX;
             }
         }
     }
 
-    return RaySpan.tMin;
+    return F32_MAX;
 }
+
 
 vec3 Raycast(in ivec2 BeamCoords, in ray R)
 {
     // Scale up by the tree bias.
-    uint Scale = (1U << ScaleExponentUniform) << BiasUniform;
+    uint Scale = (1U << ScaleExpUniform) << BiasUniform;
 
     const float BiasScale = (1.0 / InvBiasUniform);
 
     uint BlkIndex = 0;
-    
     vec3 RootMin = vec3(0);
     vec3 RootMax = vec3(Scale) * InvBiasUniform;
     vec3 RaySgn = sign(R.Dir);
 
     // Intersection of the ray with the root cube (i.e. entire tree)
-    ray_intersection RaySpan = ComputeRayBoxIntersection(R, RootMin, RootMax);
+    ray_intersection RaySpan = RayBoxIntersection(R, RootMin, RootMax);
 
     uint CurrentOct;
     uint CurrentDepth;
@@ -563,13 +568,21 @@ vec3 Raycast(in ivec2 BeamCoords, in ray R)
         // Ray enters octree --- begin processing
 
         vec3 RayP = (RaySpan.tMin >= 0.0) ? R.Origin + (RaySpan.tMin * R.Dir) : R.Origin;
-        const ivec2 Offsets[4] = { ivec2(0, 0), ivec2(1, 0), ivec2(0, 1), ivec2(1, 1) };
+        const ivec2 Offsets[4] = {
+            ivec2(0, 0), ivec2(1, 0),
+            ivec2(0, 1), ivec2(1, 1)
+        };
+
         float MinDst = min(min(
                 imageLoad(BeamImgUniform, BeamCoords + Offsets[0]).x,
                 imageLoad(BeamImgUniform, BeamCoords + Offsets[1]).x),
                 min(imageLoad(BeamImgUniform, BeamCoords + Offsets[2]).x,
                 imageLoad(BeamImgUniform, BeamCoords + Offsets[3]).x)
-                ) - 0.1;
+                );
+
+        // Clamp MinDst to the scene dimensions
+        MinDst = max(MinDst, RaySpan.tMin);
+
         RayP = R.Origin + MinDst*R.Dir;
         vec3 ParentCentre = vec3(Scale >> 1);
 
@@ -588,18 +601,16 @@ vec3 Raycast(in ivec2 BeamCoords, in ray R)
         // root node.
         Scale >>= 1;
 
-
         Stack[CurrentDepth] = st_frame(ParentNode, 
-                                       //Scale,
                                        ParentCentre,
                                        BlkIndex);
 
+        if (RaySpan.tMin > RaySpan.tMax) return vec3(0, 1, 0);
         int Step;
         // Begin stepping along the ray
         for (Step = 0; Step < MAX_STEPS; ++Step)
         {
             // Radius of the current octant's cube (half the current scale);
-            //vec3 Rad = vec3(Scale >> 1);
             float Rad = float(Scale >> 1);
 
             // Get the centre position of this octant
@@ -609,7 +620,7 @@ vec3 Raycast(in ivec2 BeamCoords, in ray R)
             vec3 NodeMin = (NodeCentre - Rad) * InvBiasUniform;
             vec3 NodeMax = (NodeCentre + Rad) * InvBiasUniform;
 
-            RaySpan = ComputeRayBoxIntersection(R, NodeMin, NodeMax);
+            RaySpan = RayBoxIntersection(R, NodeMin, NodeMax);
 
             if (RaySpan.tMin <= RaySpan.tMax && RaySpan.tMax > 0)
             {
@@ -652,7 +663,7 @@ vec3 Raycast(in ivec2 BeamCoords, in ray R)
 
                 // Octant not occupied, need to handle advance/pop
                 uint NextOct = GetNextOctant(RaySpan.tMax, RaySpan.tMaxV, CurrentOct);
-                RayP = R.Origin + (RaySpan.tMax + 0.001765625) * R.Dir;
+                RayP = R.Origin + (RaySpan.tMax + STEP_EPS) * R.Dir;
 
                 if (IsAdvanceValid(NextOct, CurrentOct, RaySgn))
                 {
@@ -666,14 +677,14 @@ vec3 Raycast(in ivec2 BeamCoords, in ray R)
 
 
                     // NOTE(Liam): It is **okay** to have negative values here
-                    // because the HDB will end up being equal to ScaleExponentUniform.
+                    // because the HDB will end up being equal to ScaleExp.
                     //
                     // Find the highest differing bit
                     uvec3 HDB = findMSB(NodeCentreBits ^ RayPBits);
 
-                    uint M = MaxComponentU(mix(uvec3(0), HDB, lessThan(HDB, uvec3(ScaleExponentUniform + BiasUniform))));
+                    uint M = MaxComponentU(mix(uvec3(0), HDB, lessThan(HDB, uvec3(ScaleExpUniform + BiasUniform))));
 
-                    uint NextDepth = ((ScaleExponentUniform + BiasUniform) - M);
+                    uint NextDepth = ((ScaleExpUniform + BiasUniform) - M);
 
                     if (NextDepth < CurrentDepth)
                     {
@@ -740,7 +751,7 @@ void main()
 // }}}
 
 // {{{ HasherComputeKernel
-extern const char* const HasherComputeKernel = R"GLSL(
+extern const char* const HasherKernelCode = R"GLSL(
 #version 450 core
 
 layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
@@ -818,4 +829,6 @@ void main()
 
 )GLSL";
 // }}}
+
+} // namespace shaders
 

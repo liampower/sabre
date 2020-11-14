@@ -16,10 +16,10 @@
 #include <glad/glad.h>
 #include <glfw/glfw3.h>
 
-#include "sabre.h"
-#include "svo.h"
-#include "render.h"
-#include "noise_gen.h"
+#include "sabre.hh"
+#include "svo.hh"
+#include "render.hh"
+#include "noise_gen.hh"
 
 using namespace vm;
 
