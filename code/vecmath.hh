@@ -1381,13 +1381,13 @@ RealPart(quat Q)
     return Q.X;
 }
 
-inline vec3
+constexpr inline vec3
 Rotate(quat Rotation, vec3 V)
 {
     vec3 T =  Cross(ImaginaryPart(Rotation), V) * 2.0f;
-    vec3 Rotated = (T * RealPart(Rotation)) + Cross(ImaginaryPart(Rotation), T) + V;
+    vec3 R = (T * RealPart(Rotation)) + Cross(ImaginaryPart(Rotation), T) + V;
 
-    return Rotated;
+    return R;
 
 }
 // }}}

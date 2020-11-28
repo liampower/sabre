@@ -19,9 +19,14 @@ using gl_u64 = GLuint64;
 using namespace vm;
 using namespace shaders;
 
-static constexpr uint WORK_SIZE_X = 512U;
-static constexpr uint WORK_SIZE_Y = 512U;
+// Fixed-size for shader error log buffers.
+static constexpr usize SHADER_LOG_BUFFER_SIZE = 1024U;
 
+// Dimensions of the render kernel work groups.
+static constexpr uint WORK_SIZE_X = 1024U;
+static constexpr uint WORK_SIZE_Y = 768U;
+
+// Dimensions of the coarse-pass beams in pixels.
 static constexpr int BEAM_WIDTH_PX = 8;
 static constexpr int BEAM_HEIGHT_PX = 8;
 
@@ -30,7 +35,7 @@ static constexpr usize MAX_SVO_SSBO_SIZE = 1024ULL*1024ULL*128ULL;
 
 // The actual memory used for the hashmap buffer is
 // HTABLE_SLOT_COUNT * sizeof(htable_entry). This is usually 8 bytes.
-static constexpr usize HTABLE_SLOT_COUNT = 1024ULL*1024ULL*256ULL;
+static constexpr usize HTABLE_SLOT_COUNT = 1024ULL*1024ULL*8ULL;
 
 // Byte pattern used to indicate the hashtable null (aka empty) key.
 // Since this is used as an argument to memset, only the unsigned char
@@ -333,9 +338,9 @@ CompileComputeShader(const char* const ComputeShaderCode)
 
     if (0 == Success)
     {
-        char Log[512] = { 0 };
-        glGetShaderInfoLog(ShaderID, 512, nullptr, Log);
-        std::fprintf(stdout, "Failed to compile compute shader\nLog is: %s\n", Log);
+        char Log[SHADER_LOG_BUFFER_SIZE] = { 0 };
+        glGetShaderInfoLog(ShaderID, SHADER_LOG_BUFFER_SIZE, nullptr, Log);
+        std::fprintf(stdout, "Failed to compile compute shader\n%s\n", Log);
 
         return 0;
     }
@@ -373,8 +378,8 @@ CompileShader(const char* VertSrc, const char* FragSrc)
     
     if (0 == Success)
     {
-        char Log[512] = { 0 };
-        glGetShaderInfoLog(VertShader, 512, nullptr, Log);
+        char Log[SHADER_LOG_BUFFER_SIZE] = { 0 };
+        glGetShaderInfoLog(VertShader, SHADER_LOG_BUFFER_SIZE, nullptr, Log);
         std::fprintf(stderr, "Failed to compile vertex shader\n%s", Log);
         return 0;
     }
@@ -387,8 +392,8 @@ CompileShader(const char* VertSrc, const char* FragSrc)
 
     if (0 == Success)
     {
-        char Log[512] = { 0 };
-        glGetShaderInfoLog(FragShader, 512, nullptr, Log);
+        char Log[SHADER_LOG_BUFFER_SIZE] = { 0 };
+        glGetShaderInfoLog(FragShader, SHADER_LOG_BUFFER_SIZE, nullptr, Log);
         std::fprintf(stderr, "Failed to compile fragment shader\n%s", Log);
         return 0;
     }
