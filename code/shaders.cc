@@ -71,7 +71,7 @@ edge ComputeEdge(in luma L)
         abs(L.SE + L.SW - 2 * L.S);
 
     E.Horz = HorzContrast >= VertContrast;
-    E.StepSize = E.Horz ? 1/512.0 : 1/512.0;
+    E.StepSize = E.Horz ? 1/1024.0 : 1/1024.0;
     float pLuminance = E.Horz ? L.N : L.E;
     float nLuminance = E.Horz ? L.S : L.W;
     float pGradient = abs(pLuminance - L.M);
@@ -97,7 +97,7 @@ luma SampleLuma(vec2 UV)
         vec2(1, -1),
         vec2(-1, -1),
     };
-    const float Ts = 1/512.0;
+    const float Ts = 1/1024.0;
 
     float M = texture(OutputTextureUniform, UV).g;
     float N = texture(OutputTextureUniform, UV + Offsets[0]*Ts).g;
@@ -133,30 +133,31 @@ void main()
     }
     
 
-    FragCr = vec4(textureLod(OutputTextureUniform, UV2, 0).rgb, L.M);
+    FragCr = vec4(textureLod(OutputTextureUniform, UV2, 0).rgb, L.M);*/
     //FragCr = texture(OutputTextureUniform, UV);*/
 }
 
 )GLSL";
 // }}}
 
-// {{{ RaycasterComputeKernel
+// {{{ RenderKernelCode
 extern const char* const RenderKernelCode = R"GLSL(
 #version 450 core
 
-// TODO(Liam): Theoretical f32 ops we can do in 16ms on a 620M: 3840000000 
+// NOTE(Liam): Theoretical f32 ops we can do in 16ms on a 620M: 3840000000
 #define SVO_NODE_OCCUPIED_MASK  0x0000FF00U
 #define SVO_NODE_LEAF_MASK      0x000000FFU
 #define SVO_NODE_CHILD_PTR_MASK 0x7FFF0000U
 #define SVO_FAR_PTR_BIT_MASK    0x80000000U
 
 #define MAX_STEPS 256
-#define SCREEN_DIM 512
 #define EMPTY_KEY 0xFFFFFFFF
 #define F32_MAX 3.402823e+38
 #define STEP_EPS 0.001765625
-
-#define ASSERT(Expr) if (! (Expr)) { return vec3(1); }
+#define ASPECT_RATIO (1280.0 / 720.0)
+#define FOV_CONST 1
+#define ZNEAR 0.01
+#define ZFAR  1000.0
 
 struct ray
 {
@@ -182,8 +183,8 @@ struct far_ptr
 struct hmap_entry
 {
     uint Key;
-    uint PackedNormal;
-    uint PackedColour;
+    uint PackedN;
+    uint PackedC;
 };
 
 layout (local_size_x = 8, local_size_y = 8) in;
@@ -271,8 +272,8 @@ ray_intersection RayBoxIntersection(in ray R, in vec3 vMin, in vec3 vMax)
     vec3 tMin = min(t0, t1); // Minimums of all distances
     vec3 tMax = max(t0, t1); // Maximums of all distances
 
-    float ttMin = MaxComponent(tMin); // Largest of the min distances (closest to box)
-    float ttMax = MinComponent(tMax); // Smallest of max distances (closest to box)
+    float ttMin = MaxComponent(tMin); // Max of min distances (closest to box)
+    float ttMax = MinComponent(tMax); // Min of max distances (closest to box)
 
     ray_intersection Result = { ttMin, ttMax, tMax, tMin };
     return Result;
@@ -304,12 +305,11 @@ uint GetNextOctant(in float tMax, in vec3 tValues, in uint CurrentOct)
 
 uint GetOctant(in vec3 P, in vec3 ParentCentreP)
 {
-    uvec3 G = uvec3(greaterThan(P, ParentCentreP));
+    uvec3 G = uvec3(greaterThan(P, ParentCentreP)) * OCT_BITS;
 
     // It is likely that a DP is actually *not* faster
     // here because the GLSL `dot` function can only return floats,
     // so we would need to convert this back into a uint. 
-    G *= OCT_BITS;
     return G.x + G.y + G.z;
 }
 
@@ -372,30 +372,30 @@ uvec4 ComputeHashes(uint Key)
     return K % (TableSizeUniform - 1);
 }
 
-void LookupLeafVoxelData(uvec3 Pos, out vec3 NormalOut, out vec3 ColourOut)
+void LookupLeafVoxelData(uvec3 Pos, out vec3 N, out vec3 C)
 {
     uint Key = HashVec3(Pos);
     uvec4 Hashes = ComputeHashes(Key);
 
     if (LeafInputBuffer.Entries[Hashes.x].Key == Key)
     {
-        NormalOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.x].PackedNormal).xyz;
-        ColourOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.x].PackedColour).xyz;
+        N = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.x].PackedN).xyz;
+        C = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.x].PackedC).xyz;
     }
     else if (LeafInputBuffer.Entries[Hashes.y].Key == Key)
     {
-        NormalOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.y].PackedNormal).xyz;
-        ColourOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.y].PackedColour).xyz;
+        N = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.y].PackedN).xyz;
+        C = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.y].PackedC).xyz;
     }
     else if (LeafInputBuffer.Entries[Hashes.z].Key == Key)
     {
-        NormalOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.z].PackedNormal).xyz;
-        ColourOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.z].PackedColour).xyz;
+        N = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.z].PackedN).xyz;
+        C = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.z].PackedC).xyz;
     }
     else if (LeafInputBuffer.Entries[Hashes.w].Key == Key)
     {
-        NormalOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.w].PackedNormal).xyz;
-        ColourOut = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.w].PackedColour).xyz;
+        N = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.w].PackedN).xyz;
+        C = unpackSnorm4x8(LeafInputBuffer.Entries[Hashes.w].PackedC).xyz;
     }
 }
 
@@ -529,18 +529,18 @@ float RaycastDst(in ray R)
                     }
                     else
                     {
-                        return F32_MAX;
+                        return RaySpan.tMin; //F32_MAX;
                     }
                 }
             }
             else
             {
-                return F32_MAX;
+                    return RaySpan.tMin; //F32_MAX;
             }
         }
     }
 
-    return F32_MAX;
+    return RaySpan.tMin; //F32_MAX;
 }
 
 
@@ -637,8 +637,7 @@ vec3 Raycast(in ivec2 BeamCoords, in ray R)
                         vec3 N, C;
                         LookupLeafVoxelData(uvec3(NodeCentre), N, C);
 
-                        float A =  (float(Step) / MAX_STEPS);
-                        return mix(max(vec3(dot(Ldir, N)), vec3(0.25))*C, vec3(1, 0,1), A);
+                        //return mix(max(vec3(dot(Ldir, N)), vec3(0.25))*C, vec3(1, 0,1), A);
                         return max(vec3(dot(Ldir, N)), vec3(0.25))*C;
 
                     }
@@ -698,42 +697,41 @@ vec3 Raycast(in ivec2 BeamCoords, in ray R)
                     }
                     else
                     {
-                        return (float(Step) / MAX_STEPS) * vec3(1, 0, 1);
-                        return vec3(0.16);
+                        return max((float(Step) / MAX_STEPS), 0.50) * vec3(0.39, 0.58, 0.92);
+                        //return vec3(0.39, 0.58, 0.92);
                     }
                 }
             }
             else
             {
-                return (float(Step) / MAX_STEPS) * vec3(1, 0, 1);
-                return vec3(0.16);
+                return max((float(Step) / MAX_STEPS), 0.50) * vec3(0.39, 0.58, 0.92);
+                //return vec3(0.39, 0.58, 0.92);
             }
         }
     }
 
-    return vec3(0.16);
+    return vec3(0.39, 0.58, 0.92);
 }
 
-
+#define COT_30DEG 1.73205080
 #line 730
 void main()
 {
-    // Ray XY coordinates of the screen pixels; goes from 0-512
-    // in each dimension.
     ivec2 PixelCoords = ivec2(gl_GlobalInvocationID.xy);
-    vec3 K = vec3(256, 256, 512);
-    vec3 ScreenOrigin = ViewPosUniform - K;
     if (IsCoarsePassUniform) PixelCoords *= 8;
 
-    vec3 ScreenCoord = ScreenOrigin + vec3(PixelCoords, 0);
-    ScreenCoord.x *= 1280.0/720.0;
+    vec3 ScreenCoords = vec3( 512, 384, 1024);
+
+    vec3 ScreenOrigin = ViewPosUniform - ScreenCoords;
+    vec3 ScreenCoord = ScreenOrigin + vec3(PixelCoords.xy, 0);
+    ScreenCoord.x *= 1024.0/768.0;
 
     vec3 RayP = ViewPosUniform;
     vec3 RayD = normalize(ScreenCoord - ViewPosUniform);
-
-    RayD = RayD * ViewMatrixUniform;
+    RayD *= ViewMatrixUniform;
 
     ray R = { RayP, RayD, 1.0 / RayD };
+
 
     // NOTE(Liam): Branch is fine here because all pixels will take the branch.
     if (IsCoarsePassUniform)

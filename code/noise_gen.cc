@@ -265,8 +265,7 @@ ShapeSamplerFn(vec3 Min, vec3 Max, const svo* const Tree, const void* const)
 static inline vec3
 DummySampler(vec3 C, const svo* const, const void* const)
 {
-    vec3 N = Perlin3Deriv(C);
-    return Normalize(vec3{-N.X, -N.Y, 1});
+    return vec3(0.72, 0.25, 0.05);
 }
 
 
@@ -276,7 +275,7 @@ BuildNoiseSvo(u32 MaxDepth, u32 ScaleExp)
     shape_sampler S{ nullptr, &ShapeSamplerFn };
     data_sampler D{ nullptr, &DummySampler };
 
-    svo* Svo = CreateScene(6, MaxDepth, &S, &D, &D);
+    svo* Svo = CreateScene(10, MaxDepth, &S, &D, &D);
 
 
     return Svo;

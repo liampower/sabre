@@ -178,7 +178,7 @@ UnprojectViewDirection(const camera& Cam)
 
 
 static void
-InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, svo* const Svo)
+InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, svo* Svo)
 {
     vec3 R = UnprojectViewDirection(Cam);
     vec3 VoxelPos = GetNearestFreeSlot(Cam.Position, R, Svo);
@@ -188,7 +188,7 @@ InsertVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, svo* const Sv
 
 
 static void
-DeleteVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, svo* const Svo)
+DeleteVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, svo* Svo)
 {
     vec3 R = UnprojectViewDirection(Cam);
     vec3 VoxelPos = GetNearestLeafSlot(Cam.Position, R, Svo);
@@ -282,8 +282,8 @@ main(int ArgCount, const char** const Args)
     // FIXME: BROKEN!! Last two members left uninitialised!
     // Initialise the render data
     view_data ViewData = { };
-    ViewData.ScreenWidth = 512;
-    ViewData.ScreenHeight = 512;
+    ViewData.ScreenWidth = 1024;
+    ViewData.ScreenHeight = 768;
 
     render_data* RenderData = nullptr;
 
