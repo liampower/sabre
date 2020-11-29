@@ -88,7 +88,7 @@ struct render_data
     gl_int ViewPosUniformLocation; // Location of view position uniform
     gl_int IsCoarsePassUniformLocation;
 
-    gl_uint HTableBuilderShader; // Compute shader to construct the leaf hashtable
+    gl_uint HasherShader; // Compute shader to construct the leaf hashtable
     gl_uint HTableInputBuffer;
     gl_uint HTableOutputBuffer;
 
@@ -188,7 +188,7 @@ CreateLeafDataHashTable(const render_data* const RenderData,
         std::memset(GPUHTableBuffer, HTABLE_NULL_KEY_BYTE, HTableDataSize);
         glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 
-        glUseProgram(RenderData->HTableBuilderShader);
+        glUseProgram(RenderData->HasherShader);
         glUniform1ui(HTableUniformTableSize, HTABLE_SLOT_COUNT);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, HTableInputBufferBinding, DataBuffers[0]);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, HTableOutputBufferBinding, DataBuffers[1]);
@@ -613,7 +613,9 @@ DrawScene(const render_data* const RenderData, const view_data* const ViewData)
 
 
 extern render_data*
-CreateRenderData(const svo* const Svo, const view_data* const ViewData)
+CreateRenderData(const svo* Scene,
+                const view_data* ViewData,
+                const shader_data* Shaders)
 {
     render_data* RenderData = (render_data*)std::calloc(1, sizeof(render_data));
     if (nullptr == RenderData)
@@ -622,7 +624,7 @@ CreateRenderData(const svo* const Svo, const view_data* const ViewData)
         return nullptr;
     }
 
-    RenderData->RenderShader = CompileComputeShader(RenderKernelCode);
+    RenderData->RenderShader = CompileComputeShader(Shaders->RenderKernelCode);
     if (0 == RenderData->RenderShader)
     {
         std::fprintf(stderr, "Failed to compile compute shader\n");
@@ -631,8 +633,8 @@ CreateRenderData(const svo* const Svo, const view_data* const ViewData)
         return nullptr;
     }
 
-    RenderData->CanvasShader = CompileShader(RenderVertexCode,
-                                             RenderFragmentCode);
+    RenderData->CanvasShader = CompileShader(Shaders->MainVertCode,
+                                             Shaders->MainFragCode);
     if (0 == RenderData->CanvasShader)
     {
         std::fprintf(stderr, "Failed to compile canvas shader\n");
@@ -641,8 +643,8 @@ CreateRenderData(const svo* const Svo, const view_data* const ViewData)
         return nullptr;
     }
 
-    RenderData->HTableBuilderShader = CompileComputeShader(HasherKernelCode);
-    if (0 == RenderData->HTableBuilderShader)
+    RenderData->HasherShader = CompileComputeShader(Shaders->HasherKernelCode);
+    if (0 == RenderData->HasherShader)
     {
         std::fprintf(stderr, "Failed to compile hashtable builder shader\n");
         DeleteRenderData(RenderData);
@@ -651,8 +653,8 @@ CreateRenderData(const svo* const Svo, const view_data* const ViewData)
     }
 
     buffer_pair HTableBuffers = CreateLeafDataHashTable(RenderData,
-                                                        Svo->AttribData.data(),
-                                                        Svo->AttribData.size());
+                                                        Scene->AttribData.data(),
+                                                        Scene->AttribData.size());
 
     RenderData->HTableInputBuffer = HTableBuffers.InputBuffer;
     RenderData->HTableOutputBuffer = HTableBuffers.OutputBuffer;
@@ -661,7 +663,7 @@ CreateRenderData(const svo* const Svo, const view_data* const ViewData)
     RenderData->BeamImage = CreateBeamDistanceImage(ViewData->ScreenWidth, ViewData->ScreenHeight);
     RenderData->RenderImage = CreateRenderImage(ViewData->ScreenWidth, ViewData->ScreenHeight);
     assert(RenderData->BeamImage);
-    SetUniformData(Svo, RenderData);
+    SetUniformData(Scene, RenderData);
 
     buffer_pair CanvasBuffers = UploadCanvasVertices();
     if (0 == CanvasBuffers.VAO || 0 == CanvasBuffers.VBO)
@@ -675,15 +677,15 @@ CreateRenderData(const svo* const Svo, const view_data* const ViewData)
     RenderData->CanvasVAO = CanvasBuffers.VAO;
     RenderData->CanvasVBO = CanvasBuffers.VBO;
 
-    buffer_pair SvoBuffers = UploadSvoBlockData(Svo);
-    if (0 == SvoBuffers.SvoBuffer || 0 == SvoBuffers.FarPtrBuffer)
+    buffer_pair SceneBuffers = UploadSvoBlockData(Scene);
+    if (0 == SceneBuffers.SvoBuffer || 0 == SceneBuffers.FarPtrBuffer)
     {
         DeleteRenderData(RenderData);
         return nullptr;
     }
 
-    RenderData->SvoBuffer = SvoBuffers.SvoBuffer;
-    RenderData->FarPtrBuffer = SvoBuffers.FarPtrBuffer;
+    RenderData->SvoBuffer = SceneBuffers.SvoBuffer;
+    RenderData->FarPtrBuffer = SceneBuffers.FarPtrBuffer;
 
 
     RenderData->ViewMatUniformLocation = glGetUniformLocation(RenderData->RenderShader, "ViewMatrixUniform");
@@ -733,14 +735,14 @@ DeleteRenderData(render_data* RenderData)
 
 
 extern void
-UpdateRenderData(const svo* const Svo, render_data* const RenderDataOut)
+UpdateRenderScene(const svo* Scene, render_data* const RenderDataOut)
 {
     usize SvoBlockDataSize = sizeof(svo_node) * SBR_NODES_PER_BLK;
     // TODO(Liam): Waste here on the last block
-    usize MaxSvoDataSize = SvoBlockDataSize * Svo->UsedBlockCount;
+    usize MaxSvoDataSize = SvoBlockDataSize * Scene->UsedBlockCount;
 
     usize FarPtrBlockDataSize = sizeof(far_ptr) * SBR_FAR_PTRS_PER_BLK;
-    usize MaxFarPtrDataSize = FarPtrBlockDataSize * Svo->UsedBlockCount;
+    usize MaxFarPtrDataSize = FarPtrBlockDataSize * Scene->UsedBlockCount;
 
     // Allocate space for the far ptr buffer
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, RenderDataOut->FarPtrBuffer);
@@ -756,7 +758,7 @@ UpdateRenderData(const svo* const Svo, render_data* const RenderDataOut)
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
     // TODO(Liam): Don't send all the blocks to the renderer! Use only a subset.
-    svo_block* CurrentBlk = Svo->RootBlock;
+    svo_block* CurrentBlk = Scene->RootBlock;
     usize NextSvoDataOffset = 0;
     usize NextFarPtrDataOffset = 0;
 

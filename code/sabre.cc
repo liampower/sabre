@@ -20,6 +20,7 @@
 #include "svo.hh"
 #include "render.hh"
 #include "noise_gen.hh"
+#include "shaders.hh"
 
 using namespace vm;
 
@@ -28,6 +29,10 @@ static constexpr u32 DEMO_SCALE_EXPONENT = 5;
 
 static constexpr u32 DISPLAY_WIDTH = 1280;
 static constexpr u32 DISPLAY_HEIGHT = 720;
+
+// How many seconds to wait before checking for updated shader files.
+static constexpr f64 SHADER_FILE_CHECK_HZ = 0.5;
+
 static constexpr const char* const DISPLAY_TITLE = "Sabre";
 
 struct scene
@@ -69,6 +74,32 @@ struct sphere
     vec3 Centre;
     f32  Radius;
 };
+
+static char*
+ReadEntireFile(const char* const Path)
+{
+    FILE* File;
+    fopen_s(&File, Path, "rb");
+    if (nullptr == File)
+    {
+        return nullptr;
+    }
+
+    std::fseek(File, 0L, SEEK_END);
+    usize FileSize = static_cast<usize>(std::ftell(File));
+    std::rewind(File);
+
+    void* FileData = static_cast<char*>(std::calloc(1, FileSize));
+    if (nullptr == FileData)
+    {
+        fclose(File);
+        return nullptr;
+    }
+
+    std::fread(FileData, FileSize, 1, File);
+
+    return static_cast<char*>(FileData);
+}
 
 static void
 HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei Length, const GLchar* Msg, const void*)
@@ -315,6 +346,17 @@ main(int ArgCount, const char** const Args)
     u64 GPUTime = 0;
     NP_PopTraceEvent(&Prof); // Init
 
+
+    char* VertShaderCode = ReadEntireFile("code/main.vert");
+    assert(VertShaderCode);
+
+    shader_data Shaders = {
+        VertShaderCode,
+        shaders::RenderFragmentCode,
+        shaders::RenderKernelCode,
+        shaders::HasherKernelCode,
+    };
+
     while (GLFW_FALSE == glfwWindowShouldClose(Window))
     {
         FrameStartTime = glfwGetTime();
@@ -367,7 +409,7 @@ main(int ArgCount, const char** const Args)
 
             if (false == ShowMenu)
             {
-                RenderData = CreateRenderData(WorldSvo, &ViewData);
+                RenderData = CreateRenderData(WorldSvo, &ViewData, &Shaders);
                 glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
                 if (nullptr == RenderData)
                 {
@@ -443,14 +485,14 @@ main(int ArgCount, const char** const Args)
                     if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_RIGHT) && ((CurrentTime - LastMouseRTime)) >= 1)
                     {
                         InsertVoxelAtMousePoint(MouseX, MouseY, Cam, WorldSvo);
-                        UpdateRenderData(WorldSvo, RenderData);
+                        UpdateRenderScene(WorldSvo, RenderData);
                         LastMouseRTime = CurrentTime;
                     }
                     
                     if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_LEFT) && ((CurrentTime - LastMouseLTime)) >= 1)
                     {
                         DeleteVoxelAtMousePoint(MouseX, MouseY, Cam, WorldSvo);
-                        UpdateRenderData(WorldSvo, RenderData);
+                        UpdateRenderScene(WorldSvo, RenderData);
                         LastMouseLTime = CurrentTime;
                     }
 
@@ -510,6 +552,7 @@ main(int ArgCount, const char** const Args)
     //NP_WriteJSONTrace(&Prof, nullptr, 0);
 
     free(EvtStorage);
+    free(VertShaderCode);
     return EXIT_SUCCESS;
 }
 

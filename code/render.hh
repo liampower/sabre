@@ -14,26 +14,34 @@ struct view_data
     float* CamPos;
 };
 
+struct shader_data
+{
+    const char* const MainVertCode;
+    const char* const MainFragCode;
+    const char* const RenderKernelCode;
+    const char* const HasherKernelCode;
+};
+
 
 extern render_data*
-CreateRenderData(const svo* const Svo, const view_data* const ViewData);
-
+CreateRenderData(const svo* Scene,
+                 const view_data* ViewData,
+                 const shader_data* Shaders);
 
 extern void
-UpdateRenderData(const svo* const Svo, render_data* RenderDataOut);
+UpdateRenderScene(const svo* Scene, render_data* RenderDataOut);
 
+extern void
+UpdateRenderShaders(const shader_data* Shaders, render_data* RenderDataOut);
 
 extern u64
-DrawScene(const render_data* const RenderData,
-          const view_data* const ViewData);
-
+DrawScene(const render_data* RenderData, const view_data* ViewData);
 
 extern void
 DeleteRenderData(render_data* RenderData);
 
-
 extern bool
-DEBUGOutputRenderShaderAssembly(const render_data* const RenderData,
-                                FILE* OutFile);
+DEBUGOutputRenderShaderAssembly(const render_data* RenderData, FILE* OutFile);
 
 #endif
+
