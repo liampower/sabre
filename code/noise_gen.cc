@@ -6,7 +6,7 @@
 using namespace vm;
 
 // Noise values >= this constant are considered to be "solid"
-static constexpr f32 NOISE_THRESHOLD = 0.6f;
+static constexpr f32 NOISE_THRESHOLD = 0.76f;
 static constexpr f32 SCALE_FACTOR = 1.0f/257.0f;
 
 // Randomly distributed permutation of numbers 0-255
@@ -265,7 +265,10 @@ ShapeSamplerFn(vec3 Min, vec3 Max, const svo* const Tree, const void* const)
 static inline vec3
 DummySampler(vec3 C, const svo* const, const void* const)
 {
-    return vec3(0.72, 0.25, 0.05);
+    vec3 D = Perlin3Deriv(C);
+
+    return Normalize(vec3(-D.X, -D.Y, 1.0));
+    //return vec3(0.72, 0.25, 0.05);
 }
 
 
