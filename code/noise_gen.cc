@@ -265,7 +265,7 @@ ShapeSamplerFn(vec3 Min, vec3 Max, const svo* const Tree, const void* const)
 static inline vec3
 DummySampler(vec3 C, const svo* const, const void* const)
 {
-    return vec3(0.72, 0.25, 0.05);
+    return vec3{0.72f, 0.25f, 0.05f};
 }
 
 
