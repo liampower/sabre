@@ -3,7 +3,7 @@ DisabledWarnings = -Wno-unused-parameter -Wno-c++98-compat -Wno-c++98-compat-ped
 NonErrorWarnings = -Wno-error=unused-variable -Wno-error=missing-prototypes -Wno-error=deprecated-declarations
 Optimisation = -O3 -fwrapv
 #Optimisation = -fsanitize=address,undefined,integer -g -gcodeview
-CompilerFlags = -isystem include -Wall -Wextra -Wmove -pedantic -Weverything -Wpadded  $NonErrorWarnings -std=c++14 -mavx $Optimisation -fno-omit-frame-pointer -fno-exceptions -fno-rtti -fdeclspec -ffast-math $DisabledWarnings
+CompilerFlags = -isystem include -Wall -Wextra -Wmove -Werror -pedantic -Weverything -Wpadded  $NonErrorWarnings -std=c++14 -mavx $Optimisation -fno-omit-frame-pointer -fno-exceptions -fno-rtti -fdeclspec -ffast-math $DisabledWarnings
 Linker = clang++ 
 Libs = -Llibs -limgui.lib -lglad.lib -lglfw3.lib -lopengl32.lib -lkernel32.lib -luser32.lib -lgdi32.lib -lshell32.lib
 #LinkerFlags = -fsanitize=address,undefined,integer $Libs
