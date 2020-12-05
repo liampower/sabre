@@ -27,18 +27,18 @@ CompilerFlags = -isystem include                                              $
                  $DisabledWarnings
 
 Linker = clang++
-Libs = -Llibs                                                                 $
-       -limgui.lib                                                            $
-       -lglad.lib                                                             $
-       -lglfw3.lib                                                            $
-       -lopengl32.lib                                                         $
-       -lkernel32.lib                                                         $
-       -luser32.lib                                                           $
-       -lgdi32.lib                                                            $
-       -lshell32.lib                                                          $
+Libs = -Llibs         $
+       -limgui.lib    $
+       -lglad.lib     $
+       -lglfw3.lib    $
+       -lopengl32.lib $
+       -lkernel32.lib $
+       -luser32.lib   $
+       -lgdi32.lib    $
+       -lshell32.lib  $
 
 CommonLinkerFlags = --for-linker=-nodefaultlib:libcmt
-LinkerFlags = $CommonLinkerFlags -fsanitize=address,undefined,integer $Libs
+LinkerFlags =  -fsanitize=address,undefined,integer $Libs
 #LinkerFlags = $CommonLinkerFlags $Libs --for-linker=-opt:ref
 
 rule compile
