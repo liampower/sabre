@@ -95,7 +95,7 @@ luma SampleLuma(vec2 UV)
 
 void main()
 {
-    FragCr = texture(OutputTextureUniform, UV).bgra;
+    FragCr = texture(OutputTextureUniform, UV);
     /*luma L = SampleLuma(UV);
     float Blend = ComputeBlendFactor(L);
     edge E = ComputeEdge(L);
