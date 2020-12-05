@@ -4,6 +4,16 @@
 
 struct render_data;
 
+enum shader_id
+{
+    SHADER_MAIN_VS,
+    SHADER_MAIN_FS,
+    SHADER_RENDER_CS,
+    SHADER_HASHER_CS,
+
+    SHADER_ID_COUNT
+};
+
 struct view_data
 {
     int ScreenWidth;
@@ -14,6 +24,7 @@ struct view_data
     float* CamPos;
 };
 
+#if 0
 struct shader_data
 {
     const char* const MainVertCode;
@@ -21,7 +32,12 @@ struct shader_data
     const char* const RenderKernelCode;
     const char* const HasherKernelCode;
 };
+#endif
 
+struct shader_data
+{
+    const char** Code;
+};
 
 extern render_data*
 CreateRenderData(const svo* Scene,
@@ -31,8 +47,8 @@ CreateRenderData(const svo* Scene,
 extern void
 UpdateRenderScene(const svo* Scene, render_data* RenderDataOut);
 
-extern void
-UpdateRenderShaders(const shader_data* Shaders, render_data* RenderDataOut);
+extern bool
+UpdateRenderShaders(const svo* Scene, const shader_data* Shaders, u32 Changed, render_data* Out);
 
 extern u64
 DrawScene(const render_data* RenderData, const view_data* ViewData);
