@@ -274,7 +274,6 @@ ReloadChangedShaders(shader_files* Files)
                              &AttrData);
         FILETIME LastModified = AttrData.ftLastWriteTime;
 
-
         if (0 != CompareFileTime(&LastModified, &Files->LastModified[ID]))
         {
             printf("Got new file for shader id %d\n", ID);
