@@ -24,16 +24,6 @@ struct view_data
     float* CamPos;
 };
 
-#if 0
-struct shader_data
-{
-    const char* const MainVertCode;
-    const char* const MainFragCode;
-    const char* const RenderKernelCode;
-    const char* const HasherKernelCode;
-};
-#endif
-
 struct shader_data
 {
     const char** Code;
