@@ -52,8 +52,8 @@ struct scene
 struct shader_files
 {
     const char* Contents[SHADER_ID_COUNT];
+    const char* FileName[SHADER_ID_COUNT];
     FILETIME    LastModified[SHADER_ID_COUNT];
-    HANDLE      FileHandle[SHADER_ID_COUNT];
 };
 
 static const scene GlobalSceneTable[] = {
@@ -104,6 +104,7 @@ ReadEntireFile(const char* const Path)
     fopen_s(&File, Path, "rb");
     if (nullptr == File)
     {
+        fprintf(stderr, "Failed to open file\n");
         return nullptr;
     }
 
@@ -114,6 +115,7 @@ ReadEntireFile(const char* const Path)
     void* FileData = static_cast<char*>(std::calloc(1, FileSize + 1));
     if (nullptr == FileData)
     {
+        fprintf(stderr, "Failed to alloc file data\n");
         fclose(File);
         return nullptr;
     }
@@ -266,8 +268,12 @@ ReloadChangedShaders(shader_files* Files)
     u32 ChangedMsk = 0x00;
     for (u32 ID = 0; ID < SHADER_ID_COUNT; ++ID)
     {
-        FILETIME LastModified;
-        GetFileTime(Files->FileHandle[ID], nullptr, nullptr, &LastModified);
+        WIN32_FILE_ATTRIBUTE_DATA AttrData;
+        GetFileAttributesExA(Files->FileName[ID],
+                             GetFileExInfoStandard,
+                             &AttrData);
+        FILETIME LastModified = AttrData.ftLastWriteTime;
+
 
         if (0 != CompareFileTime(&LastModified, &Files->LastModified[ID]))
         {
@@ -295,25 +301,18 @@ LoadShaderFiles(const char* const FileNames[SHADER_ID_COUNT])
 
     for (u32 ID = 0; ID < SHADER_ID_COUNT; ++ID)
     {
-        HANDLE Handle = CreateFile(FileNames[ID],
-                                   GENERIC_READ,
-                                   FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
-                                   nullptr,
-                                   OPEN_EXISTING,
-                                   FILE_ATTRIBUTE_NORMAL,
-                                   nullptr);    
-
-        assert(Handle);
-
         const char* Contents = ReadEntireFile(FileNames[ID]);
         assert(Contents);
 
-        FILETIME LastModified;
-        GetFileTime(Files->FileHandle[ID], nullptr, nullptr, &LastModified);
+        WIN32_FILE_ATTRIBUTE_DATA AttrData;
+        GetFileAttributesExA(Files->FileName[ID],
+                             GetFileExInfoStandard,
+                             &AttrData);
+        FILETIME LastModified = AttrData.ftLastWriteTime;
 
         Files->Contents[ID] = Contents;
         Files->LastModified[ID] = LastModified;
-        Files->FileHandle[ID] = Handle;
+        Files->FileName[ID] = FileNames[ID];
     }
 
     return Files;
@@ -325,7 +324,6 @@ DeleteShaderFiles(shader_files* Files)
     for (u32 ShaderID = 0; ShaderID < SHADER_ID_COUNT; ++ShaderID)
     {
         free((void*)Files->Contents[ShaderID]);
-        assert(CloseHandle(Files->FileHandle[ShaderID]));
     }
 
     free(Files);
@@ -566,7 +564,6 @@ main(int ArgCount, const char** const Args)
                 // Every 0.5 seconds, check if we need to update the shaders
                 if ((CurrentTime - LastShaderCheckTime) >= SHADER_FILE_CHECK_HZ)
                 {
-                    printf("reload\n");
                     u32 ChMsk = ReloadChangedShaders(ShaderFiles);
                     UpdateRenderShaders(WorldSvo, &Shaders, ChMsk, RenderData);
                     LastShaderCheckTime = CurrentTime;
