@@ -7,7 +7,6 @@
 #include "sabre.hh"
 #include "svo.hh"
 #include "render.hh"
-#include "shaders.hh"
 #include "vecmath.hh"
 
 using gl_uint = GLuint;
@@ -17,7 +16,6 @@ using gl_enum = GLenum;
 using gl_u64 = GLuint64;
 
 using namespace vm;
-using namespace shaders;
 
 // Fixed-size for shader error log buffers.
 static constexpr usize SHADER_LOG_BUFFER_SIZE = 1024U;
@@ -74,13 +72,12 @@ struct gl_timer
 // Holds the contextual data required to render a SVO voxel scene with OpenGL
 struct render_data
 {
-    gl_uint CanvasShader; // Shader program ID for canvas
     gl_uint CanvasVAO;    // VAO holding canvas vertices
     gl_uint CanvasVBO;    // VBO holding canvas vertices
 
     gl_uint SvoBuffer;    // Buffer for the SVO voxel data
     gl_uint FarPtrBuffer; // Buffer for the SVO far-ptr data
-    gl_uint RenderShader; // Shader ID of the raycaster CS
+
     gl_uint RenderImage;  // GL texture ID of the render output image
     gl_uint BeamImage;    // Texture holding coarse distance image for beam optimisation
 
@@ -88,7 +85,9 @@ struct render_data
     gl_int ViewPosUniformLocation; // Location of view position uniform
     gl_int IsCoarsePassUniformLocation;
 
-    gl_uint HTableBuilderShader; // Compute shader to construct the leaf hashtable
+    gl_uint HasherShader; // Compute shader to construct the leaf hashtable
+    gl_uint RenderShader; // Shader ID of the raycaster CS
+    gl_uint CanvasShader; // Shader program ID for canvas
     gl_uint HTableInputBuffer;
     gl_uint HTableOutputBuffer;
 
@@ -188,7 +187,7 @@ CreateLeafDataHashTable(const render_data* const RenderData,
         std::memset(GPUHTableBuffer, HTABLE_NULL_KEY_BYTE, HTableDataSize);
         glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 
-        glUseProgram(RenderData->HTableBuilderShader);
+        glUseProgram(RenderData->HasherShader);
         glUniform1ui(HTableUniformTableSize, HTABLE_SLOT_COUNT);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, HTableInputBufferBinding, DataBuffers[0]);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, HTableOutputBufferBinding, DataBuffers[1]);
@@ -380,6 +379,7 @@ CompileShader(const char* VertSrc, const char* FragSrc)
     {
         char Log[SHADER_LOG_BUFFER_SIZE] = { 0 };
         glGetShaderInfoLog(VertShader, SHADER_LOG_BUFFER_SIZE, nullptr, Log);
+        std::fprintf(stderr, "%s\n", VertSrc);
         std::fprintf(stderr, "Failed to compile vertex shader\n%s", Log);
         return 0;
     }
@@ -613,96 +613,96 @@ DrawScene(const render_data* const RenderData, const view_data* const ViewData)
 
 
 extern render_data*
-CreateRenderData(const svo* const Svo, const view_data* const ViewData)
+CreateRenderData(const svo* Scene,
+                 const view_data* ViewData,
+                 const shader_data* Shaders)
 {
-    render_data* RenderData = (render_data*)std::calloc(1, sizeof(render_data));
-    if (nullptr == RenderData)
+    render_data* Data = (render_data*)std::calloc(1, sizeof(render_data));
+    if (nullptr == Data)
     {
         std::fprintf(stderr, "Failed to allocate render data\n");
         return nullptr;
     }
 
-    RenderData->RenderShader = CompileComputeShader(RenderKernelCode);
-    if (0 == RenderData->RenderShader)
+    Data->RenderShader = CompileComputeShader(Shaders->Code[SHADER_RENDER_CS]);
+    if (0 == Data->RenderShader)
     {
         std::fprintf(stderr, "Failed to compile compute shader\n");
 
-        DeleteRenderData(RenderData);
+        DeleteRenderData(Data);
         return nullptr;
     }
 
-    RenderData->CanvasShader = CompileShader(RenderVertexCode,
-                                             RenderFragmentCode);
-    if (0 == RenderData->CanvasShader)
+    Data->CanvasShader = CompileShader(Shaders->Code[SHADER_MAIN_VS],
+                                       Shaders->Code[SHADER_MAIN_FS]);
+    if (0 == Data->CanvasShader)
     {
         std::fprintf(stderr, "Failed to compile canvas shader\n");
 
-        DeleteRenderData(RenderData);
+        DeleteRenderData(Data);
         return nullptr;
     }
 
-    RenderData->HTableBuilderShader = CompileComputeShader(HasherKernelCode);
-    if (0 == RenderData->HTableBuilderShader)
+    Data->HasherShader = CompileComputeShader(Shaders->Code[SHADER_HASHER_CS]);
+    if (0 == Data->HasherShader)
     {
         std::fprintf(stderr, "Failed to compile hashtable builder shader\n");
-        DeleteRenderData(RenderData);
+        DeleteRenderData(Data);
 
         return nullptr;
     }
 
-    buffer_pair HTableBuffers = CreateLeafDataHashTable(RenderData,
-                                                        Svo->AttribData.data(),
-                                                        Svo->AttribData.size());
+    buffer_pair HTableBuffers = CreateLeafDataHashTable(Data,
+                                                        Scene->AttribData.data(),
+                                                        Scene->AttribData.size());
 
-    RenderData->HTableInputBuffer = HTableBuffers.InputBuffer;
-    RenderData->HTableOutputBuffer = HTableBuffers.OutputBuffer;
+    Data->HTableInputBuffer = HTableBuffers.InputBuffer;
+    Data->HTableOutputBuffer = HTableBuffers.OutputBuffer;
 
 
-    RenderData->BeamImage = CreateBeamDistanceImage(ViewData->ScreenWidth, ViewData->ScreenHeight);
-    RenderData->RenderImage = CreateRenderImage(ViewData->ScreenWidth, ViewData->ScreenHeight);
-    assert(RenderData->BeamImage);
-    SetUniformData(Svo, RenderData);
+    Data->BeamImage = CreateBeamDistanceImage(ViewData->ScreenWidth, ViewData->ScreenHeight);
+    Data->RenderImage = CreateRenderImage(ViewData->ScreenWidth, ViewData->ScreenHeight);
+    assert(Data->BeamImage);
+    SetUniformData(Scene, Data);
 
     buffer_pair CanvasBuffers = UploadCanvasVertices();
     if (0 == CanvasBuffers.VAO || 0 == CanvasBuffers.VBO)
     {
         std::fprintf(stderr, "Failed to upload canvas vertices\n");
 
-        DeleteRenderData(RenderData);
+        DeleteRenderData(Data);
         return nullptr;
     }
 
-    RenderData->CanvasVAO = CanvasBuffers.VAO;
-    RenderData->CanvasVBO = CanvasBuffers.VBO;
+    Data->CanvasVAO = CanvasBuffers.VAO;
+    Data->CanvasVBO = CanvasBuffers.VBO;
 
-    buffer_pair SvoBuffers = UploadSvoBlockData(Svo);
-    if (0 == SvoBuffers.SvoBuffer || 0 == SvoBuffers.FarPtrBuffer)
+    buffer_pair SceneBuffers = UploadSvoBlockData(Scene);
+    if (0 == SceneBuffers.SvoBuffer || 0 == SceneBuffers.FarPtrBuffer)
     {
-        DeleteRenderData(RenderData);
+        DeleteRenderData(Data);
         return nullptr;
     }
 
-    RenderData->SvoBuffer = SvoBuffers.SvoBuffer;
-    RenderData->FarPtrBuffer = SvoBuffers.FarPtrBuffer;
+    Data->SvoBuffer = SceneBuffers.SvoBuffer;
+    Data->FarPtrBuffer = SceneBuffers.FarPtrBuffer;
 
+    Data->ViewMatUniformLocation = glGetUniformLocation(Data->RenderShader, "ViewMatrixUniform");
+    Data->ViewPosUniformLocation = glGetUniformLocation(Data->RenderShader, "ViewPosUniform");
+    Data->IsCoarsePassUniformLocation = glGetUniformLocation(Data->RenderShader, "IsCoarsePassUniform");
 
-    RenderData->ViewMatUniformLocation = glGetUniformLocation(RenderData->RenderShader, "ViewMatrixUniform");
-    RenderData->ViewPosUniformLocation = glGetUniformLocation(RenderData->RenderShader, "ViewPosUniform");
-    RenderData->IsCoarsePassUniformLocation = glGetUniformLocation(RenderData->RenderShader, "IsCoarsePassUniform");
-
-
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, RenderData->SvoBuffer);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, RenderData->HTableOutputBuffer);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, Data->SvoBuffer);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, Data->HTableOutputBuffer);
     glActiveTexture(GL_TEXTURE0);
 
     FILE* OutFile;
     fopen_s(&OutFile, "data/cs.nvasm", "wb");
-    DEBUGOutputRenderShaderAssembly(RenderData, OutFile);
+    DEBUGOutputRenderShaderAssembly(Data, OutFile);
     fclose(OutFile);
 
-    RenderData->Timer = CreateGPUTimer();
+    Data->Timer = CreateGPUTimer();
 
-    return RenderData;
+    return Data;
 }
 
 
@@ -733,14 +733,14 @@ DeleteRenderData(render_data* RenderData)
 
 
 extern void
-UpdateRenderData(const svo* const Svo, render_data* const RenderDataOut)
+UpdateRenderScene(const svo* Scene, render_data* const RenderDataOut)
 {
     usize SvoBlockDataSize = sizeof(svo_node) * SBR_NODES_PER_BLK;
     // TODO(Liam): Waste here on the last block
-    usize MaxSvoDataSize = SvoBlockDataSize * Svo->UsedBlockCount;
+    usize MaxSvoDataSize = SvoBlockDataSize * Scene->UsedBlockCount;
 
     usize FarPtrBlockDataSize = sizeof(far_ptr) * SBR_FAR_PTRS_PER_BLK;
-    usize MaxFarPtrDataSize = FarPtrBlockDataSize * Svo->UsedBlockCount;
+    usize MaxFarPtrDataSize = FarPtrBlockDataSize * Scene->UsedBlockCount;
 
     // Allocate space for the far ptr buffer
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, RenderDataOut->FarPtrBuffer);
@@ -756,7 +756,7 @@ UpdateRenderData(const svo* const Svo, render_data* const RenderDataOut)
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
     // TODO(Liam): Don't send all the blocks to the renderer! Use only a subset.
-    svo_block* CurrentBlk = Svo->RootBlock;
+    svo_block* CurrentBlk = Scene->RootBlock;
     usize NextSvoDataOffset = 0;
     usize NextFarPtrDataOffset = 0;
 
@@ -781,9 +781,63 @@ UpdateRenderData(const svo* const Svo, render_data* const RenderDataOut)
     glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 }
 
+extern bool
+UpdateRenderShaders(const svo* Scene, const shader_data* Shaders, u32 Changed, render_data* Out)
+{
+    // Updating either the vertex or fragment shader requires recompiling both.
+    // TODO(Liam): Can we just recompile one and then re-link?
+    if (Changed & (SHADER_MAIN_VS | SHADER_MAIN_FS))
+    {
+        gl_uint Program = CompileShader(Shaders->Code[SHADER_MAIN_VS],
+                                        Shaders->Code[SHADER_MAIN_FS]);
+
+        if (0 == Program)
+        {
+            std::fprintf(stderr, "Failed to compile shader\n");
+            return false;
+        }
+
+        glDeleteProgram(Out->CanvasShader);
+        Out->CanvasShader = Program;
+    }
+
+    if (Changed & (SHADER_RENDER_CS))
+    {
+        gl_uint Program = CompileComputeShader(Shaders->Code[SHADER_RENDER_CS]);
+        if (0 == Program)
+        {
+            std::fprintf(stderr, "Failed to compile shader\n");
+            return false;
+        }
+
+        glDeleteProgram(Out->RenderShader);
+        Out->RenderShader = Program;
+
+        // TODO(Liam): Optimise this
+        SetUniformData(Scene, Out);
+    }
+
+    if (Changed & (SHADER_HASHER_CS))
+    {
+        gl_uint Program = CompileComputeShader(Shaders->Code[SHADER_HASHER_CS]);
+        if (0 == Program)
+        {
+            std::fprintf(stderr, "Failed to compile shader\n");
+            return false;
+        }
+
+        glDeleteProgram(Out->HasherShader);
+        Out->HasherShader = Program;
+        
+        SetUniformData(Scene, Out);
+    }
+
+    return true;
+}
+
 
 extern bool
-DEBUGOutputRenderShaderAssembly(const render_data* const RenderData, FILE* OutFile)
+DEBUGOutputRenderShaderAssembly(const render_data* RenderData, FILE* OutFile)
 {
     gl_sizei DataLength = 0;
     gl_enum BinFormats[64];

@@ -6,16 +6,16 @@
 #include "sabre.hh"
 #include "vecmath.hh"
 
+using packed_snorm3 = u32;
+
 static constexpr u32 SBR_NODES_PER_BLK = 16384;
 static constexpr u32 SBR_FAR_PTRS_PER_BLK = 16384;
 
-static_assert(SBR_FAR_PTRS_PER_BLK >= SBR_NODES_PER_BLK, "Far Ptrs Per Blk must be >= Entries per Blk");
+static_assert(SBR_FAR_PTRS_PER_BLK >= SBR_NODES_PER_BLK,
+              "Far Ptrs Per Blk must be >= Entries per Blk");
+
 
 struct svo_block;
-
-typedef u32 packed_snorm3;
-typedef u32 packed_snorm3;
-
 struct svo;
 
 typedef vm::vec3 (*data_sampler_fn)(vm::vec3, const svo* const, const void* const);

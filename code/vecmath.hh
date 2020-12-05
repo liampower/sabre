@@ -2,7 +2,27 @@
 #define VECMATH_H
 
 #include <cmath>
+#include <cstdint>
 #include <cfloat>
+
+// {{{ New Types
+
+// Primitive typedefs aren't namespaced
+using uint  = unsigned int;
+using usize = size_t;
+using u8    = uint8_t;
+using u16   = uint16_t;
+using u32   = uint32_t;
+using u64   = uint64_t;
+using i8    = int8_t;
+using i16   = int16_t;
+using i32   = int32_t;
+using i64   = int64_t;
+using f32   = float;
+using f64   = double;
+using byte  = unsigned char;
+
+// }}}
 
 namespace vm
 {
@@ -14,7 +34,6 @@ constexpr float EPSILON = FLT_EPSILON;
 constexpr float PI_OVER_180_DG = 0.01745329f;
 constexpr float F32_MAX = FLT_MAX;
 constexpr float F32_MIN = FLT_MIN;
-
 
 // {{{ Vectors
 template <typename c>

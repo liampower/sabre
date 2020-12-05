@@ -20,20 +20,40 @@
 #include "svo.hh"
 #include "render.hh"
 #include "noise_gen.hh"
+#include "shaders.hh"
 
 using namespace vm;
 
 static constexpr u32 DEMO_MAX_TREE_DEPTH = 12;
 static constexpr u32 DEMO_SCALE_EXPONENT = 5;
 
-static constexpr u32 DISPLAY_WIDTH = 1280;
+// Dimensions of the window the user sees
+static constexpr u32 DISPLAY_WIDTH  = 1280;
 static constexpr u32 DISPLAY_HEIGHT = 720;
+
+// Dimensions of the rendered scene. If these values differ from their DISPLAY
+// counterparts, then the GPU will automatically scale the rendered texture up
+// or down to match the window dimensions. It is *these* values, *not* DISPLAY
+// width or height, that have the biggest impact on render performance.
+static constexpr u32 RENDER_WIDTH  = 1024;
+static constexpr u32 RENDER_HEIGHT = 768;
+
+// How many seconds to wait before checking for updated shader files.
+static constexpr f64 SHADER_FILE_CHECK_HZ = 0.5;
+
 static constexpr const char* const DISPLAY_TITLE = "Sabre";
 
 struct scene
 {
     const char* const Name;
     const char* const Path;
+};
+
+struct shader_files
+{
+    const char* Contents[SHADER_ID_COUNT];
+    const char* FileName[SHADER_ID_COUNT];
+    FILETIME    LastModified[SHADER_ID_COUNT];
 };
 
 static const scene GlobalSceneTable[] = {
@@ -47,6 +67,13 @@ static const scene GlobalSceneTable[] = {
     { "Serapis", "data/Showcase/serapis.glb" },
     { "Indonesian", "data/Showcase/Indonesian.glb" },
     { "Face", "data/Showcase/face.glb" },
+};
+
+static const char* const ShaderFileNames[SHADER_ID_COUNT] = {
+    "code/main.vert",
+    "code/main.frag",
+    "code/render.comp",
+    "code/hashtable_builder.comp",
 };
 
 // NOTE(Liam): Forces use of nVidia GPU on hybrid graphics systems.
@@ -69,6 +96,38 @@ struct sphere
     vec3 Centre;
     f32  Radius;
 };
+
+static char*
+ReadEntireFile(const char* const Path)
+{
+    FILE* File;
+    fopen_s(&File, Path, "rb");
+    if (nullptr == File)
+    {
+        fprintf(stderr, "Failed to open file\n");
+        return nullptr;
+    }
+
+    std::fseek(File, 0L, SEEK_END);
+    usize FileSize = static_cast<usize>(std::ftell(File));
+    std::rewind(File);
+
+    void* FileData = static_cast<char*>(std::calloc(1, FileSize + 1));
+    if (nullptr == FileData)
+    {
+        fprintf(stderr, "Failed to alloc file data\n");
+        fclose(File);
+        return nullptr;
+    }
+
+    std::fread(FileData, FileSize, 1, File);
+    std::fclose(File);
+
+    char* DataBytes = static_cast<char*>(FileData);
+    DataBytes[FileSize] = '\0';
+
+    return DataBytes;
+}
 
 static void
 HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei Length, const GLchar* Msg, const void*)
@@ -203,6 +262,116 @@ HandleGLFWError(int, const char* const ErrorMsg)
 }
 
 
+static u32
+ReloadChangedShaders(shader_files* Files)
+{
+    u32 ChangedMsk = 0x00;
+    for (u32 ID = 0; ID < SHADER_ID_COUNT; ++ID)
+    {
+        WIN32_FILE_ATTRIBUTE_DATA AttrData;
+        GetFileAttributesExA(Files->FileName[ID],
+                             GetFileExInfoStandard,
+                             &AttrData);
+        FILETIME LastModified = AttrData.ftLastWriteTime;
+
+        if (0 != CompareFileTime(&LastModified, &Files->LastModified[ID]))
+        {
+            printf("Got new file for shader id %d\n", ID);
+            const char* OldContents = Files->Contents[ID];
+            Files->Contents[ID] = ReadEntireFile(ShaderFileNames[ID]);
+            assert(Files->Contents[ID]);
+            Files->LastModified[ID] = LastModified;
+
+            free((void*)OldContents);
+
+            ChangedMsk |= ID;
+        }
+    }
+
+    return ChangedMsk;
+}
+
+
+static shader_files*
+LoadShaderFiles(const char* const FileNames[SHADER_ID_COUNT])
+{
+    shader_files* Files = (shader_files*)calloc(1, sizeof(shader_files));
+    assert(Files);
+
+    for (u32 ID = 0; ID < SHADER_ID_COUNT; ++ID)
+    {
+        const char* Contents = ReadEntireFile(FileNames[ID]);
+        assert(Contents);
+
+        WIN32_FILE_ATTRIBUTE_DATA AttrData;
+        GetFileAttributesExA(Files->FileName[ID],
+                             GetFileExInfoStandard,
+                             &AttrData);
+        FILETIME LastModified = AttrData.ftLastWriteTime;
+
+        Files->Contents[ID] = Contents;
+        Files->LastModified[ID] = LastModified;
+        Files->FileName[ID] = FileNames[ID];
+    }
+
+    return Files;
+}
+
+static void
+DeleteShaderFiles(shader_files* Files)
+{
+    for (u32 ShaderID = 0; ShaderID < SHADER_ID_COUNT; ++ShaderID)
+    {
+        free((void*)Files->Contents[ShaderID]);
+    }
+
+    free(Files);
+}
+
+static bool
+SceneSelectionMenu(svo** WorldSvo, int* LodOut)
+{
+    bool ShowMenu = true;
+    int Lod = *LodOut;
+
+    if (! ImGui::Begin("Sabre Viewer Demo"))
+    {
+        ImGui::End();
+    }
+
+    ImGui::SliderInt("Level of Detail", &Lod, 0, DEMO_MAX_TREE_DEPTH);
+    ImGui::TextUnformatted("Higher levels will take longer to generate");
+    ImGui::Separator();
+
+    for (usize ScIndex = 0; ScIndex < ArrayCount(GlobalSceneTable); ++ScIndex)
+    {
+        const scene& Scene = GlobalSceneTable[ScIndex];
+        if (ImGui::Button(Scene.Name))
+        {
+            *WorldSvo = ImportGLBFile(SafeIntToU32(Lod), Scene.Path);
+            ShowMenu = false;
+        }
+    }
+
+    if (ImGui::Button("Noise"))
+    {
+        *WorldSvo = BuildNoiseSvo(SafeIntToU32(Lod), 5);
+        ShowMenu = false;
+    }
+
+    if (ImGui::Button("Sphere"))
+    {
+        *WorldSvo = CreateCubeSphereTestScene(SafeIntToU32(Lod));
+        ShowMenu = false;
+    }
+
+    ImGui::End();
+    *LodOut = Lod;
+
+    return ShowMenu;
+}
+
+
 extern int
 main(int ArgCount, const char** const Args)
 {
@@ -235,6 +404,7 @@ main(int ArgCount, const char** const Args)
                                           DISPLAY_TITLE,
                                           nullptr,
                                           nullptr);
+    printf("Created window\n");
     glfwMakeContextCurrent(Window);
     glfwSetWindowPos(Window, 100, 100);
     glfwSwapInterval(1);
@@ -282,11 +452,10 @@ main(int ArgCount, const char** const Args)
     // FIXME: BROKEN!! Last two members left uninitialised!
     // Initialise the render data
     view_data ViewData = { };
-    ViewData.ScreenWidth = 1024;
-    ViewData.ScreenHeight = 768;
+    ViewData.ScreenWidth = RENDER_WIDTH;
+    ViewData.ScreenHeight = RENDER_HEIGHT;
 
     render_data* RenderData = nullptr;
-
 
     camera Cam;
     Cam.Forward = vec3(0, 0, -1);
@@ -310,10 +479,16 @@ main(int ArgCount, const char** const Args)
     f64 LastMouseLTime = 0.0;
     f64 LastMouseRTime = 0.0;
 
-    bool ShowMenu = true;
     int Lod = 0;
+
+    bool ShowMenu = true;
     u64 GPUTime = 0;
     NP_PopTraceEvent(&Prof); // Init
+
+    shader_files* ShaderFiles = LoadShaderFiles(ShaderFileNames);
+    shader_data Shaders{ ShaderFiles->Contents };
+    printf("Contents: %s\n", *ShaderFiles->Contents);
+    f64 LastShaderCheckTime = 0.0;
 
     while (GLFW_FALSE == glfwWindowShouldClose(Window))
     {
@@ -334,40 +509,11 @@ main(int ArgCount, const char** const Args)
 
         if (ShowMenu)
         {
-            if (! ImGui::Begin("Sabre Viewer Demo"))
-            {
-                ImGui::End();
-            }
-
-            ImGui::SliderInt("Level of Detail", &Lod, 0, DEMO_MAX_TREE_DEPTH);
-            ImGui::TextUnformatted("Higher levels will take longer to generate");
-            ImGui::Separator();
-
-            for (usize SceneIndex = 0; SceneIndex < ArrayCount(GlobalSceneTable); ++SceneIndex)
-            {
-                const scene& Scene = GlobalSceneTable[SceneIndex];
-                if (ImGui::Button(Scene.Name))
-                {
-                    WorldSvo = ImportGLBFile(SafeIntToU32(Lod), Scene.Path);
-                    ShowMenu = false;
-                }
-            }
-
-            if (ImGui::Button("Noise"))
-            {
-                WorldSvo = BuildNoiseSvo(SafeIntToU32(Lod), 5);
-                ShowMenu = false;
-            }
-        
-            if (ImGui::Button("Sphere"))
-            {
-                WorldSvo = CreateCubeSphereTestScene(SafeIntToU32(Lod));
-                ShowMenu = false;
-            }
+            ShowMenu = SceneSelectionMenu(&WorldSvo, &Lod);
 
             if (false == ShowMenu)
             {
-                RenderData = CreateRenderData(WorldSvo, &ViewData);
+                RenderData = CreateRenderData(WorldSvo, &ViewData, &Shaders);
                 glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
                 if (nullptr == RenderData)
                 {
@@ -383,8 +529,6 @@ main(int ArgCount, const char** const Args)
                     return EXIT_FAILURE;
                 }
             }
-
-            ImGui::End();
         }
         else
         {
@@ -416,6 +560,14 @@ main(int ArgCount, const char** const Args)
                     ImGui::EndMainMenuBar();
                 }
 
+                // Every 0.5 seconds, check if we need to update the shaders
+                if ((CurrentTime - LastShaderCheckTime) >= SHADER_FILE_CHECK_HZ)
+                {
+                    u32 ChMsk = ReloadChangedShaders(ShaderFiles);
+                    UpdateRenderShaders(WorldSvo, &Shaders, ChMsk, RenderData);
+                    LastShaderCheckTime = CurrentTime;
+                }
+
                 if (glfwGetKey(Window, GLFW_KEY_W)) Cam.Position += Cam.Forward * Cam.Velocity;
                 if (glfwGetKey(Window, GLFW_KEY_S)) Cam.Position -= Cam.Forward * Cam.Velocity;
                 if (glfwGetKey(Window, GLFW_KEY_A)) Cam.Position -= Cam.Right * Cam.Velocity;
@@ -443,14 +595,14 @@ main(int ArgCount, const char** const Args)
                     if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_RIGHT) && ((CurrentTime - LastMouseRTime)) >= 1)
                     {
                         InsertVoxelAtMousePoint(MouseX, MouseY, Cam, WorldSvo);
-                        UpdateRenderData(WorldSvo, RenderData);
+                        UpdateRenderScene(WorldSvo, RenderData);
                         LastMouseRTime = CurrentTime;
                     }
                     
                     if (GLFW_PRESS == glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_LEFT) && ((CurrentTime - LastMouseLTime)) >= 1)
                     {
                         DeleteVoxelAtMousePoint(MouseX, MouseY, Cam, WorldSvo);
-                        UpdateRenderData(WorldSvo, RenderData);
+                        UpdateRenderScene(WorldSvo, RenderData);
                         LastMouseLTime = CurrentTime;
                     }
 
@@ -510,6 +662,8 @@ main(int ArgCount, const char** const Args)
     //NP_WriteJSONTrace(&Prof, nullptr, 0);
 
     free(EvtStorage);
+
+    DeleteShaderFiles(ShaderFiles);
     return EXIT_SUCCESS;
 }
 
