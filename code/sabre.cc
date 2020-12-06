@@ -487,7 +487,6 @@ main(int ArgCount, const char** const Args)
 
     shader_files* ShaderFiles = LoadShaderFiles(ShaderFileNames);
     shader_data Shaders{ ShaderFiles->Contents };
-    printf("Contents: %s\n", *ShaderFiles->Contents);
     f64 LastShaderCheckTime = 0.0;
 
     while (GLFW_FALSE == glfwWindowShouldClose(Window))

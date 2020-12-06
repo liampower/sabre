@@ -597,7 +597,7 @@ void main()
     else
     {
         vec3 OutCr = Raycast(PixelCoords >> 3, R);
-        imageStore(OutputImgUniform, PixelCoords, vec4(OutCr.gbr, 1.0));
+        imageStore(OutputImgUniform, PixelCoords, vec4(OutCr, 1.0));
     }
 }
 
