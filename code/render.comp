@@ -376,7 +376,7 @@ float RaycastDst(in ray R)
                     if (NextDepth < CurrentDepth)
                     {
                         CurrentDepth = NextDepth;
-                        Scale = 1 << M;;
+                        Scale = 1 << M;
                         ParentCentre = Stack[CurrentDepth].ParentCentre;
                         ParentNode = Stack[CurrentDepth].Node;
                         BlkIndex = Stack[CurrentDepth].BlkIndex;
@@ -424,16 +424,13 @@ vec3 Raycast(in ivec2 BeamCoords, in ray R)
         // Ray enters octree --- begin processing
 
         vec3 RayP = (RaySpan.tMin >= 0.0) ? R.Origin + (RaySpan.tMin * R.Dir) : R.Origin;
-        const ivec2 Offsets[4] = {
-            ivec2(0, 0), ivec2(1, 0),
-            ivec2(0, 1), ivec2(1, 1)
-        };
+        const ivec2 Off = ivec2(0, 1);
 
         float MinDst = min(min(
-                imageLoad(BeamImgUniform, BeamCoords + Offsets[0]).x,
-                imageLoad(BeamImgUniform, BeamCoords + Offsets[1]).x),
-                min(imageLoad(BeamImgUniform, BeamCoords + Offsets[2]).x,
-                imageLoad(BeamImgUniform, BeamCoords + Offsets[3]).x)
+                imageLoad(BeamImgUniform, BeamCoords + Off.xx).x,
+                imageLoad(BeamImgUniform, BeamCoords + Off.yx).x),
+                min(imageLoad(BeamImgUniform, BeamCoords + Off.xy).x,
+                imageLoad(BeamImgUniform, BeamCoords + Off.yy).x)
                 );
 
         // Clamp MinDst to the scene dimensions
