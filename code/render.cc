@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cstdlib>
 #include <cstdio>
+#include <cstring>
 
 #include <glad/glad.h>
 
@@ -192,7 +193,7 @@ CreateLeafDataHashTable(const render_data* const RenderData,
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, HTableInputBufferBinding, DataBuffers[0]);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, HTableOutputBufferBinding, DataBuffers[1]);
 
-        std::printf("BEGINNING HASH BUILD...\n");
+        LogInfo("Begin voxel hash table construction");
 
         Count = Minimum(Count, HTABLE_SLOT_COUNT);
         usize Remaining = Count;
@@ -352,7 +353,7 @@ CompileComputeShader(const char* const ComputeShaderCode)
 
     if (0 == Success)
     {
-        std::fprintf(stderr, "Failed to link compute shader program\n");
+        LogError("Failed to link shader");
         return 0;
     }
 
@@ -419,19 +420,19 @@ CompileShader(const char* VertSrc, const char* FragSrc)
 
 
 static inline void
-SetUniformData(const svo* const Tree, render_data* const RenderData)
+SetUniformData(const svo* const Tree, render_data* const R)
 {
-    glUseProgram(RenderData->RenderShader);
+    glUseProgram(R->RenderShader);
 
-    glUniform1i(glGetUniformLocation(RenderData->RenderShader, "OuputImgUniform"), RenderData->RenderImage);
-    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "MaxDepthUniform"), Tree->MaxDepth);
-    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "ScaleExpUniform"), Tree->ScaleExponent);
-    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "BlockCountUniform"), Tree->UsedBlockCount);
-    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "EntriesPerBlockUniform"), SBR_NODES_PER_BLK);
-    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "FarPtrsPerBlockUniform"), SBR_FAR_PTRS_PER_BLK);
-    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "BiasUniform"), Tree->Bias.Scale);
-    glUniform1f(glGetUniformLocation(RenderData->RenderShader, "InvBiasUniform"), Tree->Bias.InvScale);
-    glUniform1ui(glGetUniformLocation(RenderData->RenderShader, "TableSizeUniform"), HTABLE_SLOT_COUNT);
+    glUniform1i(glGetUniformLocation(R->RenderShader, "OuputImgUniform"), R->RenderImage);
+    glUniform1ui(glGetUniformLocation(R->RenderShader, "MaxDepthUniform"), Tree->MaxDepth);
+    glUniform1ui(glGetUniformLocation(R->RenderShader, "ScaleExpUniform"), Tree->ScaleExponent);
+    glUniform1ui(glGetUniformLocation(R->RenderShader, "BlockCountUniform"), Tree->UsedBlockCount);
+    glUniform1ui(glGetUniformLocation(R->RenderShader, "EntriesPerBlockUniform"), SBR_NODES_PER_BLK);
+    glUniform1ui(glGetUniformLocation(R->RenderShader, "FarPtrsPerBlockUniform"), SBR_FAR_PTRS_PER_BLK);
+    glUniform1ui(glGetUniformLocation(R->RenderShader, "BiasUniform"), Tree->Bias.Scale);
+    glUniform1f(glGetUniformLocation(R->RenderShader, "InvBiasUniform"), Tree->Bias.InvScale);
+    glUniform1ui(glGetUniformLocation(R->RenderShader, "TableSizeUniform"), HTABLE_SLOT_COUNT);
 
     printf("Inv Bias: %f\n", (f64)Tree->Bias.InvScale);
     printf("Bias Scale: %u\n", 1U << Tree->Bias.Scale);
@@ -440,12 +441,12 @@ SetUniformData(const svo* const Tree, render_data* const RenderData)
 
 
 static inline gl_uint
-CreateRenderImage(int ImgWidth, int ImgHeight)
+CreateRenderImage(int ImgW, int ImgH)
 {
-    gl_uint OutputTexture;
-    glGenTextures(1, &OutputTexture);
+    gl_uint OutTex;
+    glGenTextures(1, &OutTex);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, OutputTexture);
+    glBindTexture(GL_TEXTURE_2D, OutTex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -453,22 +454,22 @@ CreateRenderImage(int ImgWidth, int ImgHeight)
     glTexImage2D(GL_TEXTURE_2D, 
                  0,
                  GL_RGBA8,
-                 ImgWidth,
-                 ImgHeight,
+                 ImgW,
+                 ImgH,
                  0,
                  GL_BGRA,
                  GL_UNSIGNED_BYTE,
                  nullptr);
 
     glBindImageTexture(BIND_RENDER_TEX,
-                       OutputTexture,
+                       OutTex,
                        0,
                        GL_FALSE,
                        0,
                        GL_WRITE_ONLY,
                        GL_RGBA8);
     
-    return OutputTexture;
+    return OutTex;
 }
 
 static inline gl_uint
@@ -632,6 +633,7 @@ CreateRenderData(const svo* Scene,
         DeleteRenderData(Data);
         return nullptr;
     }
+    TraceOK("Compiled compute shader");
 
     Data->CanvasShader = CompileShader(Shaders->Code[SHADER_MAIN_VS],
                                        Shaders->Code[SHADER_MAIN_FS]);
@@ -642,6 +644,7 @@ CreateRenderData(const svo* Scene,
         DeleteRenderData(Data);
         return nullptr;
     }
+    TraceOK("Compiled canvas shader");
 
     Data->HasherShader = CompileComputeShader(Shaders->Code[SHADER_HASHER_CS]);
     if (0 == Data->HasherShader)
@@ -651,6 +654,7 @@ CreateRenderData(const svo* Scene,
 
         return nullptr;
     }
+    TraceOK("Compiled hasher compute shader");
 
     buffer_pair HTableBuffers = CreateLeafDataHashTable(Data,
                                                         Scene->AttribData.data(),
@@ -695,10 +699,10 @@ CreateRenderData(const svo* Scene,
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, Data->HTableOutputBuffer);
     glActiveTexture(GL_TEXTURE0);
 
-    FILE* OutFile;
-    fopen_s(&OutFile, "data/cs.nvasm", "wb");
+    /*FILE* OutFile = fopen("data/cs.nvasm", "wb");
+    assert(OutFile);
     DEBUGOutputRenderShaderAssembly(Data, OutFile);
-    fclose(OutFile);
+    fclose(OutFile);*/
 
     Data->Timer = CreateGPUTimer();
 

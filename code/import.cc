@@ -1,6 +1,6 @@
-#include <stdio.h>
-#include <assert.h>
-#include <math.h>
+#include <cstdio>
+#include <cassert>
+#include <cmath>
 #include <xmmintrin.h>
 #include <smmintrin.h>
 #include <set>
@@ -771,6 +771,7 @@ IntersectorFunction(vec3 vMin, vec3 vMax, const svo* const Tree, const void* con
 extern "C" svo*
 ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
 {
+    LogInfo("Begin import of file %s", GLTFPath);
     cgltf_options Options = { };
     cgltf_data* Data = nullptr;
 
@@ -783,6 +784,7 @@ ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
     Result = cgltf_validate(Data);
     if (cgltf_result_success == Result)
     {
+        TraceOK("GLTF validation passed");
         vec3 Min, Max;
         MeshMinMaxDimensions(&Data->meshes[0], Min, Max);
         f32 MaxDim = Maximum(HorzMax(Abs(Min)), HorzMax(Abs(Max)));
@@ -791,8 +793,10 @@ ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
         assert(ScaleExponent > 0);
 
         tex_cache TexCache = CreateImageCache(Data->images, Data->images_count);
+        TraceOK("Created texture cache for %u images", Data->images_count);
 
         tri_buffer* TriangleData = LoadMeshTriangles(Data, Min);
+        TraceOK("Loaded triangle data");
 
         if (nullptr == TriangleData)
         {
@@ -808,6 +812,8 @@ ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
 
         NormalIndex.reserve(TriangleData->TriangleCount);
         ColourIndex.reserve(TriangleData->TriangleCount);
+        LogInfo("Scene tri count: %u", TriangleData->TriangleCount);
+        LogInfo("Begin triangle index construction");
         BuildTriangleIndex(MaxDepth,
                            ScaleExponent,
                            TriangleData,
@@ -815,6 +821,7 @@ ImportGLBFile(u32 MaxDepth, const char* const GLTFPath)
                            NormalIndex,
                            ColourIndex,
                            TexCache);
+        TraceOK("Triangle index complete");
 
 
         const morton_map* const NormalsPtr = &NormalIndex;

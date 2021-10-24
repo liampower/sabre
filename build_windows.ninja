@@ -9,8 +9,8 @@ NonErrorWarnings = -Wno-error=unused-variable                                 $
                    -Wno-error=missing-prototypes                              $
                    -Wno-error=deprecated-declarations                         $
 
-Optimisation = -O3 -fwrapv
-#Optimisation = -fsanitize=address,undefined,integer -g -gcodeview
+#Optimisation = -O3 -fwrapv
+Optimisation = -fsanitize=address,undefined,integer -g -gcodeview
 
 Features = -fno-omit-frame-pointer                                            $
            -fno-exceptions                                                    $
@@ -18,7 +18,7 @@ Features = -fno-omit-frame-pointer                                            $
            -fno-strict-aliasing
 
 CompilerFlags = -isystem include                                              $
-                -Wall -Wextra -Wmove -pedantic -Weverything -Wpadded  $
+                -Wall -Wextra -Wmove -Werror -pedantic -Weverything -Wpadded  $
                  $NonErrorWarnings                                            $
                  -std=c++14                                                   $
                  -mavx $Optimisation                                          $
@@ -27,10 +27,18 @@ CompilerFlags = -isystem include                                              $
                  $DisabledWarnings
 
 Linker = clang++
-Libs = -lGL -lGLU -lglfw -lrt -lm -ldl -lwayland-client -pthread -L/usr/lib/../lib -lffi
+Libs = -Llibs         $
+       -limgui.lib    $
+       -lglad.lib     $
+       -lglfw3.lib    $
+       -lopengl32.lib $
+       -lkernel32.lib $
+       -luser32.lib   $
+       -lgdi32.lib    $
+       -lshell32.lib  $
 
 CommonLinkerFlags = --for-linker=-nodefaultlib:libcmt
-LinkerFlags =   $Libs
+LinkerFlags =  -fsanitize=address,undefined,integer $Libs
 #LinkerFlags = $CommonLinkerFlags $Libs --for-linker=-opt:ref
 
 rule compile
@@ -53,14 +61,14 @@ rule make_tags
 
 
 build tags: make_tags ./code
-build sabre.o: compile code/sabre_linux.cc
+build sabre.o: compile code/sabre.cc
 build svo.o: compile code/svo.cc
 build shaders.o: compile code/shaders.cc
 build import.o: compile code/import.cc
 build render.o: compile code/render.cc
 build noise_gen.o: compile code/noise_gen.cc
 
-build sabre.exe: link glad.o sabre.o svo.o shaders.o import.o render.o noise_gen.o | tags
+build sabre.exe: link sabre.o svo.o shaders.o import.o render.o noise_gen.o | tags
 
 build run phony: run_this sabre.exe
 

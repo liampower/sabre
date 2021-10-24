@@ -2,6 +2,7 @@
 #define SABRE_SVO_H
 
 #include <vector>
+#include <stdio.h>
 
 #include "sabre.hh"
 #include "vecmath.hh"
@@ -94,7 +95,7 @@ struct svo_block
     svo_block*  Next;
     svo_node    Entries[SBR_NODES_PER_BLK];
     far_ptr     FarPtrs[SBR_FAR_PTRS_PER_BLK];
-};
+} __attribute__((packed));
 
 struct svo
 {

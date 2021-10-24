@@ -448,13 +448,13 @@ constexpr bvec2 NotEqual(gvec2<c> L, gvec2<c> R)
 template<>
 inline bvec2 Equal(vec2 L, vec2 R)
 {
-    return bvec2{ fabs(L.X - R.X) < EPSILON, fabs(L.Y - R.Y) < EPSILON };
+    return bvec2{ fabsf(L.X - R.X) < EPSILON, fabsf(L.Y - R.Y) < EPSILON };
 }
 
 template<>
 inline bvec2 NotEqual(vec2 L, vec2 R)
 {
-    return bvec2{ fabs(L.X - R.X) > EPSILON, fabs(L.Y - R.Y) > EPSILON };
+    return bvec2{ fabsf(L.X - R.X) > EPSILON, fabsf(L.Y - R.Y) > EPSILON };
 }
 
 
@@ -502,9 +502,9 @@ template<>
 inline bvec3 Equal(vec3 L, vec3 R)
 {
     return bvec3{ 
-        std::fabs(L.X - R.X) < EPSILON,
-        std::fabs(L.Y - R.Y) < EPSILON,
-        std::fabs(L.Z - R.Z) < EPSILON,
+        fabsf(L.X - R.X) < EPSILON,
+        fabsf(L.Y - R.Y) < EPSILON,
+        fabsf(L.Z - R.Z) < EPSILON,
     };
 }
 
@@ -512,9 +512,9 @@ template<>
 inline bvec3 NotEqual(vec3 L, vec3 R)
 {
     return bvec3{ 
-        std::fabs(L.X - R.X) > EPSILON,
-        std::fabs(L.Y - R.Y) > EPSILON,
-        std::fabs(L.Z - R.Z) > EPSILON,
+        fabsf(L.X - R.X) > EPSILON,
+        fabsf(L.Y - R.Y) > EPSILON,
+        fabsf(L.Z - R.Z) > EPSILON,
     };
 }
 
@@ -1078,19 +1078,19 @@ Dot(gvec4<c> L, gvec4<c> R)
 inline float
 Length(vec2 V)
 {
-    return std::sqrtf(V.X*V.X + V.Y*V.Y);
+    return sqrtf(V.X*V.X + V.Y*V.Y);
 }
 
 inline float
 Length(vec3 V)
 {
-    return std::sqrtf(V.X*V.X + V.Y*V.Y + V.Z*V.Z);
+    return sqrtf(V.X*V.X + V.Y*V.Y + V.Z*V.Z);
 }
 
 inline float
 Length(vec4 V)
 {
-    return std::sqrtf(V.X*V.X + V.Y*V.Y + V.Z*V.Z + V.W*V.W);
+    return sqrtf(V.X*V.X + V.Y*V.Y + V.Z*V.Z + V.W*V.W);
 }
 
 inline float
@@ -1353,11 +1353,11 @@ RotationQuaternion(const float Angle, vec3 Axis)
 {
     quat Result;
 
-    Result.X = std::cosf(Angle / 2.0f);
+    Result.X = cosf(Angle / 2.0f);
 
-    Result.Y = Axis.X * std::sinf(Angle / 2.0f);
-    Result.Z = Axis.Y * std::sinf(Angle / 2.0f);
-    Result.W = Axis.Z * std::sinf(Angle / 2.0f);
+    Result.Y = Axis.X * sinf(Angle / 2.0f);
+    Result.Z = Axis.Y * sinf(Angle / 2.0f);
+    Result.W = Axis.Z * sinf(Angle / 2.0f);
 
     return Result;
 }
@@ -1371,7 +1371,7 @@ Conjugate(quat Q)
 inline float
 QuatLength(quat Q)
 {
-    return std::sqrtf(Q.X*Q.X + Q.Y*Q.Y + Q.Z*Q.Z + Q.W*Q.W);
+    return sqrtf(Q.X*Q.X + Q.Y*Q.Y + Q.Z*Q.Z + Q.W*Q.W);
 }
 
 inline quat

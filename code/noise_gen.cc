@@ -2,6 +2,7 @@
 #include "vecmath.hh"
 #include "svo.hh"
 #include "noise_gen.hh"
+#include <cstdio>
 
 using namespace vm;
 

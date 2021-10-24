@@ -575,7 +575,7 @@ void main()
     ivec2 PixelCoords = ivec2(gl_GlobalInvocationID.xy);
     if (IsCoarsePassUniform) PixelCoords *= 8;
 
-    vec3 ScreenCoords = vec3( 512, 384, 1024);
+    vec3 ScreenCoords = vec3(512, 384, 1024);
 
     vec3 ScreenOrigin = ViewPosUniform - ScreenCoords;
     vec3 ScreenCoord = ScreenOrigin + vec3(PixelCoords.xy, 0);
@@ -597,7 +597,7 @@ void main()
     else
     {
         vec3 OutCr = Raycast(PixelCoords >> 3, R);
-        imageStore(OutputImgUniform, PixelCoords, vec4(OutCr.gbr, 1.0));
+        imageStore(OutputImgUniform, PixelCoords, vec4(OutCr, 1.0));
     }
 }
 

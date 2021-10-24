@@ -1,7 +1,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <intrin.h>
+#include <x86intrin.h>
 #include <vector>
 #include <map>
 
@@ -517,7 +517,7 @@ BuildSubOctreeRecursive(svo_node* Parent,
 
                 vec3 Normal = NormalSampler->SamplerFn(OctCentre, Tree, NormalSampler->UserData);
                 vec3 Colour = ColourSampler->SamplerFn(OctCentre, Tree, ColourSampler->UserData);
-                
+
                 Tree->AttribData.emplace_back(HashVec3(uvec3(OctCentre)), PackVec3ToSnorm3(Normal),  PackVec3ToSnorm3(Colour));
             }
         }
@@ -552,6 +552,7 @@ CreateScene(u32 ScaleExp,
     
     if (Tree)
     {
+        LogInfo("Begin scene build");
         Tree->ScaleExponent = ScaleExp;
         Tree->MaxDepth = MaxDepth;
 
@@ -578,9 +579,11 @@ CreateScene(u32 ScaleExp,
         // Scale up by the bias
         RootScale <<= Tree->Bias.Scale;
 
-        printf("ROOTSCALE %u\n", RootScale);
+        LogInfo("Scene.RootScale: %u", RootScale);
+        LogInfo("Scene.Depth: %u", MaxDepth);
 
         vec3 RootCentre = vec3(RootScale >> 1U);
+        LogInfo("Scene.RootCentre: (%f, %f, %f)", RootCentre.X, RootCentre.Y, RootCentre.Z);
 
         // Initiate the recursive construction process
         // The root depth is initialised to 1 because we are
@@ -599,7 +602,7 @@ CreateScene(u32 ScaleExp,
                                 NormalSampler,
                                 ColourSampler);
 
-        printf("Completed tree\n");
+        TraceOK("Scene build complete");
         return Tree;
     }
     else
@@ -1115,7 +1118,7 @@ GetNearestLeafSlot(vec3 RayOrigin, vec3 RayDir, const svo* const Tree)
 
     }
 
-    printf("Position not found\n");
+    LogInfo("Position not found");
 
     return vec3(FLT_MAX);
 }
