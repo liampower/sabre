@@ -55,12 +55,11 @@ rule make_tags
 build tags: make_tags ./code
 build sabre.o: compile code/sabre_linux.cc
 build svo.o: compile code/svo.cc
-build shaders.o: compile code/shaders.cc
 build import.o: compile code/import.cc
 build render.o: compile code/render.cc
 build noise_gen.o: compile code/noise_gen.cc
 
-build sabre.exe: link glad.o sabre.o svo.o shaders.o import.o render.o noise_gen.o | tags
+build sabre.exe: link glad.o sabre.o svo.o import.o render.o noise_gen.o | tags
 
 build run phony: run_this sabre.exe
 

@@ -1,14 +1,20 @@
-#include <cstdio>
-#include <cstdlib>
-#include <cstdint>
-#include <cassert>
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+
+#include <imgui/imgui.h>
+#include <imgui/imgui_impl_glfw.h>
+#include <imgui/imgui_impl_opengl3.h>
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <assert.h>
 #include <vector>
 #include <string>
+#include <nanoprofile.h>
 
 #include <glad/glad.h>
 #include <glfw/glfw3.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 
 #include "sabre.hh"
 #include "svo.hh"
@@ -46,7 +52,7 @@ struct shader_files
 {
     const char* Contents[SHADER_ID_COUNT];
     const char* FileName[SHADER_ID_COUNT];
-    u64         LastModifiedNs[SHADER_ID_COUNT];
+    FILETIME    LastModified[SHADER_ID_COUNT];
 };
 
 static const scene GlobalSceneTable[] = {
@@ -71,7 +77,7 @@ static const char* const ShaderFileNames[SHADER_ID_COUNT] = {
 
 // NOTE(Liam): Forces use of nVidia GPU on hybrid graphics systems.
 extern "C" {
-     EXPORT_SYMBOL unsigned int NvOptimusEnablement = 0x00000001;
+    __declspec(dllexport) unsigned int NvOptimusEnablement = 0x00000001;
 }
 
 struct camera
@@ -93,7 +99,8 @@ struct sphere
 static char*
 ReadEntireFile(const char* const Path)
 {
-    FILE* File =fopen(Path, "rb");
+    FILE* File;
+    fopen_s(&File, Path, "rb");
     if (nullptr == File)
     {
         fprintf(stderr, "Failed to open file\n");
@@ -124,7 +131,10 @@ ReadEntireFile(const char* const Path)
 static void
 HandleOpenGLError(GLenum Src, GLenum Type, GLenum ID, GLenum Severity, GLsizei Length, const GLchar* Msg, const void*)
 {
-    LogPlatform("OpenGL Message: %s", Msg);
+    if (GL_DEBUG_TYPE_ERROR == Type)
+    {
+        fprintf(stderr, "[OpenGL Error] %s\n", Msg);
+    }
 }
 
 static inline f32
@@ -137,8 +147,8 @@ Squared(f32 X)
 static inline void
 OutputGraphicsDeviceInfo(void)
 {
-    LogInfo("Graphics Vendor: %s", glGetString(GL_VENDOR));
-    LogInfo("Graphics Renderer: %s", glGetString(GL_RENDERER));
+    printf("Graphics Vendor: %s\n", glGetString(GL_VENDOR));
+    printf("Graphics Renderer: %s\n", glGetString(GL_RENDERER));
 }
 
 // NOTE(Liam): Warning! Does not work if Min,Max are not the **actual** (dimension-wise) min and
@@ -247,11 +257,10 @@ DeleteVoxelAtMousePoint(f64 MouseX, f64 MouseY, const camera& Cam, svo* Svo)
 static void
 HandleGLFWError(int, const char* const ErrorMsg)
 {
-    LogPlatform("GLFW Message: %s", ErrorMsg);
+    MessageBox(nullptr, ErrorMsg, "GLFW Error", MB_ICONWARNING);
 }
 
 
-/*
 static u32
 ReloadChangedShaders(shader_files* Files)
 {
@@ -307,76 +316,6 @@ LoadShaderFiles(const char* const FileNames[SHADER_ID_COUNT])
     return Files;
 }
 
-static u32
-ReloadChangedShaders(shader_files* Files)
-{
-    u32 ChangedMsk = 0x00;/
-    for (u32 ID = 0; ID < SHADER_ID_COUNT; ++ID)
-    {
-
-
-        if (0 != CompareFileTime(&LastModified, &Files->LastModified[ID]))
-        {
-            printf("Got new file for shader id %d\n", ID);
-            const char* OldContents = Files->Contents[ID];
-            Files->Contents[ID] = ReadEntireFile(ShaderFileNames[ID]);
-            assert(Files->Contents[ID]);
-            Files->LastModified[ID] = LastModified;
-
-            free((void*)OldContents);
-
-            ChangedMsk |= ID;
-        }
-    }
-
-    return ChangedMsk;
-}
-
-
-static shader_files*
-LoadShaderFiles(const char* const FileNames[SHADER_ID_COUNT])
-{
-    shader_files* Files = (shader_files*)calloc(1, sizeof(shader_files));
-    assert(Files);
-
-    for (u32 ID = 0; ID < SHADER_ID_COUNT; ++ID)
-    {
-        const char* Contents = ReadEntireFile(FileNames[ID]);
-        assert(Contents);
-
-        struct stat AttrData;
-        stat(FileNames[ID], &AttrData);
-        struct timespec LastModifiedNs = AttrData.st_mtime.tv_nsec;
-
-        Files->Contents[ID] = Contents;
-        Files->LastModifiedNs[ID] = LastModifiedNs;
-        Files->FileName[ID] = FileNames[ID];
-    }
-
-    return Files;
-}
-
-*/
-
-static shader_files*
-LoadShaderFiles(const char* const FileNames[SHADER_ID_COUNT])
-{
-    shader_files* Files = (shader_files*)calloc(1, sizeof(shader_files));
-    assert(Files);
-
-    for (u32 ID = 0; ID < SHADER_ID_COUNT; ++ID)
-    {
-        const char* Contents = ReadEntireFile(FileNames[ID]);
-        assert(Contents);
-
-        Files->Contents[ID] = Contents;
-        Files->LastModifiedNs[ID] = 0;
-        Files->FileName[ID] = FileNames[ID];
-    }
-
-    return Files;
-}
-
 static void
 DeleteShaderFiles(shader_files* Files)
 {
@@ -388,8 +327,6 @@ DeleteShaderFiles(shader_files* Files)
     free(Files);
 }
 
-
-/*
 static bool
 SceneSelectionMenu(svo** WorldSvo, int* LodOut)
 {
@@ -431,17 +368,28 @@ SceneSelectionMenu(svo** WorldSvo, int* LodOut)
     *LodOut = Lod;
 
     return ShowMenu;
-}*/
+}
 
 
 extern int
 main(int ArgCount, const char** const Args)
 {
-    LogInfo("Starting Application");
+    np_profile Prof;
+    np_event* EvtStorage = (np_event*)malloc(1000*sizeof(np_event));
+    NP_InitProfile(EvtStorage, 1000, &Prof);
+
+    NP_PushTraceEvent(&Prof, "Init");
+    NP_PushTraceEvent(&Prof, "Init GLFW");
     glfwSetErrorCallback(HandleGLFWError);
     if (GLFW_FALSE == glfwInit())
     {
-        LogError("Failed to initialize GLFW");
+        fprintf(stderr, "Failed to initialise GLFW\n");
+        MessageBox(nullptr,
+                   "Failed to initialise GLFW\n",
+                   "Error",
+                   MB_ICONWARNING);
+
+        free(EvtStorage);
         return EXIT_FAILURE;
     }
 
@@ -455,29 +403,38 @@ main(int ArgCount, const char** const Args)
                                           DISPLAY_TITLE,
                                           nullptr,
                                           nullptr);
-    TraceOK("Created window");
+    printf("Created window\n");
     glfwMakeContextCurrent(Window);
     glfwSetWindowPos(Window, 100, 100);
     glfwSwapInterval(1);
+    NP_PopTraceEvent(&Prof);
 
+    NP_PushTraceEvent(&Prof, "Init GLAD");
     if (0 == gladLoadGL())
     {
         fprintf(stderr, "Failed to initialise GLAD\n");
+        MessageBox(nullptr,
+                   "Failed to initialise OpenGL context, make sure you are running this application with up-to-date graphics drivers",
+                   "Error",
+                   MB_ICONWARNING);
 
+        free(EvtStorage);
         glfwTerminate();
         return EXIT_FAILURE;
     }
-    TraceOK("Initialized GL");
+    NP_PopTraceEvent(&Prof);
 
     OutputGraphicsDeviceInfo();
 
-    /*IMGUI_CHECKVERSION();
+    NP_PushTraceEvent(&Prof, "Init ImGUI");
+    IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
 
     // Setup Platform/Renderer bindings
     ImGui_ImplGlfw_InitForOpenGL(Window, true);
-    ImGui_ImplOpenGL3_Init("#version 430 core");*/
+    ImGui_ImplOpenGL3_Init("#version 430 core");
+    NP_PopTraceEvent(&Prof);
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_DEPTH_CLAMP);
@@ -487,8 +444,7 @@ main(int ArgCount, const char** const Args)
     int FramebufferWidth;
     int FramebufferHeight;
     glfwGetFramebufferSize(Window, &FramebufferWidth, &FramebufferHeight);
-    LogInfo("Frame Width: %d, Height: %d", FramebufferWidth, FramebufferHeight);
-    glViewport(0, 0, FramebufferWidth*2, FramebufferHeight*2);
+    glViewport(0, 0, FramebufferWidth, FramebufferHeight);
 
     svo* WorldSvo = nullptr;
 
@@ -526,11 +482,12 @@ main(int ArgCount, const char** const Args)
 
     bool ShowMenu = true;
     u64 GPUTime = 0;
+    NP_PopTraceEvent(&Prof); // Init
 
     shader_files* ShaderFiles = LoadShaderFiles(ShaderFileNames);
     shader_data Shaders{ ShaderFiles->Contents };
+    printf("Contents: %s\n", *ShaderFiles->Contents);
     f64 LastShaderCheckTime = 0.0;
-    TraceOK("Loaded Shaders");
 
     while (GLFW_FALSE == glfwWindowShouldClose(Window))
     {
@@ -540,9 +497,9 @@ main(int ArgCount, const char** const Args)
         glClearColor(0.02f, 0.02f, 0.02f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        /*ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();*/
+        ImGui::NewFrame();
         
         if (glfwGetKey(Window, GLFW_KEY_Q))
         {
@@ -551,17 +508,22 @@ main(int ArgCount, const char** const Args)
 
         if (ShowMenu)
         {
-            ShowMenu = false;//SceneSelectionMenu(&WorldSvo, &Lod);
-            WorldSvo = ImportGLBFile(12, "./gallery.glb");
+            ShowMenu = SceneSelectionMenu(&WorldSvo, &Lod);
+
             if (false == ShowMenu)
             {
                 RenderData = CreateRenderData(WorldSvo, &ViewData, &Shaders);
                 glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
                 if (nullptr == RenderData)
                 {
-                    //fprintf(stderr, "Failed to initialise render data\n");
-                    LogError("Failed to initialize render data");
+                    fprintf(stderr, "Failed to initialise render data\n");
+                    MessageBox(nullptr, 
+                               "Failed to initialise render data\n",
+                               "Error",
+                               MB_ICONWARNING);
+
                     DeleteScene(WorldSvo);
+                    free(EvtStorage);
                     glfwTerminate();
                     return EXIT_FAILURE;
                 }
@@ -572,7 +534,13 @@ main(int ArgCount, const char** const Args)
             if (nullptr == WorldSvo)
             {
                 fprintf(stderr, "Failed to initialise SVO data\n");
+                MessageBox(nullptr,
+                           "Failed to initialise SVO data\n",
+                           "Error",
+                           MB_ICONWARNING);
+
                 DeleteScene(WorldSvo);
+                free(EvtStorage);
                 glfwTerminate();
                 return EXIT_FAILURE;
             }
@@ -580,7 +548,7 @@ main(int ArgCount, const char** const Args)
             if (WorldSvo)
             {
                 f64 CurrentTime = glfwGetTime();
-                /*if (ImGui::BeginMainMenuBar())
+                if (ImGui::BeginMainMenuBar())
                 {
                     ImGui::Text("%fms CPU  %fms GPU  %d BLKS  %d LVLS  %llu DATA", 
                                  1000.0*DeltaTime,
@@ -589,13 +557,13 @@ main(int ArgCount, const char** const Args)
                                  GetSvoDepth(WorldSvo),
                                  WorldSvo->AttribData.size());
                     ImGui::EndMainMenuBar();
-                }*/
+                }
 
                 // Every 0.5 seconds, check if we need to update the shaders
                 if ((CurrentTime - LastShaderCheckTime) >= SHADER_FILE_CHECK_HZ)
                 {
-                    //u32 ChMsk = ReloadChangedShaders(ShaderFiles);
-                    //UpdateRenderShaders(WorldSvo, &Shaders, ChMsk, RenderData);
+                    u32 ChMsk = ReloadChangedShaders(ShaderFiles);
+                    UpdateRenderShaders(WorldSvo, &Shaders, ChMsk, RenderData);
                     LastShaderCheckTime = CurrentTime;
                 }
 
@@ -668,26 +636,33 @@ main(int ArgCount, const char** const Args)
 
         }
 
-        //ImGui::Render();
+        ImGui::Render();
 
-        //ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         glfwSwapBuffers(Window);
         FrameEndTime = glfwGetTime();
         DeltaTime = FrameEndTime - FrameStartTime;
     }
 
+    printf("Deleting SVO\n");
     DeleteScene(WorldSvo);
-    TraceOK("Deleted SVO");
-
+    printf("Deleting Render Data\n");
     DeleteRenderData(RenderData);
-    TraceOK("Deleted render data");
 
+    printf("Shutting down IMGUI\n");
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+
+    printf("Shutting down GLFW\n");
     glfwTerminate();
-    TraceOK("Shut down GLFW");
+    printf("Writing JSON trace\n");
+    //NP_WriteJSONTrace(&Prof, nullptr, 0);
+
+    free(EvtStorage);
 
     DeleteShaderFiles(ShaderFiles);
-    TraceOK("Deleted shader data");
     return EXIT_SUCCESS;
 }
 
