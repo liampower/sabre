@@ -786,18 +786,18 @@ UpdateRenderScene(const svo* Scene, render_data* const RenderDataOut)
 }
 
 extern bool
-UpdateRenderShaders(const svo* Scene, const shader_data* Shaders, u32 Changed, render_data* Out)
+UpdateRenderShaders(const svo* Scene, const shader_data* Shaders, u32 ChangeMsk, render_data* Out)
 {
     // Updating either the vertex or fragment shader requires recompiling both.
     // TODO(Liam): Can we just recompile one and then re-link?
-    if (Changed & (SHADER_MAIN_VS | SHADER_MAIN_FS))
+    if (ChangeMsk & (SHADER_MAIN_VS | SHADER_MAIN_FS))
     {
         gl_uint Program = CompileShader(Shaders->Code[SHADER_MAIN_VS],
                                         Shaders->Code[SHADER_MAIN_FS]);
 
         if (0 == Program)
         {
-            std::fprintf(stderr, "Failed to compile shader\n");
+            LogError("Failed to compile shader");
             return false;
         }
 
@@ -805,12 +805,12 @@ UpdateRenderShaders(const svo* Scene, const shader_data* Shaders, u32 Changed, r
         Out->CanvasShader = Program;
     }
 
-    if (Changed & (SHADER_RENDER_CS))
+    if (ChangeMsk & SHADER_RENDER_CS)
     {
         gl_uint Program = CompileComputeShader(Shaders->Code[SHADER_RENDER_CS]);
         if (0 == Program)
         {
-            std::fprintf(stderr, "Failed to compile shader\n");
+            LogError("Failed to compile shader");
             return false;
         }
 
@@ -821,12 +821,12 @@ UpdateRenderShaders(const svo* Scene, const shader_data* Shaders, u32 Changed, r
         SetUniformData(Scene, Out);
     }
 
-    if (Changed & (SHADER_HASHER_CS))
+    if (ChangeMsk & SHADER_HASHER_CS)
     {
         gl_uint Program = CompileComputeShader(Shaders->Code[SHADER_HASHER_CS]);
         if (0 == Program)
         {
-            std::fprintf(stderr, "Failed to compile shader\n");
+            LogError("Failed to compile shader");
             return false;
         }
 

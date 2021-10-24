@@ -4,7 +4,7 @@
 
 struct render_data;
 
-enum shader_id
+typedef enum shader_id
 {
     SHADER_MAIN_VS,
     SHADER_MAIN_FS,
@@ -12,9 +12,9 @@ enum shader_id
     SHADER_HASHER_CS,
 
     SHADER_ID_COUNT
-};
+} shader_id;
 
-struct view_data
+typedef struct view_data
 {
     int ScreenWidth;
     int ScreenHeight;
@@ -22,12 +22,12 @@ struct view_data
     // TODO(Liam): Tighten type safety here.
     float* CamTransform;
     float* CamPos;
-};
+} view_data;
 
-struct shader_data
+typedef struct shader_data
 {
     const char** Code;
-};
+} shader_data;
 
 extern render_data*
 CreateRenderData(const svo* Scene,
@@ -38,7 +38,10 @@ extern void
 UpdateRenderScene(const svo* Scene, render_data* RenderDataOut);
 
 extern bool
-UpdateRenderShaders(const svo* Scene, const shader_data* Shaders, u32 Changed, render_data* Out);
+UpdateRenderShaders(const svo* Scene,
+                    const shader_data* Shaders,
+                    u32 ChangeMsk,
+                    render_data* Out);
 
 extern u64
 DrawScene(const render_data* RenderData, const view_data* ViewData);
