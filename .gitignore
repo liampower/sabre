@@ -5,6 +5,7 @@
 *.ilk
 *.exp
 *.glb
+*.pro.user
 imgui.ini
 sabre.lib
 tags
