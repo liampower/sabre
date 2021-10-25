@@ -63,10 +63,10 @@ static const scene GlobalSceneTable[] = {
 };
 
 static const char* const ShaderFileNames[SHADER_ID_COUNT] = {
-    "code/main.vert",
-    "code/main.frag",
-    "code/render.comp",
-    "code/hashtable_builder.comp",
+    "code/main_vs.glsl",
+    "code/main_fs.glsl",
+    "code/render_cs.glsl",
+    "code/htable_cs.glsl",
 };
 
 // NOTE(Liam): Forces use of nVidia GPU on hybrid graphics systems.
@@ -251,113 +251,6 @@ HandleGLFWError(int, const char* const ErrorMsg)
 }
 
 
-/*
-static u32
-ReloadChangedShaders(shader_files* Files)
-{
-    u32 ChangedMsk = 0x00;
-    for (u32 ID = 0; ID < SHADER_ID_COUNT; ++ID)
-    {
-        WIN32_FILE_ATTRIBUTE_DATA AttrData;
-        GetFileAttributesExA(Files->FileName[ID],
-                             GetFileExInfoStandard,
-                             &AttrData);
-        FILETIME LastModified = AttrData.ftLastWriteTime;
-
-        if (0 != CompareFileTime(&LastModified, &Files->LastModified[ID]))
-        {
-            printf("Got new file for shader id %d\n", ID);
-            const char* OldContents = Files->Contents[ID];
-            Files->Contents[ID] = ReadEntireFile(ShaderFileNames[ID]);
-            assert(Files->Contents[ID]);
-            Files->LastModified[ID] = LastModified;
-
-            free((void*)OldContents);
-
-            ChangedMsk |= ID;
-        }
-    }
-
-    return ChangedMsk;
-}
-
-
-static shader_files*
-LoadShaderFiles(const char* const FileNames[SHADER_ID_COUNT])
-{
-    shader_files* Files = (shader_files*)calloc(1, sizeof(shader_files));
-    assert(Files);
-
-    for (u32 ID = 0; ID < SHADER_ID_COUNT; ++ID)
-    {
-        const char* Contents = ReadEntireFile(FileNames[ID]);
-        assert(Contents);
-
-        WIN32_FILE_ATTRIBUTE_DATA AttrData;
-        GetFileAttributesExA(Files->FileName[ID],
-                             GetFileExInfoStandard,
-                             &AttrData);
-        FILETIME LastModified = AttrData.ftLastWriteTime;
-
-        Files->Contents[ID] = Contents;
-        Files->LastModified[ID] = LastModified;
-        Files->FileName[ID] = FileNames[ID];
-    }
-
-    return Files;
-}
-
-static u32
-ReloadChangedShaders(shader_files* Files)
-{
-    u32 ChangedMsk = 0x00;/
-    for (u32 ID = 0; ID < SHADER_ID_COUNT; ++ID)
-    {
-
-
-        if (0 != CompareFileTime(&LastModified, &Files->LastModified[ID]))
-        {
-            printf("Got new file for shader id %d\n", ID);
-            const char* OldContents = Files->Contents[ID];
-            Files->Contents[ID] = ReadEntireFile(ShaderFileNames[ID]);
-            assert(Files->Contents[ID]);
-            Files->LastModified[ID] = LastModified;
-
-            free((void*)OldContents);
-
-            ChangedMsk |= ID;
-        }
-    }
-
-    return ChangedMsk;
-}
-
-
-static shader_files*
-LoadShaderFiles(const char* const FileNames[SHADER_ID_COUNT])
-{
-    shader_files* Files = (shader_files*)calloc(1, sizeof(shader_files));
-    assert(Files);
-
-    for (u32 ID = 0; ID < SHADER_ID_COUNT; ++ID)
-    {
-        const char* Contents = ReadEntireFile(FileNames[ID]);
-        assert(Contents);
-
-        struct stat AttrData;
-        stat(FileNames[ID], &AttrData);
-        struct timespec LastModifiedNs = AttrData.st_mtime.tv_nsec;
-
-        Files->Contents[ID] = Contents;
-        Files->LastModifiedNs[ID] = LastModifiedNs;
-        Files->FileName[ID] = FileNames[ID];
-    }
-
-    return Files;
-}
-
-*/
-
 static shader_files*
 LoadShaderFiles(const char* const FileNames[SHADER_ID_COUNT])
 {
@@ -387,51 +280,6 @@ DeleteShaderFiles(shader_files* Files)
 
     free(Files);
 }
-
-
-/*
-static bool
-SceneSelectionMenu(svo** WorldSvo, int* LodOut)
-{
-    bool ShowMenu = true;
-    int Lod = *LodOut;
-
-    if (! ImGui::Begin("Sabre Viewer Demo"))
-    {
-        ImGui::End();
-    }
-
-    ImGui::SliderInt("Level of Detail", &Lod, 0, DEMO_MAX_TREE_DEPTH);
-    ImGui::TextUnformatted("Higher levels will take longer to generate");
-    ImGui::Separator();
-
-    for (usize ScIndex = 0; ScIndex < ArrayCount(GlobalSceneTable); ++ScIndex)
-    {
-        const scene& Scene = GlobalSceneTable[ScIndex];
-        if (ImGui::Button(Scene.Name))
-        {
-            *WorldSvo = ImportGLBFile(SafeIntToU32(Lod), Scene.Path);
-            ShowMenu = false;
-        }
-    }
-
-    if (ImGui::Button("Noise"))
-    {
-        *WorldSvo = BuildNoiseSvo(SafeIntToU32(Lod), 5);
-        ShowMenu = false;
-    }
-
-    if (ImGui::Button("Sphere"))
-    {
-        *WorldSvo = CreateCubeSphereTestScene(SafeIntToU32(Lod));
-        ShowMenu = false;
-    }
-
-    ImGui::End();
-    *LodOut = Lod;
-
-    return ShowMenu;
-}*/
 
 
 extern int
@@ -540,10 +388,6 @@ main(int ArgCount, const char** const Args)
         glClearColor(0.02f, 0.02f, 0.02f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        /*ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();*/
-        
         if (glfwGetKey(Window, GLFW_KEY_Q))
         {
             glfwSetWindowShouldClose(Window, GLFW_TRUE);
@@ -559,7 +403,6 @@ main(int ArgCount, const char** const Args)
                 glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
                 if (nullptr == RenderData)
                 {
-                    //fprintf(stderr, "Failed to initialise render data\n");
                     LogError("Failed to initialize render data");
                     DeleteScene(WorldSvo);
                     glfwTerminate();

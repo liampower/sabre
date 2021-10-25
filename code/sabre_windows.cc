@@ -69,10 +69,10 @@ static const scene GlobalSceneTable[] = {
 };
 
 static const char* const ShaderFileNames[SHADER_ID_COUNT] = {
-    "code/main.vert",
-    "code/main.frag",
-    "code/render.comp",
-    "code/hashtable_builder.comp",
+    "code/main_vs.glsl",
+    "code/main_fs.glsl",
+    "code/render_cs.glsl",
+    "code/htable_cs.glsl",
 };
 
 // NOTE(Liam): Forces use of nVidia GPU on hybrid graphics systems.
