@@ -370,8 +370,6 @@ main(int ArgCount, const char** const Args)
     f64 LastMouseLTime = 0.0;
     f64 LastMouseRTime = 0.0;
 
-    int Lod = 0;
-
     bool ShowMenu = true;
     u64 GPUTime = 0;
 
@@ -510,10 +508,6 @@ main(int ArgCount, const char** const Args)
 
 
         }
-
-        //ImGui::Render();
-
-        //ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         glfwSwapBuffers(Window);
         FrameEndTime = glfwGetTime();
